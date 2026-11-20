@@ -1,5 +1,7 @@
 #include "host/wsc/screen_writer.hpp"
 
+#include <algorithm>
+
 #include "util/strings.hpp"
 
 namespace tn34xx {
@@ -121,6 +123,17 @@ std::vector<Step> plan_flush(const ScreenState& shadow, const DeviceMirror& mirr
             if (pending.size() + 5 + len + 1 > opt.queue_bytes) flush_pending();
             pending.load_address(unsigned(r.start)).write_data_load_cursor(data, len);
             pending_runs.push_back(r);
+            continue;
+        }
+        if (!opt.activate_write) {
+            for (size_t at = r.start; at <= r.end; at += short_max) {
+                const Run piece{at, std::min(r.end, at + short_max - 1)};
+                const size_t plen = piece.end - piece.start + 1;
+                flush_pending();
+                pending.load_address(unsigned(piece.start))
+                    .write_data_load_cursor(shadow.cells.data() + piece.start, plen);
+                pending_runs.push_back(piece);
+            }
             continue;
         }
         flush_pending();

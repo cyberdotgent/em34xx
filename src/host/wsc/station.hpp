@@ -134,6 +134,8 @@ private:
     uint64_t flushed_generation_ = ~uint64_t(0);
     bool announced_ = false;         // device_ready() was sent to the session
     bool poll_soon_ = false;         // a key arrived: poll again without waiting
+    OpKind last_done_ = OpKind::Call;   // the last operation completed
+    bool activate_write_ok_ = true;  // false after the device hung in an Activate Write
     StationState resume_state_ = StationState::Online;   // after Recover
 };
 

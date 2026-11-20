@@ -117,7 +117,7 @@ bool FakeStation::receive(const TwinaxMessage& msg, TwinaxMessage& response) {
             return false;
         }
         armed_write_ = false;
-        busy_ = opt_.busy_polls;
+        busy_ = opt_.hang_on_activate_write ? ~0u : opt_.busy_polls;
         if (!display()) {
             printed_.insert(printed_.end(), bytes.begin() + 1, bytes.end());
             return false;

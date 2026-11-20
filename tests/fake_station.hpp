@@ -26,6 +26,7 @@ struct FakeStationOptions {
     bool is_3477 = true;            // answers Read Info with "3477" VPD
     uint8_t printer_id = 0x2D;      // 5219 (3812 SCS emulation)
     unsigned busy_polls = 1;        // polls answered busy after each queue load / activate
+    bool hang_on_activate_write = false;   // stays busy (until reset) after an Activate Write
 };
 
 class FakeStation {

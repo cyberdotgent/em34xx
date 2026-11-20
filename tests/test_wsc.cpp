@@ -186,6 +186,35 @@ TEST_CASE("flush planner: short runs as WDLC, long runs as Write Data") {
     CHECK(steps[1].payload.size() == 70);
     CHECK(steps[2].load == std::vector<uint8_t>{0x17, 0x00, 0x00, 0x62});
     for (const Step& st : steps) CHECK(st.load.size() <= kQueueBytes);
+
+    // Without Activate Write the long run goes as queue-load-sized WDLC runs.
+    FlushOptions no_aw;
+    no_aw.activate_write = false;
+    const auto split = plan_flush(s, m, false, no_aw);
+    DeviceMirror after = m;
+    for (const Step& st : split) {
+        CHECK(st.payload.empty());
+        CHECK(st.load.size() <= kQueueBytes);
+        if (st.apply) st.apply(after);
+    }
+    for (unsigned i = 400; i < 470; ++i) CHECK(after.cells[i] == 0xC2);
+}
+
+TEST_CASE("a device that hangs in Activate Write is painted with queue loads") {
+    Bench b({display_at(0)});
+    FakeStationOptions o;
+    o.hang_on_activate_write = true;
+    FakeStation f(0, o);
+    TestDisplay d;
+    b.plug(f);
+    b.host->station(0)->attach_display(&d);
+    REQUIRE(b.run_until([&] { return d.ready_count == 1; }));
+    for (unsigned c = 0; c < 80; ++c) d.screen.cells[400 + c] = 0xC2;   // one long run
+    ++d.generation;
+    // The first paint hangs; the station is lost, rediscovered and repainted
+    // without Activate Write.
+    REQUIRE(b.run_until([&] { return d.ready_count == 2; }, 6000 * kMs));
+    REQUIRE(b.run_until([&] { return screen_matches(f, d.screen); }));
 }
 
 TEST_CASE("keyboard map: Enhanced keyboard, shift and caps lock") {
