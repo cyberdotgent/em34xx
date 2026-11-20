@@ -21,6 +21,7 @@ public:
         info_.cpu = CpuLevel::I80286;
         info_.address_bits = 24;
         info_.clock_hz = 12000000;
+        info_.max_sessions = 4;
         info_.roms = {
             {"system ROM", "IBM-3489.rom", 0x100000, "", 0xF00000},
         };
@@ -29,6 +30,7 @@ public:
              "U21 A17 not captured; ROM quarters Q1 and Q3 missing"},
         };
         info_.notes = {
+            "four twinax sessions, one of which can be a printer (project requirement; see docs/twinax-bridge.md)",
             "80286 protected mode not implemented in the CPU core",
             "only a defective ROM dump exists",
         };

@@ -143,6 +143,11 @@ int main(int argc, char** argv) {
         return 2;
     }
     machine->bus().set_policy(cfg.unmapped);
+    error = cfg.twinax.validate(model->info().max_sessions);
+    if (!error.empty()) {
+        std::fprintf(stderr, "tn34xx: %s\n", error.c_str());
+        return 2;
+    }
     std::unique_ptr<TwinaxHost> host = make_twinax_host(cfg.twinax, cfg.tn5250, error);
     if (!host) {
         std::fprintf(stderr, "tn34xx: %s\n", error.c_str());

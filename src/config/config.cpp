@@ -108,6 +108,26 @@ bool load_config_file(const std::string& path, AppConfig& cfg, std::string& erro
             return false;
         }
         if (get(*t, "station_address", i)) cfg.twinax.station_address = unsigned(i);
+        if (auto* list = (*t)["station"].as_array()) {
+            cfg.twinax.stations.clear();
+            for (const auto& node : *list) {
+                const toml::table* st = node.as_table();
+                if (!st) { error = path + ": [[twinax.station]] entries must be tables"; return false; }
+                StationConfig sc;
+                if (!get(*st, "address", i) || i < 0 || i > 6) {
+                    error = path + ": twinax.station.address must be 0..6";
+                    return false;
+                }
+                sc.address = unsigned(i);
+                if (get(*st, "type", s) && !parse_station_type(s, sc.type)) {
+                    error = path + ": twinax.station.type must be display or printer";
+                    return false;
+                }
+                get(*st, "tn5250_device_name", sc.device_name);
+                get(*st, "profile", sc.profile);
+                cfg.twinax.stations.push_back(sc);
+            }
+        }
     }
     if (auto* t = root["tn5250"].as_table()) {
         get(*t, "host", cfg.tn5250.host);
@@ -205,7 +225,11 @@ Debugging:
 
 Host link (configuration only; the TN5250 bridge is not implemented yet):
       --twinax-host KIND    none (default), script, tn5250
-      --station-address N   our Twinax station address, 0..6 (default 0)
+      --station ADDR[:TYPE[:DEVNAME]]
+                            a station address the terminal answers on, 0..6;
+                            TYPE display (default) or printer; repeatable,
+                            e.g. --station 0:display --station 1:printer
+      --station-address N   single display station address (default 0)
       --tn5250-host HOST    TN5250 server
       --tn5250-port PORT    (default 23)
       --tn5250-device NAME  device name (DEVNAME)
@@ -237,6 +261,7 @@ bool parse_command_line(int argc, char** argv, AppConfig& cfg, std::string& erro
     }
 
     // Pass 2: everything else.
+    bool cli_stations = false;
     for (int i = 1; i < argc; ++i) {
         std::string a = argv[i];
         std::string value;
@@ -323,6 +348,13 @@ bool parse_command_line(int argc, char** argv, AppConfig& cfg, std::string& erro
             uint64_t n;
             if (!parse_uint(v, n) || n > 6) { error = "--station-address must be 0..6"; return false; }
             cfg.twinax.station_address = unsigned(n);
+        } else if (a == "--station") {
+            if (!need(v)) return false;
+            StationConfig sc;
+            if (!parse_station_spec(v, sc, error)) return false;
+            if (!cli_stations) cfg.twinax.stations.clear();  // the command line replaces the file's list
+            cli_stations = true;
+            cfg.twinax.stations.push_back(sc);
         } else if (a == "--tn5250-host") { if (!need(cfg.tn5250.host)) return false; }
         else if (a == "--tn5250-port") {
             if (!need(v)) return false;
@@ -386,6 +418,16 @@ std::string config_to_toml(const AppConfig& cfg) {
         {"codepage", cfg.tn5250.codepage},
         {"env", env},
     });
+    if (!cfg.twinax.stations.empty()) {
+        toml::array stations;
+        for (const StationConfig& sc : cfg.twinax.stations) {
+            toml::table st{{"address", int64_t(sc.address)}, {"type", station_type_name(sc.type)}};
+            if (!sc.device_name.empty()) st.insert("tn5250_device_name", sc.device_name);
+            if (!sc.profile.empty()) st.insert("profile", sc.profile);
+            stations.push_back(std::move(st));
+        }
+        root["twinax"].as_table()->insert("station", std::move(stations));
+    }
     if (cfg.terminal.straps >= 0)
         root["emulator"].as_table()->insert("straps", int64_t(cfg.terminal.straps));
     if (cfg.terminal.keyboard_id >= 0)

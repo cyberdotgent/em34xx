@@ -68,6 +68,7 @@ public:
         info_.cpu = CpuLevel::I8088;
         info_.address_bits = 20;
         info_.clock_hz = 8000000;
+        info_.max_sessions = 2;
         info_.roms = {
             {"system ROM (C0000-DFFFF)", "95f4172.bin", 0x20000,
              "290a58cd5db6543957bdcb2c9e92efefd62a54e37bcd239d41d9bd9cdd6be1d0", 0xC0000},
@@ -75,6 +76,7 @@ public:
              "3f7fb58aec7505315ff94206c8dc05102e319944bd0bde55092274777fb39fde", 0xE0000},
         };
         info_.notes = {
+            "two twinax sessions: two displays, or display + printer (documented, PAI 1989 3197/3477)",
             "CPU 8088 is inferred from byte-wide linear ROM images (hypothesis)",
             "RAM 128 KiB at 00000-1FFFF (observed); optional RAM 40000-7FFFF and feature ROM "
             "A0000-BFFFF absent (open bus)",

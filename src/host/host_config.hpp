@@ -9,6 +9,7 @@
 #include <cstdint>
 #include <map>
 #include <string>
+#include <vector>
 
 namespace tn34xx {
 
@@ -39,10 +40,40 @@ enum class TwinaxHostKind {
 const char* twinax_host_kind_name(TwinaxHostKind kind);
 bool parse_twinax_host_kind(const std::string& text, TwinaxHostKind& out);
 
+// What a station address of the terminal presents to the controller.
+enum class StationType {
+    Display,  // a display session (keyboard + screen)
+    Printer,  // a printer session (the terminal's printer port)
+};
+
+const char* station_type_name(StationType type);
+bool parse_station_type(const std::string& text, StationType& out);
+
+// One station address the controller drives. A terminal can answer on
+// several (the 3477 and 3486 on two, the 3489 on four), each one an
+// independent 5250 station with its own TN5250 session.
+struct StationConfig {
+    unsigned address = 0;                // 0..6; 7 is the end-of-message marker
+    StationType type = StationType::Display;
+    std::string device_name;             // TN5250 DEVNAME; empty = host assigned
+                                         // (the first display falls back to tn5250.device_name)
+    std::string profile;                 // TN5250 terminal type; empty = default for the type
+};
+
+// Parses the CLI shorthand ADDR[:TYPE[:DEVNAME]], e.g. "1:printer:PRT01".
+bool parse_station_spec(const std::string& text, StationConfig& out, std::string& error);
+
 struct TwinaxConfig {
     TwinaxHostKind host = TwinaxHostKind::None;
-    unsigned station_address = 0;        // 0..6; 7 is the end-of-message marker
-    std::string validate() const;
+    // Legacy single-station form (--station-address, twinax.station_address):
+    // used only while `stations` is empty.
+    unsigned station_address = 0;
+    std::vector<StationConfig> stations;
+
+    // The configured stations, or the legacy single display station.
+    std::vector<StationConfig> effective_stations() const;
+    // max_sessions = the terminal model's limit (0 = do not check).
+    std::string validate(unsigned max_sessions = 0) const;
 };
 
 } // namespace tn34xx

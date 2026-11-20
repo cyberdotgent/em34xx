@@ -25,6 +25,7 @@ public:
         info_.cpu = CpuLevel::I8088;
         info_.address_bits = 20;
         info_.clock_hz = 8000000;
+        info_.max_sessions = 2;
         info_.roms = {
             {"system ROM (80000-FFFFF)", "54g0011.bin", 0x80000, "", 0x80000},
         };
@@ -33,6 +34,7 @@ public:
              "read as 27C040 with chip A17 stuck high; segments 8000/9000/C000/D000 missing"},
         };
         info_.notes = {
+            "two concurrent twinax sessions (project requirement; see docs/twinax-bridge.md)",
             "no complete ROM dump yet (re-dump requested)",
             "CPU 8088 is inferred from a single byte-wide ROM (hypothesis)",
             "RAM size unknown; 64 KiB at 00000 mapped as a starting point",

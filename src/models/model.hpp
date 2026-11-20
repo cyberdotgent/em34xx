@@ -32,6 +32,7 @@ struct ModelInfo {
     CpuLevel cpu = CpuLevel::I8088;
     unsigned address_bits = 20;
     uint64_t clock_hz = 0;       // nominal CPU clock, used for pacing
+    unsigned max_sessions = 1;   // twinax station addresses (sessions) the unit can answer on
     std::vector<RomSpec> roms;
     std::vector<KnownBadRom> known_bad_roms;
     std::vector<std::string> notes;  // hypotheses and open questions
