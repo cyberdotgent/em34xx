@@ -43,6 +43,18 @@ public:
     virtual void host_key(const HostKeyEvent& ev) = 0;
 };
 
+// Non-volatile storage of a unit (e.g. a setup EEPROM) that the monitor can
+// inspect and save.
+class NonVolatileStore {
+public:
+    virtual ~NonVolatileStore() = default;
+    // One line: backing file or "ephemeral", and whether unsaved changes exist.
+    virtual std::string nv_status() const = 0;
+    virtual const std::vector<uint8_t>& nv_contents() const = 0;
+    // Write the contents to path (empty: the configured image file).
+    virtual bool nv_save(const std::string& path, std::string& error) = 0;
+};
+
 // Built-in stand-ins used until a model's real display/keyboard hardware is
 // understood.
 class PlaceholderDisplay : public DisplaySource {

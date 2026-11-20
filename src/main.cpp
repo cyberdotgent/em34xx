@@ -10,6 +10,7 @@
 
 #include <cstdio>
 #include <cstring>
+#include <exception>
 #include <memory>
 #include <thread>
 
@@ -134,9 +135,14 @@ int main(int argc, char** argv) {
 
     // Machine.
     auto machine = std::make_unique<Machine>(model->info());
-    model->build(*machine, roms);
-    machine->bus().set_policy(cfg.unmapped);
     machine->set_options(cfg.terminal);
+    try {
+        model->build(*machine, roms);
+    } catch (const std::exception& e) {
+        std::fprintf(stderr, "tn34xx: %s\n", e.what());
+        return 2;
+    }
+    machine->bus().set_policy(cfg.unmapped);
     std::unique_ptr<TwinaxHost> host = make_twinax_host(cfg.twinax, cfg.tn5250, error);
     if (!host) {
         std::fprintf(stderr, "tn34xx: %s\n", error.c_str());

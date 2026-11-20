@@ -350,6 +350,7 @@ void Monitor::register_commands() {
     add("speed", {}, "[percent|max]", "show or set emulation speed", [this](A a) { return cmd_speed(a); });
     add("screenshot", {}, "file.bmp|file.ppm", "save the current display", [this](A a) { return cmd_screenshot(a); });
     add("twinax", {}, "status|send f/a ...|recv", "inspect or drive the Twinax line", [this](A a) { return cmd_twinax(a); });
+    add("eeprom", {"nvram"}, "[dump|save [file]]", "show, dump or save the setup EEPROM", [this](A a) { return cmd_eeprom(a); });
     add("assert", {}, "expr [message]", "fail the script if expr is zero", [this](A a) { return cmd_assert(a); });
     add("echo", {}, "text", "print text", [this](A a) { return cmd_echo(a); });
     add("source", {}, "file", "run commands from a file", [this](A a) { return cmd_source(a); });
@@ -865,8 +866,38 @@ bool Monitor::cmd_info(const std::vector<std::string>&) {
                     (unsigned long long)m.cpu().cycles());
         t += format("speed     %s\n", emu_.speed_percent() ? format("%u%%", emu_.speed_percent()).c_str() : "unthrottled");
         t += m.twinax_host() ? m.twinax_host()->describe() : std::string();
+        if (m.nvram()) t += "eeprom    " + m.nvram()->nv_status() + "\n";
         return t;
     }));
+    return true;
+}
+
+bool Monitor::cmd_eeprom(const std::vector<std::string>& a) {
+    const std::string sub = a.size() > 1 ? to_lower(a[1]) : std::string();
+    std::string text, err;
+    const bool ok = emu_.with_machine([&](Machine& m) {
+        NonVolatileStore* nv = m.nvram();
+        if (!nv) { err = "this model has no EEPROM"; return false; }
+        if (sub.empty()) {
+            text = nv->nv_status() + "\n";
+        } else if (sub == "dump") {
+            const std::vector<uint8_t>& d = nv->nv_contents();
+            for (size_t i = 0; i < d.size(); i += 16) {
+                text += format("%03zX:", i);
+                for (size_t j = i; j < i + 16 && j < d.size(); ++j) text += format(" %02X", d[j]);
+                text += "\n";
+            }
+        } else if (sub == "save") {
+            if (!nv->nv_save(a.size() > 2 ? a[2] : std::string(), err)) return false;
+            text = nv->nv_status() + "\n";
+        } else {
+            err = "usage: eeprom [dump|save [file]]";
+            return false;
+        }
+        return true;
+    });
+    if (!ok) return fail(err);
+    out(text);
     return true;
 }
 

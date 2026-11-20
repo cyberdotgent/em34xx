@@ -1,25 +1,63 @@
 // IBM 3477 InfoWindow.
 //
-// Primary bring-up target. Facts used here:
-//  - Two byte-wide 128 KiB ROMs, 95F4171 and 95F4172, each a linear image
-//    (not an even/odd pair). The reset vector lives at the top of 95F4171.
-//  - Placement (see roms/ROMS.md): 95F4172 at C0000-DFFFF, 95F4171 at
-//    E0000-FFFFF.
+// Primary bring-up target. See docs/bringup-3477.md for the memory and
+// register map and the evidence for each entry. Summary:
+//  - Two byte-wide 128 KiB ROMs, 95F4171 (E0000-FFFFF, reset vector) and
+//    95F4172 (C0000-DFFFF), each a linear image.
+//  - 128 KiB of RAM at 00000-1FFFF, including the display window and the
+//    character-generator RAM (18000-1FFFF) [observed: tested and cleared
+//    by the firmware].
+//  - System gate array at 20000 (interrupts, timer, straps, keyboard,
+//    Twinax, printer), display controller at 20100 [observed].
+//  - Optional RAM at 40000-7FFFF and an optional feature ROM at A0000-BFFFF,
+//    both absent in this configuration. The firmware detects them by
+//    probing, so the ranges read as open bus (FF) without stopping the
+//    machine [observed: probes at boot].
 // Hypotheses (to be confirmed on hardware):
-//  - CPU is 8088-class: two byte-wide ROMs holding contiguous code imply an
-//    8-bit data bus.
-//  - RAM starts at physical 0; its size is unknown. 64 KiB is mapped as a
-//    starting point. Accesses outside it are unexpected and will stop the
-//    machine under the default policy, which is how we find the real map.
-//  - Peripherals are memory-mapped (no port I/O instruction sequences found).
+//  - CPU is 8088-class (byte-wide ROMs; no 80186-only opcode is executed).
 //  - Clock frequency unknown; 8 MHz is a pacing placeholder only.
 #include "models/model.hpp"
 
+#include "config/config.hpp"
+#include "devices/i2c.hpp"
+#include "devices/ibm3477/display.hpp"
+#include "devices/ibm3477/i2c.hpp"
+#include "devices/ibm3477/keyboard_if.hpp"
+#include "devices/ibm3477/system.hpp"
+#include "input/keyboard_ids.hpp"
 #include "machine/machine.hpp"
+#include "util/strings.hpp"
+
+#include <stdexcept>
 
 namespace tn34xx {
 
 namespace {
+
+// An address range where optional hardware is absent: reads float high,
+// writes go nowhere. Mapped explicitly because the firmware probes it on
+// every boot, and probing an absent option is not an unexpected access.
+class AbsentDevice : public Device {
+public:
+    using Device::Device;
+    uint8_t mmio_read8(uint32_t) override { return 0xFF; }
+    void mmio_write8(uint32_t, uint8_t) override {}
+    uint8_t peek8(uint32_t) override { return 0xFF; }
+    std::string describe() const override { return "  absent option: reads FF, ignores writes\n"; }
+};
+
+// Owner of the two-wire bus (bit-banged through 2012F).
+class I2cBusDevice : public Device {
+public:
+    I2cBusDevice() : Device("i2c") { bus_.attach(0x8C >> 1, &monitor_ctl_); }
+    I2cBus& bus() { return bus_; }
+    void reset() override { bus_.reset(); }
+    std::string describe() const override { return bus_.describe(); }
+
+private:
+    I2cBus bus_;
+    I2cLogDevice monitor_ctl_{"monitor controller"};   // write-only device at 8C [hypothesis]
+};
 
 class Model3477 : public Model {
 public:
@@ -38,20 +76,64 @@ public:
         };
         info_.notes = {
             "CPU 8088 is inferred from byte-wide linear ROM images (hypothesis)",
-            "RAM size unknown; 64 KiB at 00000 mapped as a starting point",
+            "RAM 128 KiB at 00000-1FFFF (observed); optional RAM 40000-7FFFF and feature ROM "
+            "A0000-BFFFF absent (open bus)",
             "clock frequency unknown; 8 MHz used for pacing only",
-            "one ROM serves monochrome (green/amber/paper-white) and colour units; how the "
-            "firmware senses the display type is not yet known",
-            "the keyboard ID selects the terminal language; keyboard interface not yet modelled",
-            "display and Twinax hardware not yet modelled",
+            "system gate array at 20000: interrupt request/mask registers and fixed vectors "
+            "(observed use, bit map hypothesis), 50 Hz timer (hypothesis)",
+            "display type straps at 2000A: green/amber/paperwhite -> 0C, colour -> 0E (hypothesis)",
+            "setup EEPROM: 24C02-style at I2C address A0 (observed protocol, size hypothesis)",
+            "Twinax engine registers are stubs: POST test COM fails until the link device exists",
+            "display controller at 20100: character window from RAM, glyphs from character-generator "
+            "RAM; monitor sense nibble not yet understood (POST test VDO fails)",
         };
     }
 
     const ModelInfo& info() const override { return info_; }
 
     void build(Machine& m, std::vector<LoadedRom>& roms) const override {
-        m.bus().map_ram("ram", 0x00000, 0x10000);
-        for (LoadedRom& r : roms) m.bus().map_rom(r.spec.file, r.spec.base, std::move(r.data));
+        const TerminalOptions& opt = m.options();
+        Bus& bus = m.bus();
+
+        bus.map_ram("ram", 0x00000, 0x20000);
+        AbsentDevice& xram = m.add_device<AbsentDevice>("xram-absent");
+        bus.map_mmio("xram-absent", 0x40000, 0x40000, &xram);
+        AbsentDevice& feature = m.add_device<AbsentDevice>("feature-rom-absent");
+        bus.map_mmio("feature-rom-absent", 0xA0000, 0x20000, &feature);
+
+        uint8_t id1 = 0xBF, id2 = 0xBF;
+        std::string error;
+        if (!resolve_keyboard_id(opt, id1, id2, error)) throw std::runtime_error(error);
+        KeyboardType type = KeyboardType::Terminal122;
+        parse_keyboard_type(opt.keyboard_type, type);
+        auto kbd = std::make_unique<Ibm3477KeyboardInterface>(info_.clock_hz, type, id1, id2);
+        kbd->keyboard().set_shift_fkeys(opt.shift_fkeys);
+        Ibm3477KeyboardInterface* kbd_ptr = kbd.get();
+
+        const uint8_t straps = opt.straps >= 0 ? uint8_t(opt.straps) : ibm3477_default_straps(opt.display);
+        Ibm3477System& sys = m.add_device<Ibm3477System>(info_.clock_hz, straps, std::move(kbd));
+        bus.map_mmio("system", Ibm3477System::kBase, Ibm3477System::kSize, &sys);
+        bus.set_interrupt_controller(&sys.interrupts());
+        m.set_keyboard(kbd_ptr);
+
+        I2cBusDevice& i2c = m.add_device<I2cBusDevice>();
+        I2cEeprom& eeprom = m.add_device<I2cEeprom>("eeprom");
+        if (!eeprom.open(opt.eeprom_path, error)) throw std::runtime_error(error);
+        eeprom.attach(i2c.bus(), 0xA0);
+        m.set_nvram(&eeprom);
+
+        Ibm3477Display& disp = m.add_device<Ibm3477Display>(bus, opt);
+        disp.set_clock_hz(info_.clock_hz);
+        disp.set_i2c(&i2c.bus());
+        Ibm3477Interrupts& ic = sys.interrupts();
+        disp.set_irq([&ic](bool on) {
+            if (on) ic.raise(Ibm3477Interrupts::Source::Display);
+            else ic.lower(Ibm3477Interrupts::Source::Display);
+        });
+        bus.map_mmio("display", Ibm3477Display::kRegBase, 0x100, &disp);
+        m.set_display(&disp);
+
+        for (LoadedRom& r : roms) bus.map_rom(r.spec.file, r.spec.base, std::move(r.data));
     }
 
 private:

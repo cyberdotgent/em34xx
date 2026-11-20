@@ -51,6 +51,9 @@ add_library(tn34xx_core STATIC
   src/input/set3_keyboard.cpp
   src/devices/i2c.cpp
   src/devices/ibm3477/display.cpp
+  src/devices/ibm3477/i2c.cpp
+  src/devices/ibm3477/keyboard_if.cpp
+  src/devices/ibm3477/system.cpp
   src/host/host_config.cpp
   src/host/twinax_link.cpp
   src/config/config.cpp

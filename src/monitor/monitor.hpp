@@ -102,6 +102,7 @@ private:
     bool cmd_log(const std::vector<std::string>& a);
     bool cmd_reset(const std::vector<std::string>& a);
     bool cmd_info(const std::vector<std::string>& a);
+    bool cmd_eeprom(const std::vector<std::string>& a);
     bool cmd_speed(const std::vector<std::string>& a);
     bool cmd_screenshot(const std::vector<std::string>& a);
     bool cmd_twinax(const std::vector<std::string>& a);

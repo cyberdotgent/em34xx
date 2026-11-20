@@ -48,6 +48,13 @@ struct TerminalOptions {
     std::string keyboard_type = "122";   // see src/input/keyboard_ids.hpp
     std::string keyboard_layout = "us";
     int keyboard_id = -1;                // explicit ID byte override, -1 = from layout
+    // Enter F13..F24 as Shift+F1..F12 on the host (122-key keyboards only).
+    bool shift_fkeys = true;
+    // Configuration strap byte presented by the model, -1 = derived from the
+    // display subtype (3477: register 2000A).
+    int straps = -1;
+    // Setup EEPROM image file; empty = ephemeral (blank, discarded at exit).
+    std::string eeprom_path;
 };
 
 struct Breakpoint {
@@ -100,6 +107,8 @@ public:
 
     void set_display(DisplaySource* d) { display_ = d; }
     void set_keyboard(KeyboardSink* k) { keyboard_ = k; }
+    void set_nvram(NonVolatileStore* n) { nvram_ = n; }
+    NonVolatileStore* nvram() const { return nvram_; }
     void set_twinax_host(std::unique_ptr<TwinaxHost> host) { twinax_ = std::move(host); }
     TwinaxHost* twinax_host() const { return twinax_.get(); }
 
@@ -120,6 +129,7 @@ private:
     TerminalOptions options_;
     DisplaySource* display_ = nullptr;
     KeyboardSink* keyboard_ = nullptr;
+    NonVolatileStore* nvram_ = nullptr;
     std::unique_ptr<TwinaxHost> twinax_;
     PlaceholderDisplay fallback_display_{640, 400};
     LoggingKeyboard fallback_keyboard_;

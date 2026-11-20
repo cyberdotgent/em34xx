@@ -65,6 +65,11 @@ bool load_config_file(const std::string& path, AppConfig& cfg, std::string& erro
         if (get(*t, "headless", b)) cfg.headless = b;
         if (get(*t, "scale", i)) cfg.scale = int(i);
         if (get(*t, "start_stopped", b)) cfg.start_stopped = b;
+        if (get(*t, "straps", i)) {
+            if (i < 0 || i > 0xFF) { error = path + ": emulator.straps must be 0..255"; return false; }
+            cfg.terminal.straps = int(i);
+        }
+        get(*t, "eeprom", cfg.terminal.eeprom_path);
     }
     if (auto* t = root["display"].as_table()) {
         if (get(*t, "subtype", s) && !parse_display_subtype(s, cfg.terminal.display)) {
@@ -79,6 +84,7 @@ bool load_config_file(const std::string& path, AppConfig& cfg, std::string& erro
             if (i < 0 || i > 0xFF) { error = path + ": keyboard.id must be 0..255"; return false; }
             cfg.terminal.keyboard_id = int(i);
         }
+        get(*t, "shift_fkeys", cfg.terminal.shift_fkeys);
     }
     if (auto* t = root["monitor"].as_table()) {
         get(*t, "rc", cfg.rc_file);
@@ -175,6 +181,12 @@ Unit options (one ROM serves all of these):
       --keyboard-layout L   keyboard country/layout, selects the terminal's
                             language (default us; see docs/keyboard.md)
       --keyboard-id ID      override the country ID byte (hex)
+      --no-shift-fkeys      do not enter F13-F24 as Shift+F1..F12 (122-key)
+      --straps HEX          override the configuration strap byte (3477:
+                            display type and boot mode; see docs/bringup-3477.md)
+      --eeprom FILE         setup EEPROM image; created on the first write.
+                            Without it the EEPROM is ephemeral (starts blank,
+                            discarded at exit)
       --list-keyboards      list keyboard layouts and their IDs
 
 Front end and monitor:
@@ -280,7 +292,14 @@ bool parse_command_line(int argc, char** argv, AppConfig& cfg, std::string& erro
             uint64_t n;
             if (!parse_uint(v, n, 16) || n > 0xFF) { error = "--keyboard-id must be a hex byte"; return false; }
             cfg.terminal.keyboard_id = int(n);
-        } else if (a == "--headless") cfg.headless = true;
+        } else if (a == "--no-shift-fkeys") cfg.terminal.shift_fkeys = false;
+        else if (a == "--straps") {
+            if (!need(v)) return false;
+            uint64_t n;
+            if (!parse_uint(v, n, 16) || n > 0xFF) { error = "--straps must be a hex byte"; return false; }
+            cfg.terminal.straps = int(n);
+        } else if (a == "--eeprom") { if (!need(cfg.terminal.eeprom_path)) return false; }
+        else if (a == "--headless") cfg.headless = true;
         else if (a == "--scale") {
             if (!need(v)) return false;
             uint64_t n;
@@ -338,11 +357,13 @@ std::string config_to_toml(const AppConfig& cfg) {
             {"headless", cfg.headless},
             {"scale", int64_t(cfg.scale)},
             {"start_stopped", cfg.start_stopped},
+            {"eeprom", cfg.terminal.eeprom_path},
         }},
         {"display", toml::table{{"subtype", display_subtype_name(cfg.terminal.display)}}},
         {"keyboard", toml::table{
             {"type", cfg.terminal.keyboard_type},
             {"layout", cfg.terminal.keyboard_layout},
+            {"shift_fkeys", cfg.terminal.shift_fkeys},
         }},
         {"monitor", toml::table{{"rc", cfg.rc_file}, {"history", cfg.history_file}}},
         {"gdb", toml::table{{"enabled", cfg.gdb}, {"port", int64_t(cfg.gdb_port)}, {"wait", cfg.gdb_wait}}},
@@ -365,6 +386,8 @@ std::string config_to_toml(const AppConfig& cfg) {
         {"codepage", cfg.tn5250.codepage},
         {"env", env},
     });
+    if (cfg.terminal.straps >= 0)
+        root["emulator"].as_table()->insert("straps", int64_t(cfg.terminal.straps));
     if (cfg.terminal.keyboard_id >= 0)
         root["keyboard"].as_table()->insert("id", int64_t(cfg.terminal.keyboard_id));
     std::ostringstream os;

@@ -10,6 +10,10 @@ speed = 100              # percent of nominal clock; 0 = unthrottled
 headless = false
 scale = 2
 start_stopped = false
+# straps = 0x0C          # override the configuration strap byte (3477 2000A);
+                         # default derived from [display] subtype
+# eeprom = "3477.eeprom" # setup EEPROM image, created on the first write;
+                         # unset = ephemeral (blank, discarded at exit)
 
 # The same ROM serves every display subtype and language.
 [display]
@@ -19,6 +23,7 @@ subtype = "green"        # green | amber | paperwhite | color
 type = "122"             # 122 (terminal) | enhanced
 layout = "us"            # selects the terminal language; see docs/keyboard.md
 # id = 0xBF              # explicit keyboard ID byte override
+shift_fkeys = true       # Shift+F1..F12 enters F13..F24 (122-key keyboard)
 
 [monitor]
 rc = ""                  # monitor script run at start-up
