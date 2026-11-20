@@ -201,6 +201,13 @@ tn34xx_library(tn34xx_present
   src/present/display_profile.cpp
 )
 target_link_libraries(tn34xx_present PUBLIC tn34xx_emu)
+# The CRT renderer works per output pixel (millions per frame): unoptimised
+# it takes 200+ ms a frame and makes a Debug build unusable interactively.
+# Always optimise it; it is rarely what one steps through in a debugger.
+if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+  set_source_files_properties(src/present/crt_render.cpp src/present/display_profile.cpp
+    PROPERTIES COMPILE_OPTIONS "$<$<CONFIG:Debug>:-O2>")
+endif()
 
 # --- Application runtime: what every executable links, GUIs included ------
 tn34xx_library(tn34xx_runtime

@@ -116,3 +116,45 @@ TEST_CASE("CRT rendering: scan lines, border and aspect") {
     crt_render(fb, 400, 300, p, out);
     CHECK(g(200, 140) > 240);
 }
+
+TEST_CASE("CRT rendering: the incremental renderer matches a full render") {
+    Framebuffer fb;
+    fb.resize(64, 24);
+    fb.display_aspect = 4.0 / 3.0;
+    fb.border_x = 0.05;
+    fb.border_y = 0.07;
+    uint32_t seed = 12345;
+    auto rnd = [&] { seed = seed * 1103515245u + 12345u; return seed >> 8; };
+    for (uint32_t& px : fb.pixels) px = (rnd() & 3) ? 0xFF000000u : (0xFF000000u | (rnd() & 0xFFFFFFu));
+    for (const bool enabled : {true, false}) {
+        CrtParams p;
+        p.enabled = enabled;
+        for (const int h : {90, 300}) {   // beam widened (lines < 1 px apart) and not
+            const int w = h * 4 / 3;
+            CrtRenderer r;
+            std::vector<uint32_t> inc, full;
+            CrtRenderer::Rows rows = r.render(fb, w, h, p, inc);
+            CHECK(rows.row0 == 0);
+            CHECK(rows.row1 == h);
+            crt_render(fb, w, h, p, full);
+            CHECK(inc == full);
+            // Nothing changed: nothing redrawn.
+            CHECK(r.render(fb, w, h, p, inc).empty());
+            // Change one raster line: only the rows it reaches are redrawn,
+            // and the result is still that of a full render.
+            Framebuffer fb2 = fb;
+            for (int x = 10; x < 20; ++x) fb2.row(12)[x] = 0xFF00FF00u;
+            rows = r.render(fb2, w, h, p, inc);
+            CHECK_FALSE(rows.empty());
+            CHECK(rows.row0 > 0);
+            CHECK(rows.row1 < h);
+            crt_render(fb2, w, h, p, full);
+            CHECK(inc == full);
+            // A new size redraws everything.
+            rows = r.render(fb2, w + 10, h + 8, p, inc);
+            CHECK(rows.row1 - rows.row0 == h + 8);
+            crt_render(fb2, w + 10, h + 8, p, full);
+            CHECK(inc == full);
+        }
+    }
+}

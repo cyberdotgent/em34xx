@@ -25,10 +25,9 @@ struct SdlSession {
     SDL_Texture* texture = nullptr;
     int tex_w = 0, tex_h = 0;
     int win_px_w = -1, win_px_h = -1;
-    // Cache: the CRT image is recomputed only when the raster or the window
-    // size changes.
-    std::vector<uint32_t> last_raster;
-    int last_raster_w = 0, last_raster_h = 0;
+    // The CRT image is recomputed only where the raster changed, and only
+    // when the raster or the window size changes.
+    CrtRenderer crt;
     std::vector<uint32_t> image;
 
     ~SdlSession() {
@@ -179,10 +178,21 @@ bool SdlFrontend::run(Application& app, const FrontendOptions& opts, std::string
         ~ClearCallback() { emu.set_display_callback(nullptr); }
     } clear_callback{emu};
 
+    using steady = std::chrono::steady_clock;
     std::string last_title;
     uint64_t seen_generation = 0;
-    bool dirty = true;   // first frame
+    bool dirty = true;     // the raster may have changed: fetch it
+    bool present = true;   // the window needs presenting even if it did not
     PerfStats perf;
+    // The machine may report a change after every execution slice (register
+    // writes count). Fetch the raster at most once per refresh interval:
+    // that fetch holds the machine lock.
+    constexpr auto kMinRasterInterval = std::chrono::milliseconds(15);
+    steady::time_point last_raster_time{};
+    // Key-to-screen latency (`--log input=debug`): from a key press to the
+    // first frame that shows a change.
+    bool latency_pending = false;
+    steady::time_point key_time{};
     auto handle = [&](const SDL_Event& e) {
         switch (e.type) {
         case SDL_EVENT_QUIT:
@@ -205,6 +215,10 @@ bool SdlFrontend::run(Application& app, const FrontendOptions& opts, std::string
             ev.pressed = e.type == SDL_EVENT_KEY_DOWN;
             ev.name = SDL_GetScancodeName(e.key.scancode);
             emu.with_machine([&](Machine& m) { m.key_event(ev); });
+            if (ev.pressed) {
+                latency_pending = true;
+                key_time = steady::now();
+            }
             break;
         }
         case SDL_EVENT_WINDOW_EXPOSED:
@@ -214,6 +228,7 @@ bool SdlFrontend::run(Application& app, const FrontendOptions& opts, std::string
         case SDL_EVENT_RENDER_TARGETS_RESET:
         case SDL_EVENT_RENDER_DEVICE_RESET:
             dirty = true;
+            present = true;
             break;
         default:
             if (wake_event != 0 && e.type == wake_event) wake_pending_.store(false);
@@ -224,7 +239,13 @@ bool SdlFrontend::run(Application& app, const FrontendOptions& opts, std::string
         // Sleep until an event, a new picture, or 16 ms (title updates and
         // a fallback when the wake-up event could not be registered).
         SDL_Event e;
-        if (SDL_WaitEventTimeout(&e, 16)) {
+        int wait_ms = 16;
+        if (dirty) {
+            const auto due = last_raster_time + kMinRasterInterval;
+            const auto now = steady::now();
+            wait_ms = due > now ? int(std::chrono::duration_cast<std::chrono::milliseconds>(due - now).count()) + 1 : 0;
+        }
+        if (SDL_WaitEventTimeout(&e, wait_ms)) {
             handle(e);
             while (SDL_PollEvent(&e)) handle(e);
         }
@@ -248,9 +269,12 @@ bool SdlFrontend::run(Application& app, const FrontendOptions& opts, std::string
             s.win_px_w = win_px_w;
             s.win_px_h = win_px_h;
             dirty = true;
+            present = true;
         }
         if (!dirty) continue;
+        if (!present && steady::now() - last_raster_time < kMinRasterInterval) continue;
         dirty = false;
+        last_raster_time = steady::now();
 
         auto t0 = std::chrono::steady_clock::now();
         emu.with_machine([&](Machine& m) { render_presented(m, fb); });
@@ -262,8 +286,6 @@ bool SdlFrontend::run(Application& app, const FrontendOptions& opts, std::string
         int out_w = 1, out_h = 1;
         crt_fit(fb, std::max(1, win_px_w), std::max(1, win_px_h), out_w, out_h);
         const bool size_changed = !s.texture || s.tex_w != out_w || s.tex_h != out_h;
-        const bool content_changed = fb.width != s.last_raster_w || fb.height != s.last_raster_h ||
-                                     fb.pixels != s.last_raster;
         if (size_changed) {
             if (s.texture) SDL_DestroyTexture(s.texture);
             s.texture = SDL_CreateTexture(s.renderer, SDL_PIXELFORMAT_ARGB8888, SDL_TEXTUREACCESS_STREAMING,
@@ -275,19 +297,23 @@ bool SdlFrontend::run(Application& app, const FrontendOptions& opts, std::string
             SDL_SetTextureScaleMode(s.texture, SDL_SCALEMODE_NEAREST);
             s.tex_w = out_w;
             s.tex_h = out_h;
+            s.crt.invalidate();
         }
-        if (size_changed || content_changed) {
-            t0 = std::chrono::steady_clock::now();
-            crt_render(fb, out_w, out_h, opts.crt, s.image);
+        t0 = std::chrono::steady_clock::now();
+        const CrtRenderer::Rows rows = s.crt.render(fb, out_w, out_h, opts.crt, s.image);
+        if (!rows.empty()) {
             const double crt_ms = ms_since(t0);
             perf.crt_ms += crt_ms;
             perf.crt_max_ms = std::max(perf.crt_max_ms, crt_ms);
             ++perf.crt_renders;
-            SDL_UpdateTexture(s.texture, nullptr, s.image.data(), out_w * 4);
-            s.last_raster = fb.pixels;
-            s.last_raster_w = fb.width;
-            s.last_raster_h = fb.height;
+            const SDL_Rect rect{0, rows.row0, out_w, rows.row1 - rows.row0};
+            SDL_UpdateTexture(s.texture, &rect, s.image.data() + size_t(rows.row0) * size_t(out_w), out_w * 4);
+            present = true;
         }
+        // Nothing new on the tube: skip the present (with vsync on it would
+        // block the event loop for up to a frame).
+        if (!present) continue;
+        present = false;
         SDL_SetRenderDrawColor(s.renderer, 0, 0, 0, 255);
         SDL_RenderClear(s.renderer);
         // 1:1 in window pixels, centred (letterboxed).
@@ -298,6 +324,11 @@ bool SdlFrontend::run(Application& app, const FrontendOptions& opts, std::string
         SDL_RenderTexture(s.renderer, s.texture, nullptr, &dst);
         SDL_RenderPresent(s.renderer);
         ++perf.presents;
+        if (latency_pending && !rows.empty()) {
+            latency_pending = false;
+            TN_LOG("input", Debug, "key to screen: %.1f ms (first frame showing a change after the last key press)",
+                   ms_since(key_time));
+        }
     }
     return true;
 }
