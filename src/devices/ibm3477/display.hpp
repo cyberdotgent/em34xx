@@ -79,6 +79,7 @@ public:
 
     // --- DisplaySource -------------------------------------------------
     void render(Framebuffer& fb) override;
+    uint64_t animation_phase() const override;   // change tracking: the blink phase
 
     // --- state for tests and the monitor --------------------------------
     bool irq_pending() const { return irq_pending_; }

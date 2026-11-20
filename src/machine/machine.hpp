@@ -111,7 +111,10 @@ public:
     void set_options(const TerminalOptions& o) { options_ = o; }
     const TerminalOptions& options() const { return options_; }
 
-    void set_display(DisplaySource* d) { display_ = d; }
+    void set_display(DisplaySource* d) {
+        display_ = d;
+        display_dirty_ = true;
+    }
     void set_keyboard(KeyboardSink* k) { keyboard_ = k; }
     void set_nvram(NonVolatileStore* n) { nvram_ = n; }
     NonVolatileStore* nvram() const { return nvram_; }
@@ -129,6 +132,12 @@ public:
     void render(Framebuffer& fb);
     void key_event(const HostKeyEvent& ev);
 
+    // True once each time the picture may have changed since the last call:
+    // a write into the pages the model observes for its display
+    // (Bus::observe_writes), a new animation phase, a reset or a new
+    // display device. Cheap; the Emulator calls it between slices.
+    bool take_display_change();
+
 private:
     bool breakpoint_hit(uint32_t pc, int& id);
 
@@ -145,6 +154,9 @@ private:
     KeyboardSink* keyboard_ = nullptr;
     NonVolatileStore* nvram_ = nullptr;
     std::unique_ptr<TwinaxHost> twinax_;
+    bool display_dirty_ = true;
+    uint64_t seen_display_writes_ = 0;
+    uint64_t seen_animation_phase_ = 0;
     PlaceholderDisplay fallback_display_{640, 400};
     LoggingKeyboard fallback_keyboard_;
 };

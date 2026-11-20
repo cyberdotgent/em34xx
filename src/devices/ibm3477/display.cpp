@@ -315,4 +315,9 @@ void Ibm3477Display::render(Framebuffer& fb) {
     ram_ = nullptr;
 }
 
+// Change tracking (DisplaySource::animation_phase): RAM and register writes
+// are observed on the bus (model_3477.cpp); only the blink phase changes the
+// picture on its own.
+uint64_t Ibm3477Display::animation_phase() const { return frames_ / kBlinkFrames; }
+
 } // namespace tn34xx

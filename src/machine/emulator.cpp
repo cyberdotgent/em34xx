@@ -74,6 +74,7 @@ StopEvent Emulator::step(uint64_t n) {
         ev = machine_->run(n, never);
     }
     if (ev.reason == StopEvent::Reason::None) ev.reason = StopEvent::Reason::StepDone;
+    publish_display_change();
     {
         std::lock_guard<std::mutex> lock(state_mutex_);
         last_stop_ = ev;
@@ -100,6 +101,40 @@ void Emulator::request_quit(int exit_code) {
     quit_.store(true);
     request_stop();
     state_cv_.notify_all();
+    {
+        std::lock_guard<std::mutex> lock(display_mutex_);
+    }
+    display_cv_.notify_all();
+}
+
+void Emulator::publish_display_change() {
+    bool changed;
+    {
+        std::lock_guard<std::mutex> lock(machine_mutex_);
+        changed = machine_->take_display_change();
+    }
+    if (!changed) return;
+    uint64_t gen;
+    std::function<void(uint64_t)> cb;
+    {
+        std::lock_guard<std::mutex> lock(display_mutex_);
+        gen = display_generation_.fetch_add(1, std::memory_order_acq_rel) + 1;
+        cb = on_display_;
+    }
+    display_cv_.notify_all();
+    if (cb) cb(gen);
+}
+
+void Emulator::set_display_callback(std::function<void(uint64_t)> cb) {
+    std::lock_guard<std::mutex> lock(display_mutex_);
+    on_display_ = std::move(cb);
+}
+
+uint64_t Emulator::wait_display_change(uint64_t seen, unsigned timeout_ms) {
+    std::unique_lock<std::mutex> lock(display_mutex_);
+    display_cv_.wait_for(lock, std::chrono::milliseconds(timeout_ms),
+                         [&] { return display_generation_.load() != seen || quit_.load(); });
+    return display_generation_.load();
 }
 
 void Emulator::thread_main() {
@@ -142,6 +177,7 @@ void Emulator::thread_main() {
                 cycles_now = machine_->cpu().cycles();
             }
             first_slice = false;
+            publish_display_change();
             if (ev.reason != StopEvent::Reason::None) break;
             // A full slice ran: count every step, including steps spent
             // halted (HLT does not complete instructions), so that a budget

@@ -48,6 +48,11 @@ public:
     virtual ~DisplaySource() = default;
     // Render the current screen into fb (resizing it if needed).
     virtual void render(Framebuffer& fb) = 0;
+    // A value that changes whenever the picture changes over time without
+    // a memory or register write (character or cursor blink phase). Writes
+    // are tracked separately (Bus::observe_writes), so a device that never
+    // animates keeps the default.
+    virtual uint64_t animation_phase() const { return 0; }
 };
 
 // A key on the host keyboard, identified by its USB HID usage code (which is

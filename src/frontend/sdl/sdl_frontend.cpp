@@ -21,6 +21,7 @@ struct SdlSession {
     SDL_Renderer* renderer = nullptr;
     SDL_Texture* texture = nullptr;
     int tex_w = 0, tex_h = 0;
+    int win_px_w = -1, win_px_h = -1;
     // Cache: the CRT image is recomputed only when the raster or the window
     // size changes.
     std::vector<uint32_t> last_raster;
@@ -54,6 +55,7 @@ private:
     std::string window_title(const Emulator& emu, const FrontendOptions& opts);
 
     std::atomic<bool> quit_{false};
+    std::atomic<bool> wake_pending_{false};
     std::mutex text_mutex_;
     std::string title_;
     bool have_title_ = false;
@@ -106,35 +108,89 @@ bool SdlFrontend::run(Emulator& emu, const FrontendOptions& opts, std::string& e
     }
     SDL_SetRenderVSync(s.renderer, 1);
 
+    // Wake the event loop as soon as the emulator reports a new picture
+    // (Emulator::set_display_callback runs on the emulation thread; pushing
+    // an SDL event is thread-safe). One wake-up event in flight at a time.
+    const Uint32 wake_event = SDL_RegisterEvents(1);
+    if (wake_event != 0) {
+        emu.set_display_callback([this, wake_event](uint64_t) {
+            if (wake_pending_.exchange(true)) return;
+            SDL_Event ev;
+            SDL_zero(ev);
+            ev.type = wake_event;
+            SDL_PushEvent(&ev);
+        });
+    }
+    struct ClearCallback {
+        Emulator& emu;
+        ~ClearCallback() { emu.set_display_callback(nullptr); }
+    } clear_callback{emu};
+
     std::string last_title;
-    while (!emu.quit_requested() && !quit_.load()) {
-        SDL_Event e;
-        while (SDL_PollEvent(&e)) {
-            switch (e.type) {
-            case SDL_EVENT_QUIT:
-                emu.request_quit(emu.exit_code());
-                break;
-            case SDL_EVENT_KEY_DOWN:
-            case SDL_EVENT_KEY_UP: {
-                if (e.key.repeat) break;   // the terminal does its own typematic
-                HostKeyEvent ev;
-                ev.hid_usage = uint32_t(e.key.scancode);
-                ev.pressed = e.type == SDL_EVENT_KEY_DOWN;
-                ev.name = SDL_GetScancodeName(e.key.scancode);
-                emu.with_machine([&](Machine& m) { m.key_event(ev); });
-                break;
-            }
-            default:
-                break;
-            }
+    uint64_t seen_generation = 0;
+    bool dirty = true;   // first frame
+    auto handle = [&](const SDL_Event& e) {
+        switch (e.type) {
+        case SDL_EVENT_QUIT:
+            emu.request_quit(emu.exit_code());
+            break;
+        case SDL_EVENT_KEY_DOWN:
+        case SDL_EVENT_KEY_UP: {
+            if (e.key.repeat) break;   // the terminal does its own typematic
+            HostKeyEvent ev;
+            ev.hid_usage = uint32_t(e.key.scancode);
+            ev.pressed = e.type == SDL_EVENT_KEY_DOWN;
+            ev.name = SDL_GetScancodeName(e.key.scancode);
+            emu.with_machine([&](Machine& m) { m.key_event(ev); });
+            break;
         }
+        case SDL_EVENT_WINDOW_EXPOSED:
+        case SDL_EVENT_WINDOW_RESIZED:
+        case SDL_EVENT_WINDOW_PIXEL_SIZE_CHANGED:
+        case SDL_EVENT_WINDOW_DISPLAY_SCALE_CHANGED:
+        case SDL_EVENT_RENDER_TARGETS_RESET:
+        case SDL_EVENT_RENDER_DEVICE_RESET:
+            dirty = true;
+            break;
+        default:
+            if (wake_event != 0 && e.type == wake_event) wake_pending_.store(false);
+            break;
+        }
+    };
+    while (!emu.quit_requested() && !quit_.load()) {
+        // Sleep until an event, a new picture, or 16 ms (title updates and
+        // a fallback when the wake-up event could not be registered).
+        SDL_Event e;
+        if (SDL_WaitEventTimeout(&e, 16)) {
+            handle(e);
+            while (SDL_PollEvent(&e)) handle(e);
+        }
+
+        const std::string title = window_title(emu, opts);
+        if (title != last_title) {
+            SDL_SetWindowTitle(s.window, title.c_str());
+            last_title = title;
+        }
+
+        const uint64_t generation = emu.display_generation();
+        if (generation != seen_generation) {
+            seen_generation = generation;
+            dirty = true;
+        }
+        int win_px_w = 0, win_px_h = 0;
+        SDL_GetWindowSizeInPixels(s.window, &win_px_w, &win_px_h);
+        if (win_px_w != s.win_px_w || win_px_h != s.win_px_h) {
+            s.win_px_w = win_px_w;
+            s.win_px_h = win_px_h;
+            dirty = true;
+        }
+        if (!dirty) continue;
+        dirty = false;
 
         emu.with_machine([&](Machine& m) { render_presented(m, fb); });
 
         // Draw the tube at the window's real pixel size so the scan-line
         // structure is computed at the output resolution.
-        int win_px_w = 0, win_px_h = 0;
-        SDL_GetWindowSizeInPixels(s.window, &win_px_w, &win_px_h);
         int out_w = 1, out_h = 1;
         crt_fit(fb, std::max(1, win_px_w), std::max(1, win_px_h), out_w, out_h);
         const bool size_changed = !s.texture || s.tex_w != out_w || s.tex_h != out_h;
@@ -168,13 +224,6 @@ bool SdlFrontend::run(Emulator& emu, const FrontendOptions& opts, std::string& e
                             float(out_w) / scale_x, float(out_h) / scale_y};
         SDL_RenderTexture(s.renderer, s.texture, nullptr, &dst);
         SDL_RenderPresent(s.renderer);
-
-        const std::string title = window_title(emu, opts);
-        if (title != last_title) {
-            SDL_SetWindowTitle(s.window, title.c_str());
-            last_title = title;
-        }
-        SDL_Delay(16);
     }
     return true;
 }

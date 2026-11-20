@@ -8,6 +8,7 @@ add_executable(tn34xx_unit_tests
   unit_main.cpp
   test_cpu.cpp
   test_bus.cpp
+  test_emulator.cpp
   test_keyboard.cpp
   test_host_keymap.cpp
   test_keyboard_e2e.cpp

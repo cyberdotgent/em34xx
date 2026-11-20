@@ -48,9 +48,30 @@ public:
     // --- exclusive access -------------------------------------------------
     template <class F>
     auto with_machine(F&& f) -> decltype(f(std::declval<Machine&>())) {
+        // Anything done under the lock (a monitor poke, a reset) may change
+        // the picture: publish it when the lock is released.
+        struct Publish {
+            Emulator& e;
+            ~Publish() { e.publish_display_change(); }
+        } publish{*this};
         std::lock_guard<std::mutex> lock(machine_mutex_);
         return f(*machine_);
     }
+
+    // --- display change notification -------------------------------------
+    // Incremented whenever the machine's picture may have changed (see
+    // Machine::take_display_change); checked between execution slices, so
+    // at most a few milliseconds late. Front ends redraw only when it moves
+    // instead of polling pixels.
+    uint64_t display_generation() const { return display_generation_.load(std::memory_order_acquire); }
+    // Block until display_generation() differs from `seen`, the emulator is
+    // told to quit, or the timeout passes. Returns the current generation.
+    uint64_t wait_display_change(uint64_t seen, unsigned timeout_ms);
+    // Called with the new generation each time it moves, on whichever thread
+    // noticed the change (usually the emulation thread) and without the
+    // machine lock held. Keep it short: post an event to the UI thread.
+    // May be set or cleared (nullptr) at any time from any thread.
+    void set_display_callback(std::function<void(uint64_t)> cb);
 
     // --- pacing ------------------------------------------------------------
     // Percentage of the model's nominal clock; 0 runs unthrottled.
@@ -64,6 +85,7 @@ public:
 
 private:
     void thread_main();
+    void publish_display_change();
     void finish_run(const StopEvent& ev);
 
     std::unique_ptr<Machine> machine_;
@@ -84,6 +106,11 @@ private:
     std::atomic<int> exit_code_{0};
 
     std::function<void(const StopEvent&)> on_stop_;
+
+    std::atomic<uint64_t> display_generation_{0};
+    std::mutex display_mutex_;
+    std::condition_variable display_cv_;
+    std::function<void(uint64_t)> on_display_;
     std::thread thread_;
 };
 

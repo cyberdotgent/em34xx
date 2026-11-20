@@ -124,6 +124,13 @@ public:
 
     void reset_devices();
 
+    // --- write observation ---------------------------------------------
+    // Count writes (CPU and debugger) into the given 256-byte pages, e.g. a
+    // display's window, character generator and registers, so the machine
+    // can tell cheaply whether the picture may have changed.
+    void observe_writes(uint32_t base, uint32_t size);
+    uint64_t observed_writes() const { return observed_writes_; }
+
 private:
     static constexpr unsigned kPageShift = 8;
 
@@ -147,6 +154,13 @@ private:
 
     std::vector<Watchpoint> watches_;
     int next_watch_id_ = 1;
+
+    std::vector<uint8_t> observed_pages_;   // empty until observe_writes()
+    uint64_t observed_writes_ = 0;
+
+    void note_write(uint32_t phys) {
+        if (!observed_pages_.empty() && observed_pages_[phys >> kPageShift]) ++observed_writes_;
+    }
 };
 
 } // namespace tn34xx

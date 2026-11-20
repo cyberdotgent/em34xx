@@ -41,6 +41,17 @@ void Machine::reset() {
     bus_.clear_stop();
     for (auto& d : devices_) d->reset();
     cpu_->reset();
+    display_dirty_ = true;
+}
+
+bool Machine::take_display_change() {
+    const uint64_t writes = bus_.observed_writes();
+    const uint64_t phase = display_ ? display_->animation_phase() : 0;
+    const bool changed = display_dirty_ || writes != seen_display_writes_ || phase != seen_animation_phase_;
+    display_dirty_ = false;
+    seen_display_writes_ = writes;
+    seen_animation_phase_ = phase;
+    return changed;
 }
 
 bool Machine::breakpoint_hit(uint32_t pc, int& id) {

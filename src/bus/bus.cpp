@@ -194,6 +194,7 @@ void Bus::mem_write8(uint32_t phys, uint8_t value) {
     } else {
         unexpected(false, true, phys, value, BusStop::Cause::RomWrite);
     }
+    note_write(phys);
     if (!watches_.empty()) check_watch(phys, true, value);
 }
 
@@ -233,7 +234,14 @@ bool Bus::poke8(uint32_t phys, uint8_t value) {
     Region* r = lookup(phys);
     if (!r || r->kind != Region::Kind::Ram) return false;
     r->storage[phys - r->base] = value;
+    note_write(phys);
     return true;
+}
+
+void Bus::observe_writes(uint32_t base, uint32_t size) {
+    if (observed_pages_.empty()) observed_pages_.assign(pages_.size(), 0);
+    for (uint64_t a = base & address_mask_; a < uint64_t(base) + size && a <= address_mask_; a += 1u << kPageShift)
+        observed_pages_[size_t(a >> kPageShift)] = 1;
 }
 
 int Bus::add_watchpoint(uint32_t start, uint32_t length, AccessKind kind) {
