@@ -46,11 +46,13 @@ suffixes (hypothesis: a 3477-compatibility identity).
 | Y1 | 30.000 MHz oscillator, IBM 0666269 | Only clock source. |
 | U15 | Mitsubishi M5M51008BFP-10LL, 128K x 8 SRAM | Low-power part next to the battery position BT1: the battery-backed RAM (hypothesis). |
 | U14 | Sony CXK58257AM-70L, 32K x 8 SRAM | Fast SRAM, possibly display or character-generator memory (hypothesis). |
-| U4, U5 | Vertical ZIP packages, markings not legible | Probably 256K x 4 DRAMs = 256 KiB (hypothesis); with U15 this matches the 384 KiB RAM map. |
-| U2 | Unpopulated 40-pin DIP footprint | Fits the optional ROM at `60000-7FFFF` (hypothesis). |
+| U4, U5 | Mitsubishi M5M4C264AL-10, ZIP | Multiport video DRAM, 64K x 4 each = 64 KiB display memory (observed by the dumper; corrects an earlier guess of 256 KiB general DRAM). |
+| U2 | Sharp mask ROM 54G0011 (c) IBM 1993, 32-pin DIP | The firmware ROM, 256 KiB (removed for dumping when photographed; corrects an earlier guess that U2 was an empty optional-ROM footprint). |
 | U8, U9 | 74ALS273, 74LS373 | Address/data latches for the multiplexed CPU bus. |
 | U6, U7, U13, U16 | 74F38/74LS38-type, 74LS14, 7406 | Open-collector drivers and Schmitt-trigger receivers for the external ports. |
-| U10 | National, IBM 33G2729 | Unknown; possibly the serial EEPROM or a line interface (hypothesis). |
+| U10 | National M9324, IBM 33G2729, 16-pin DIP | Unknown. |
+| U17 | Bell hybrid 38F5775 (LM431, 2903 comparator, discretes) | Twinax line driver/receiver (observed by the dumper). |
+| PS1 | Optical sensor | Keylock detector (observed by the dumper). |
 | J1 | DE-15 with varistors RV1-RV4 and Q1 | Twinax port with surge protection (hypothesis). |
 | J2 | DB-25 | Parallel printer port. |
 | J6, J4 | Modular jacks with TDK filters | Keyboard, and the **pointing-device port**: a PS/2 mouse or a light pen (observed by the owner). This is the second keyboard-style serial port at `20144-20146`. |
@@ -63,7 +65,7 @@ several firmware levels exist.
 
 | Range | Contents | Status |
 | --- | --- | --- |
-| `00000-5FFFF` | RAM | Observed in use up to about `52000`: stack and data at `38000-3C07F` (tested by the POST pre-test), Twinax data buffers in segment `5000`, a checksummed block at `469E0`, buffers cleared at `3F080` and `41082`. 384 KiB is a **hypothesis**, consistent with the board: 256 KiB DRAM (U4/U5) + 128 KiB SRAM (U15). |
+| `00000-5FFFF` | RAM | Observed in use up to about `52000`: stack and data at `38000-3C07F` (tested by the POST pre-test), Twinax data buffers in segment `5000`, a checksummed block at `469E0`, buffers cleared at `3F080` and `41082`. 384 KiB is a **hypothesis** that the board does **not** obviously support: the visible RAM is 128 KiB (U15) + 32 KiB (U14) SRAM, and U4/U5 are 64 KiB of video DRAM. How `00000-5FFFF` is decoded is unknown. |
 | `20000-200FF` | System gate array | Observed (same base as the 3477). |
 | `20100-201FF` | Display controller, now with registers up to `2014F` | Observed. |
 | `60000-7FFFF` | Optional 128 KiB ROM | Observed: POST checksums segments `6000-7000` (word sum `619A`) only when strap `2000A` bit 6 is 0, and copies 7 bytes from `60050` into the setup block. Absent (open bus) in the model. |

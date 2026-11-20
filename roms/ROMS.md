@@ -6,7 +6,7 @@ them by SHA-256 and contains no code or data taken from them.
 
 | Model | File | Size | SHA-256 | Status |
 | --- | --- | ---: | --- | --- |
-| 3486 | `54g0011.bin` | 524288 | `f5d968694fdb3b6991b219460eb0ce5eec131797a9c0ea928ec61a6a5b9291ef` | **Incomplete — half missing.** Read as a 27C040. See analysis below. Needs re-dump. |
+| 3486 | `54g0011.bin` | 524288 | `f5d968694fdb3b6991b219460eb0ce5eec131797a9c0ea928ec61a6a5b9291ef` | **Complete chip, incomplete firmware.** The chip is a 256 KiB mask ROM and this file holds all of it (twice, as a 27C040 read). The firmware also needs segments 8000/9000/C000/D000 from another source (see below). |
 | 3477 | `95f4171.bin` | 131072 | `3f7fb58aec7505315ff94206c8dc05102e319944bd0bde55092274777fb39fde` | **Good (primary bring-up target).** Maps at physical `0xE0000..0xFFFFF`; holds the reset vector. No invariant address bit. |
 | 3477 | `95f4172.bin` | 131072 | `290a58cd5db6543957bdcb2c9e92efefd62a54e37bcd239d41d9bd9cdd6be1d0` | **Good.** Maps at physical `0xC0000..0xDFFFF`. No invariant address bit. |
 
@@ -17,7 +17,7 @@ refuses them unless explicitly overridden.
 
 | Model | File | SHA-256 | Problem |
 | --- | --- | --- | --- |
-| 3486 | `54g0011.bin` | `f5d968694fdb3b6991b219460eb0ce5eec131797a9c0ea928ec61a6a5b9291ef` | Chip A17 stuck high during the read; segments `8000`, `9000`, `C000` and `D000` are missing (see below). Re-dump requested. |
+| 3486 | `54g0011.bin` | `f5d968694fdb3b6991b219460eb0ce5eec131797a9c0ea928ec61a6a5b9291ef` | Not a bad read, but not runnable on its own: segments `8000`, `9000`, `C000` and `D000`, which the firmware calls and checksums, are not in this chip (see below). |
 
 ## 3477 placement
 
@@ -76,3 +76,21 @@ Re-dump options, in order of preference:
 2. Lift pin 1, tie it to GND, and read as 27C040. File blocks 0/1/4/5 would
    then hold the missing `8000/9000/C000/D000` segments, to be merged with
    the current read.
+
+## 3486 `54g0011` re-examined (second dumping session)
+
+Later reads settled the chip itself. Every one of its 32 pins is accounted
+for: pin 30 has no effect, pin 31 is an address line (CPU A18), and pins 22
+and 24 are enables (lifting either reads all 00 on a reader with
+pull-downs). A 27C080 read (1 MiB) is the 512 KiB file twice
+(md5 `9e91319c67cdb873a02aff30465c0637`). So the chip is a **256 KiB mask
+ROM, completely dumped**: the earlier "A17 stuck high, half missing"
+reading of the file was wrong. On the board it is selected only when CPU
+A17 = 1, appearing at `A0000-BFFFF` and `E0000-FFFFF`.
+
+The firmware nevertheless calls into `D000`, keeps pointer tables into
+`9000`, and its POST checksum covers `8000-FFFF` (target `619A`; this chip
+sums to `DBE9`, so the rest must sum to `85B1`). Where those four segments
+come from is unknown: the dumper found no other ROM on the board, and J5
+(an extension slot) was empty. Hypotheses: host-uploaded code in
+battery-backed SRAM, or a second ROM on another board or card.
