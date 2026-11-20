@@ -299,15 +299,54 @@ pumps every session (records are applied to the engine there) and runs the
 session lifecycle; `to_station`, `from_station` and `no_response` drive
 the stations. Polling follows emulated time.
 
-### Session lifecycle
+### The session is the cable
 
-| Event | Bridge |
+A TN5250 session stands for the Twinax cable between the terminal and a
+live controller:
+
+| Event | On the line |
 | --- | --- |
-| station first Online | the session starts (connect, negotiate); before that the host sees nothing |
-| device lost (no response, power-on status, reset) | the session stays connected; the engine is told the device is gone. The host is not told: TN5250 has no device power-off signal |
-| device back Online | the engine marks its whole screen dirty; the controller repaints from the shadow |
-| device absent for 10 min of emulated time (`BridgeOptions::lost_disconnect_ns`) | the session is closed so the host can end the job; the next Online starts a new one |
-| host closes the connection or it fails | while the device is online, a fresh session after a wall-clock back-off of 2 s, doubling to 60 s; the new session's screen replaces the old one through the normal diff |
+| bridge created (`--twinax-host tn5250` at start-up, or `connect`) | every display station's session starts connecting at once; its station is **unplugged**: nothing is ever sent to it |
+| session negotiated (telnet BINARY + EOR + terminal type) | the station is **plugged in**: it starts from Absent, so the terminal goes through its power-on / discovery handshake and comes on line; the host's sign-on screen follows |
+| host closes, connection lost or fails, `disconnect` | the station is **unplugged**: it is no longer polled and nothing answers the terminal, which shows its normal no-controller behaviour (System Available off after about 200 ms, its automatic reset after about 2.4 s) as if the cable were pulled |
+| reconnect | the full plug-in sequence again. After a host close or failure the bridge reconnects by itself after a wall-clock back-off (2 s doubling to 60 s; the host is a network peer); after `disconnect` it does not |
+| terminal stops answering while the session is up (power cycle, reset) | the session stays; the engine is told the device is gone, and when the device is discovered again the controller repaints the whole screen. The host is not told: TN5250 has no device power-off signal |
+
+`Station::set_plugged()` is the gate: an unplugged station is never due,
+drops a late response to a message sent before it was pulled, and loses
+its state (mirror, keyboard shift state, response level). `twinax status`
+shows `cable plugged` / `cable unplugged` per station.
+
+Printer stations have no session of their own yet: their cable counts as
+plugged while at least one display session of the bridge is up (the
+stations share one cable). A bridge with only printer stations therefore
+never polls them.
+
+### Connecting at run time
+
+The monitor's `connect` command attaches the bridge while the emulator runs,
+for example with `build/debug/tn34xx --model 3477 --color` and no host
+options:
+
+```
+connect pub400.com
+connect 192.0.2.10:23 station 0 device TN34XXA
+connect ibmi.example tls tls-verify none
+disconnect 0
+disconnect
+```
+
+`connect HOST[:PORT] [tls] [station N] [device NAME] [type TERMTYPE]
+[option value ...]` builds the configuration from the start-up one plus
+these settings (src/config/connect_args.hpp: every other `name value` is
+passed through as `--tn5250-name value`, so the TLS options need nothing
+of their own) and swaps the bridge in for the current controller under the
+machine lock (`Machine::swap_twinax_host`); the link device looks the host
+up on every use, and the old controller and its sessions are destroyed
+outside the lock. `connect` while connected closes the existing sessions and
+starts from scratch. `disconnect` closes all sessions and leaves no
+controller on the line; `disconnect N` closes station N's session and keeps
+its cable unplugged (no reconnect) while the other stations carry on.
 
 ### Tests
 
@@ -319,6 +358,11 @@ the stations. Polling follows emulated time.
   reach the server as the right Put/Get reply (`06 36 F1 11 06 35 C1`), the
   printer stub, the repaint after device lost, and the reconnect after the
   host hangs up.
+- The same test pulls the cable: after the server closes, the station is
+  unplugged and neither station gets another message; after the reconnect
+  the full discovery runs again. `disconnect N` (`Tn5250Bridge::hold`)
+  keeps the cable pulled past the back-off.
+- `tests/test_connect.cpp`: the `connect` command line.
 - Live, with a `FakeStation` in place of the terminal (a private harness):
   pub400.com shows its sign-on panel; a local OS/400 V4 system signs on,
   shows the Main Menu and signs off, typed through the Enhanced-keyboard scan
