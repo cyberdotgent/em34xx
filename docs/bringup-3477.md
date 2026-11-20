@@ -22,6 +22,15 @@ hardware), **documented**, or **hypothesis**.
   `MOV DX,imm` followed by `IN`/`OUT DX`. Peripherals appear to be reached
   through far pointers.
 
+## Board
+
+- **Observed (owner, 2026-11-20):** the link-side gate array is a Toshiba
+  TC-family part, with SRAMs and line drivers similar to those on IBM's ISA
+  5250 emulation adapters (whose Enhanced adapter uses a Toshiba TC110G26AF
+  gate array with a byte-wide SRAM and a 16-pin line-interface part). This
+  supports the hypothesis that the terminal's Twinax engine is the same
+  engine design wired directly onto the CPU bus.
+
 ## Next steps
 
 1. Identify the device at segment `2000`: map a probe
