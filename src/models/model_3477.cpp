@@ -24,6 +24,7 @@
 #include "devices/ibm3477/i2c.hpp"
 #include "devices/ibm3477/keyboard_if.hpp"
 #include "devices/ibm3477/system.hpp"
+#include "devices/ibm3477/twinax_engine.hpp"
 #include "input/keyboard_ids.hpp"
 #include "machine/machine.hpp"
 #include "util/strings.hpp"
@@ -85,7 +86,8 @@ public:
             "(observed use, bit map hypothesis), 50 Hz timer (hypothesis)",
             "display type straps at 2000A: green/amber/paperwhite -> 0C, colour -> 0E (hypothesis)",
             "setup EEPROM: 24C02-style at I2C address A0 (observed protocol, size hypothesis)",
-            "Twinax engine registers are stubs: POST test COM fails until the link device exists",
+            "Twinax engine: two station channels, programs and descriptors in RAM; poll, activate and "
+            "queue handling and the loopback test path follow docs/bringup-3477.md (hypothesis)",
             "display controller at 20100: character window from RAM, glyphs from character-generator "
             "RAM; monitor sense nibble not yet understood (POST test VDO fails)",
         };
@@ -117,6 +119,17 @@ public:
         bus.map_mmio("system", Ibm3477System::kBase, Ibm3477System::kSize, &sys);
         bus.set_interrupt_controller(&sys.interrupts());
         m.set_keyboard(kbd_ptr);
+
+        // Twinax link engine: two station channels, structures in low RAM,
+        // events latched in the gate array's request register (channel 0 in
+        // the low byte, channel 1 in the high byte).
+        TwinaxEngine& link = m.add_device<TwinaxEngine>(bus, 2u, info_.clock_hz);
+        Ibm3477Interrupts& irq = sys.interrupts();
+        link.set_raise([&irq](unsigned ch, uint8_t bits) { irq.request(uint16_t(bits << (8 * ch))); });
+        link.set_pending([&irq](unsigned ch) { return uint8_t((irq.requests() >> (8 * ch)) & 0x7F); });
+        link.set_host([&m]() { return m.twinax_host(); });
+        Ibm3477TwinaxRegisters& link_regs = m.add_device<Ibm3477TwinaxRegisters>(link);
+        sys.set_twinax_port(&link_regs);
 
         I2cBusDevice& i2c = m.add_device<I2cBusDevice>();
         I2cEeprom& eeprom = m.add_device<I2cEeprom>("eeprom");

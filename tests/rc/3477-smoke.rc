@@ -9,9 +9,10 @@ run #3000000
 # POST has tested RAM and installed handlers for the hardware vectors.
 assert word[18]!=0||word[1a]!=0 "vector 06h (timer) installed"
 assert word[38]!=0||word[3a]!=0 "vector 0Eh (keyboard) installed"
-# Until the Twinax engine is modelled, POST stops at the communications
-# test with the alarm latch set; update this when the link device lands.
-assert byte[20010]==9b "POST stopped at the communications test (expected for now)"
+# The communications loop-back test passes with the Twinax engine; POST then
+# stops at the display test (monitor sense lines not modelled yet) with the
+# alarm latch set. Update this when the display test passes.
+assert byte[20010]==9b "POST stopped at the display test (expected for now)"
 unmapped
 info
 quit

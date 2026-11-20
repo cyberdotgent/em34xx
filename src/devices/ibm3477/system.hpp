@@ -77,9 +77,11 @@ private:
     std::array<uint64_t, kSourceCount> delivered_{};
 };
 
-// Future Twinax link device: receives the accesses to the Twinax registers
-// (channel command/status, configuration, DMA and frame registers). Until it
-// exists those registers are plain storage.
+// Twinax link device hook: receives the accesses to the Twinax registers
+// (channel control, station addresses, engine control, loopback DMA and
+// frame registers) and the writes to 20015, whose loopback bits belong to the
+// engine. Without a link device those registers are plain storage. Reads
+// must have no side effects.
 class Ibm3477TwinaxPort {
 public:
     virtual ~Ibm3477TwinaxPort() = default;

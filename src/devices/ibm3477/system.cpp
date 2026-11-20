@@ -163,7 +163,9 @@ void Ibm3477System::tick(uint64_t cycles) {
 }
 
 uint8_t Ibm3477System::read(uint32_t off, bool side_effects) {
-    if (twinax_ && is_twinax_register(off) && side_effects) return twinax_->twinax_read(off);
+    // The link registers read without side effects, so the debugger sees them too.
+    (void)side_effects;
+    if (twinax_ && is_twinax_register(off)) return twinax_->twinax_read(off);
     switch (off) {
     case 0x02: return uint8_t(ic_.requests());
     case 0x03: return uint8_t(ic_.requests() >> 8);
@@ -206,8 +208,10 @@ void Ibm3477System::mmio_write8(uint32_t off, uint8_t v) {
     case 0x14: kbd_->write(2, v); return;
     case 0x15:
         if ((v ^ misc_) & 0x02) LOG_TRACE("sound", "speaker gate %s", (v & 0x02) ? "on" : "off");
-        if ((v ^ misc_) & 0x4C) LOG_DEBUG("twinax", "wrap/loop control %02X (not modelled)", v & 0x4C);
         misc_ = v;
+        // Bits 2-4, 6 and 7 control the Twinax engine's loopback test path.
+        if (twinax_) twinax_->twinax_write(off, v);
+        else if (v & 0x40) LOG_DEBUG("twinax", "loopback control %02X (no link device)", v);
         return;
     default:
         latch_[off] = v;
