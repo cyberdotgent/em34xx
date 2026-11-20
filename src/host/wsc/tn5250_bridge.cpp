@@ -15,6 +15,7 @@ Tn5250Config station_session_config(const Tn5250Config& tn5250, const StationCon
                     : first_display              ? tn5250.device_name
                                                  : std::string();
     c.terminal_type = station_terminal_type(tn5250, station, model, display);
+    apply_station_tls(c, station);   // per-station tls_min_version / tls_max_version
     return c;
 }
 

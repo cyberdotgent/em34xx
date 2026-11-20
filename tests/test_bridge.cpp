@@ -316,6 +316,10 @@ TEST_CASE("tn5250 bridge: per-station session settings") {
     const Tn5250Config cc = station_session_config(tn, c, false, "3477", DisplaySubtype::Green);
     CHECK(cc.device_name.empty());
     CHECK(cc.terminal_type == "IBM-3477-FG");
+    // A station may lower the TLS minimum for its own session.
+    CHECK(cb.tls_min_version == TlsVersion::Tls1_2);
+    c.tls_min_version = "1.0";
+    CHECK(station_session_config(tn, c, false, "3477", DisplaySubtype::Green).tls_min_version == TlsVersion::Tls1_0);
 }
 
 TEST_CASE("tn5250 bridge: make_twinax_host uses the bridge factory") {
