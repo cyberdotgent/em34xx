@@ -382,3 +382,38 @@ TEST_CASE("tn5250 bridge: make_twinax_host uses the bridge factory") {
     CHECK(dynamic_cast<Tn5250Bridge*>(h.get()) != nullptr);
     CHECK(h->describe().find("station 0 display: cable unplugged") != std::string::npos);
 }
+
+TEST_CASE("tn5250 bridge: typing on the 122-key keyboard echoes and reaches the host") {
+    TwinaxConfig tw;
+    tw.host = TwinaxHostKind::Tn5250;
+    Tn5250Config tn;
+    tn.host = "ibmi.example";
+    auto server = std::make_shared<ServerScript>();
+    server->push(negotiation());
+    server->push(framed_record(tn5250_test::signon_stream()));
+    BridgeOptions opt;
+    opt.transport = [&](const StationConfig&, std::string&) -> std::unique_ptr<tn34xx::tn5250::Transport> {
+        return std::make_unique<ScriptTransport>(server);
+    };
+    std::string err;
+    auto host = make_tn5250_bridge(tw, tn, opt, err);
+    REQUIRE(host);
+    Bench b(*host);
+    FakeStationOptions ko;
+    ko.keyboard_id = 0x02;   // 122-key typewriter keyboard: 3180-2 style cable codes
+    FakeStation f(0, ko);
+    b.plug(f);
+    REQUIRE(b.run_until([&] { return row_text(f, 0, 35, 7) == "Sign On"; }));
+    REQUIRE(b.run_until([&] { return (f.indicators() & 0x02) == 0 && f.cursor() == 5u * 80 + 52; }));
+    f.press(0x11);   // a
+    f.press(0x13);   // d
+    // The characters are echoed on the station (monocase field: A D).
+    REQUIRE(b.run_until([&] { return f.cell(5, 52) == 0xC1 && f.cell(5, 53) == 0xC4; }));
+    f.press(0x68);   // Enter
+    std::vector<tn34xx::tn5250::Record> recs;
+    REQUIRE(b.run_until([&] {
+        recs = client_records(server->sent());
+        return !recs.empty();
+    }));
+    CHECK(recs[0].data == Bytes{0x06, 0x37, 0xF1, 0x11, 0x06, 0x35, 0xC1, 0xC4});
+}
