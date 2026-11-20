@@ -180,6 +180,7 @@ tn34xx_library(tn34xx_app
   src/monitor/expr.cpp
   src/monitor/monitor.cpp
   src/gdb/gdb_stub.cpp
+  src/app/application.cpp
 )
 target_link_libraries(tn34xx_app
   PUBLIC tn34xx_machines tn34xx_host tn34xx_bridge tn34xx_present tn34xx_net tomlplusplus::tomlplusplus)
