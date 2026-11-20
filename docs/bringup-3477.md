@@ -86,17 +86,59 @@ clock (`clock_hz / 50`).
 | 3-1 | Display type. Only `010`, `110` and `111` (byte values `04`, `0C`, `0E`) are accepted; anything else makes POST beep for ever | Observed |
 | 5-4 | Boot mode: `00` normal; `01`, `10`, `11` select manufacturing/burn-in modes | Observed (mode select), meaning hypothesis |
 
-Mapping of the `--display` subtype (hypothesis, no hardware evidence yet):
+The three accepted codes are display types 3, 4 and 5. The firmware reports
+the type to the controller in the Read Info VPD as the model suffix after
+"3477": `FD0`, `FE0` and `FW0` respectively, always with the monochrome
+model ID `24` (observed). The VPD table also holds `FG0`, `FA0` and the
+colour model `FC0` (model ID `50`), but no strap value selects those types
+in this ROM (observed). Type 5 also has its own character-cell height (19
+instead of 21 scan lines in the 24x80 format) and monitor-control setting
+in `2012F`, so it is a different tube.
 
-| Subtype | Straps |
-| --- | --- |
-| green, amber, paperwhite | `0C` (display type `110`) |
-| color | `0E` (display type `111`) |
+Mapping of the `--display` subtype:
 
-Type `111` gets its own character-cell geometry and a different monitor
-control setting in `2012F`, which suggests a different monitor; colour is
-the most plausible candidate. Type `010` is not selected by any subtype. The
-whole byte can be overridden with `--straps HEX` or `[emulator] straps`.
+| Subtype | Straps | Reported model | Status |
+| --- | --- | --- | --- |
+| green, amber | `0C` (type 4) | `3477 FE0`, ID 24 | hypothesis |
+| paperwhite | `0E` (type 5) | `3477 FW0`, ID 24 | hypothesis (W = white) |
+| color | `0E` (type 5) | `3477 FW0`, ID 24 | no colour strap code exists in this ROM; the closest tube is used and the unit identifies as monochrome |
+
+Type `010` (`FD0`) is not selected by any subtype. The whole byte can be
+overridden with `--straps HEX` or `[emulator] straps`.
+
+### Display test and the sense lines (`2012F` bits 7-4)
+
+POST's display test (`VDO`) is the only user of `2012F` bits 7-4 and
+uses them as a **video signature** (observed protocol, hypothesis meaning):
+
+- Written bits 6-5 select a source and bit 7 starts a measurement. The test
+  waits for the start of vertical retrace (bit 3), writes the selector with
+  bit 7 clear and then with bit 7 set.
+- It then requires that retrace ends within 10-31 status reads and that
+  the next retrace begins after 629-1888 reads, i.e. one field later, and
+  reads bits 7-4 at that moment. The model's 60 Hz frame with a retrace of
+  1/90 of the frame meets both windows (observed).
+- Selectors `01` and `10`: the nibble must equal a value that depends on
+  the screen contents (a few marked cells at the corners of the main area
+  and the ends of the status line, in the 24x80, 27x132 and 43x80
+  formats; a nearly empty screen; the same with the cursor shown), on the
+  selector and on the display type (types 3 and 4 share their values,
+  type 5 has its own). On types 3/4 both selectors give the same value for
+  the same screen, on type 5 they differ, which suggests separate video
+  signals (colour planes or intensity) per selector.
+- Selector `00`: the nibble only has to be non-zero (read up to ten times).
+- Any mismatch fails the test; POST then sets the alarm latch and halts.
+
+So the hardware folds the video of one field into a 4-bit value. Its exact
+function (which signal, which pixels and blanking intervals count, the
+feedback polynomial) is unknown. Simple candidates (per-phase pixel parity,
+4-bit CRCs over the active pixels of the rendered frame) do not reproduce
+the expected values (observed in a fit against the emulator's frames). It
+also cannot be a monitor ID: the values change with the screen contents.
+
+The emulator does not compute a signature: bits 7-4 read `0`, so an
+unmodified boot stops at the display test. This is the one remaining piece
+of POST hardware that is not modelled.
 
 ### Keyboard interface (`20012-20014`)
 
@@ -287,40 +329,63 @@ follows the `TwinaxHost` contract: it takes a message only when the line is
 idle and the engine runs, and reports either the response or
 `no_response()`. Loop-back messages are processed at once.
 
-### Bring-up transcript (script host)
+### Bring-up transcripts
 
-Observed, firmware past POST with the failed display test skipped by hand
-and a blank EEPROM, `--twinax-host script`:
+Observed with the display test skipped by hand (see [Boot
+progress](#boot-progress-with-real-devices-no-forced-results)) and a saved
+setup configuration (`--nvram`), so that the firmware reaches the on-line
+screen. It then runs the engine (`20009` = `83`: run, channel 0 enabled)
+with station address 0 (`20008` = `00`) and enables the channel 0
+interrupts (`20004` = `807F`).
+
+With `--twinax-host script`, frames typed at the monitor:
 
 ```
-twinax send 30/0      # Poll with ACK to station 0
-twinax recv           # no messages from the station
-twinax status         # 1 message(s) queued, 0 delivered
+twinax send 10/0        -> 0e/7         power-on exception, one frame
+twinax send 10/0        -> 2e/7         same, response bit 5 toggled
+twinax send 13/0 00/7   (no response)   Set Mode
+twinax send 10/0        -> 01/0 00/7    two frames from now on
+twinax send 30/0        -> 20/0 00/7    poll with acknowledge
 ```
 
-The firmware is in Offline Setup and leaves the engine held (`20009`
-bit 7 = 0), so the message is never taken from the line; this is the
-expected behaviour of a held engine. Per the model, once the firmware runs
-the engine with station 0 configured, the same poll is answered with one
-frame `0e/7` (power-on exception, not busy) until Set Mode; after
-`13/0 00/7` and the firmware's handling, polls are answered with two frames
-`xx/0 byte2/7`.
+With `--twinax-host wsc` (the workstation controller, see
+docs/twinax-bridge.md), the whole discovery:
+
+```
+30/0 -> 0e/7                       poll: power-on
+13/0 00/7 -> (none)                Set Mode
+30/0 -> ae/7, 8e/7, ... 80/7       busy while the firmware handles Set Mode
+30/0 -> a0/0 00/7                  two-frame responses
+0c/0, 00/0 -> c2/7                 Read Device ID: display
+8c/0, 00/0 -> 24/7                 model ID: monochrome
+2c/0, 00/0 -> 02/7                 keyboard ID: 122-key typewriter
+88/0, 00/0 -> 24 ff ff 00 ...      extended ID (16 bytes)
+0b/0 80/7, 00/0 -> f3 f4 f7 f7 c6 c5 f0 ...   Read Info: "3477FE0", 64 bytes
+05/0 40/0 02/0 62/7                Write Control Data, end of queue
+15/0 ... 12/0 51/0 02/0 17/0 ... 62/7   clear, indicators, cursor
+30/0 -> 01/0 00/7, 21/0 00/7, ...  on line, polled every 25 ms
+```
+
+The terminal then shows a blank screen with the cursor at the top left and
+the System Available symbol at the left of the status line. Keys reach the
+controller as scan codes in the second poll byte, one per poll, with the
+response level toggling (observed: host keys `a b c` on the 122-key
+keyboard arrive as `11`, `05`, `03`).
 
 ## Boot progress with real devices (no forced results)
 
-Observed with `--display green`, an ephemeral EEPROM and no Twinax device:
+Observed with `--display green` and no Twinax device:
 
 1. Reset, register-only RAM test, ROM checksums, strap decoding.
 2. POST tests: RAM passes and the communications loop-back test (`COM`)
    passes with the Twinax engine model (observed). POST then stops at the
    display test (`VDO`) with the alarm tone on (`20010` = `9B`) and the CPU
-   halted.
+   halted, because the video signature is not modelled (see [Display
+   test](#display-test-and-the-sense-lines-2012f-bits-7-4)).
 
-Later stages, observed only by letting the failed tests continue from the
-monitor (bring-up exploration, not a product setting):
+Later stages, observed only by letting the failed display test continue
+from the monitor (bring-up exploration, not a product setting):
 
-- the display test (`VDO`) fails on the monitor sense nibble (`2012F` bits
-  7-4), whose expected values are not understood yet;
 - the keyboard wrap (`KWP`) and keyboard (`KBD`) tests pass;
 - the main firmware installs its handlers for vectors `06h`, `07h`, `09h`,
   `0Ch` and `0Eh`, runs the 50 Hz timer, completes the keyboard reset, ID and
@@ -330,7 +395,12 @@ monitor (bring-up exploration, not a product setting):
   Setup** menu ("Customize workstation", "Update serial number", "Test
   workstation"), as a new unit would. Choosing a display address in
   "Customize workstation" and leaving with F3 writes a valid block; with
-  `--nvram FILE` it survives a restart and the next boot skips setup.
+  `--nvram FILE` it survives a restart and the next boot skips setup;
+- with a valid configuration it shows the IBM logo ("3477 Control
+  Program"), then the on-line screen, arms the Twinax engine for its
+  station address and answers the controller: with `--twinax-host wsc` the
+  station is discovered, identified and polled (see the transcripts
+  above).
 
 ## Board
 
@@ -343,9 +413,10 @@ monitor (bring-up exploration, not a product setting):
 
 ## Next steps
 
-1. Twinax engine: check the poll, Set Mode and activate handshake against
-   the running firmware once it gets past Offline Setup (needs a valid
-   setup block in battery-backed RAM).
-2. Monitor sense nibble in `2012F` for the display test.
+1. The video signature behind `2012F` bits 7-4 (display test). Needs
+   hardware: the signature of a known screen on a real unit, or the gate
+   array's documentation.
+2. Twinax engine: Activate Write and the data path beyond discovery (screen
+   writes, keystrokes) against a TN5250 host.
 3. Confirm the strap/display-type mapping and the CPU type and clock on a
    board.

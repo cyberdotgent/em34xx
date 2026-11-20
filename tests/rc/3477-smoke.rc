@@ -1,5 +1,6 @@
 # Smoke test for the 3477 ROM set with the modelled hardware (no forced
-# results). It checks hardware-visible progress only.
+# results). It checks hardware-visible progress only, and asserts the
+# furthest stage an unmodified boot reaches.
 assert pc==ffff0 "reset vector"
 step
 assert cs==f000 "far jump into the F000 segment"
@@ -9,10 +10,14 @@ run #3000000
 # POST has tested RAM and installed handlers for the hardware vectors.
 assert word[18]!=0||word[1a]!=0 "vector 06h (timer) installed"
 assert word[38]!=0||word[3a]!=0 "vector 0Eh (keyboard) installed"
-# The communications loop-back test passes with the Twinax engine; POST then
-# stops at the display test (monitor sense lines not modelled yet) with the
-# alarm latch set. Update this when the display test passes.
-assert byte[20010]==9b "POST stopped at the display test (expected for now)"
+# The communications loop-back test passes with the Twinax engine. The
+# display test then measures a 4-bit video signature in 2012F bits 7-4; it
+# is not modelled (reads 0), so POST stops there with the alarm latch set.
+# This is the furthest stage of an unmodified boot; update it when the
+# signature is modelled.
+assert (byte[2012f]&f0)==0 "video signature not modelled"
+assert word[20130]==4200 "the display test programmed its test screen"
+assert byte[20010]==9b "POST stopped at the display test"
 unmapped
 info
 quit

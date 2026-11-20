@@ -122,10 +122,15 @@ std::string Ibm3477Interrupts::describe() const {
 
 uint8_t ibm3477_default_straps(DisplaySubtype d) {
     // Bits 3..1 carry the display type; only 010, 110 and 111 are accepted
-    // by the firmware [observed]. Which code belongs to which tube is a
-    // hypothesis: the colour unit is taken to be 111 (its own character-cell
-    // geometry and monitor-control setting), the monochrome units 110.
-    return d == DisplaySubtype::Color ? 0x0E : 0x0C;
+    // (types 3, 4, 5) [observed]. The firmware reports the type in the Read
+    // Info VPD as the model suffix FD0, FE0 and FW0 respectively, all with
+    // the monochrome model ID 24 [observed]; the colour model (FC0, model ID
+    // 50) is a type that no strap value selects in this ROM. So: paper-white
+    // is FW0 (111) [hypothesis: W = white; type 5 also has its own cell
+    // geometry and monitor-control setting]; green and amber are 110
+    // [hypothesis]; colour has no strap code of its own and uses 111, the
+    // closest tube, so the firmware identifies it as a monochrome FW0.
+    return (d == DisplaySubtype::Color || d == DisplaySubtype::PaperWhite) ? 0x0E : 0x0C;
 }
 
 // ---------------------------------------------------------------------------

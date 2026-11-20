@@ -87,7 +87,9 @@ public:
             "clock frequency unknown; 8 MHz used for pacing only",
             "system gate array at 20000: interrupt request/mask registers and fixed vectors "
             "(observed use, bit map hypothesis), 50 Hz timer (hypothesis)",
-            "display type straps at 2000A: green/amber/paperwhite -> 0C, colour -> 0E (hypothesis)",
+            "display type straps at 2000A: 04/0C/0E = types 3/4/5, reported as model FD0/FE0/FW0 "
+            "(observed); green/amber -> 0C, paper-white -> 0E (hypothesis); colour (FC0) has no "
+            "strap code in this ROM and uses 0E",
             "setup configuration in battery-backed RAM: POST never tests 01A0-0A9F and only "
             "validates the checksummed setup block there; an hour meter and a power-on counter "
             "live in the same range (observed); battery backing of the whole 128 KiB is a hypothesis",
@@ -96,7 +98,8 @@ public:
             "Twinax engine: two station channels, programs and descriptors in RAM; poll, activate and "
             "queue handling and the loopback test path follow docs/bringup-3477.md (hypothesis)",
             "display controller at 20100: character window from RAM, glyphs from character-generator "
-            "RAM; monitor sense nibble not yet understood (POST test VDO fails)",
+            "RAM; POST test VDO compares a 4-bit video signature (2012F bits 7-4) that is not "
+            "modelled, so POST stops there (see docs/bringup-3477.md)",
         };
     }
 
