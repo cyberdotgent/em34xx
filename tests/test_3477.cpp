@@ -222,6 +222,25 @@ TEST_CASE("3477 timer runs at 50 Hz") {
     CHECK(ticks == 50);
 }
 
+TEST_CASE("3477 alarm tone and speaker gate reach the audio sink") {
+    struct Recorder : AudioSink {
+        std::vector<std::string> events;
+        void tone(bool on, double hz) override { events.push_back(std::string("tone ") + (on ? "on " : "off ") + std::to_string(int(hz))); }
+        void speaker(bool on) override { events.push_back(on ? "speaker on" : "speaker off"); }
+        void click() override { events.push_back("click"); }
+    } rec;
+    Sys s;
+    s.sys->set_audio(&rec);
+    s.w(0x20010, 0x85);   // tone on
+    s.w(0x20010, 0x86);   // setting change only: no event
+    s.w(0x20015, 0x02);   // speaker gate on
+    s.w(0x20015, 0x00);
+    s.w(0x20010, 0x80);
+    s.sys->reset();       // tone still on: reset turns it off
+    const std::vector<std::string> want = {"tone on 0", "speaker on", "speaker off", "tone off 0"};
+    CHECK(rec.events == want);
+}
+
 TEST_CASE("3477 straps follow the display subtype") {
     CHECK(ibm3477_default_straps(DisplaySubtype::Green) == 0x0C);
     CHECK(ibm3477_default_straps(DisplaySubtype::Amber) == 0x0C);

@@ -139,6 +139,7 @@ public:
                                "monochrome 3477 FE0 (model ID 24h) and only the rendering is in colour");
         Ibm3477System& sys = m.add_device<Ibm3477System>(info_.clock_hz, straps, std::move(kbd));
         bus.map_mmio("system", Ibm3477System::kBase, Ibm3477System::kSize, &sys);
+        sys.set_audio(&m.audio());
         bus.set_interrupt_controller(&sys.interrupts());
         m.set_keyboard(kbd_ptr);
 

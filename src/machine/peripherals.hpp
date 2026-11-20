@@ -69,6 +69,31 @@ public:
     virtual void host_key(const HostKeyEvent& ev) = 0;
 };
 
+// Sound output of a terminal. Devices report what their hardware does; a
+// front end's sink turns it into host audio. Calls come from the emulation
+// thread with the machine lock held: a sink must not block (queue the event
+// for the audio thread).
+class AudioSink {
+public:
+    virtual ~AudioSink() = default;
+    // A continuous tone (the alarm) starts or stops. frequency_hz is the
+    // pitch the hardware is set to, or 0 while that is not known (the sink
+    // then uses a default pitch).
+    virtual void tone(bool on, double frequency_hz) = 0;
+    // The firmware drives the speaker directly (a gate bit); short pulses
+    // of it are clicks.
+    virtual void speaker(bool on) = 0;
+    // One keyboard click, for hardware that has a dedicated clicker.
+    virtual void click() = 0;
+};
+
+class NullAudioSink : public AudioSink {
+public:
+    void tone(bool, double) override {}
+    void speaker(bool) override {}
+    void click() override {}
+};
+
 // Non-volatile storage of a unit (e.g. a setup EEPROM) that the monitor can
 // inspect and save.
 class NonVolatileStore {

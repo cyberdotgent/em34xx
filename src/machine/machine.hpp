@@ -117,6 +117,11 @@ public:
     }
     void set_keyboard(KeyboardSink* k) { keyboard_ = k; }
     void set_nvram(NonVolatileStore* n) { nvram_ = n; }
+    // Where the machine's sound goes; null = nowhere. Devices hold audio(),
+    // which forwards to the sink set here, so it can change at any time
+    // (under the machine lock).
+    void set_audio_sink(AudioSink* s) { audio_.target = s; }
+    AudioSink& audio() { return audio_; }
     NonVolatileStore* nvram() const { return nvram_; }
     void set_twinax_host(std::unique_ptr<TwinaxHost> host) { twinax_ = std::move(host); }
     // Replaces the controller on the line and returns the old one, so the
@@ -157,6 +162,12 @@ private:
     bool display_dirty_ = true;
     uint64_t seen_display_writes_ = 0;
     uint64_t seen_animation_phase_ = 0;
+    struct AudioForwarder : AudioSink {
+        AudioSink* target = nullptr;
+        void tone(bool on, double hz) override { if (target) target->tone(on, hz); }
+        void speaker(bool on) override { if (target) target->speaker(on); }
+        void click() override { if (target) target->click(); }
+    } audio_;
     PlaceholderDisplay fallback_display_{640, 400};
     LoggingKeyboard fallback_keyboard_;
 };

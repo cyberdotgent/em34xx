@@ -106,6 +106,7 @@ public:
     Ibm3477Interrupts& interrupts() { return ic_; }
     Ibm3477KeyboardInterface& keyboard_interface() { return *kbd_; }
     void set_twinax_port(Ibm3477TwinaxPort* p) { twinax_ = p; }   // hook for the link device
+    void set_audio(AudioSink* a) { audio_ = a; }                   // alarm tone and speaker gate
     uint8_t straps() const { return straps_; }
     bool tone_on() const { return (status_latch_ & 0x80) != 0; }
     bool speaker_gate() const { return (misc_ & 0x02) != 0; }
@@ -125,6 +126,7 @@ private:
     Ibm3477Interrupts ic_;
     std::unique_ptr<Ibm3477KeyboardInterface> kbd_;
     Ibm3477TwinaxPort* twinax_ = nullptr;
+    AudioSink* audio_ = nullptr;
     uint8_t straps_;
     uint64_t timer_period_;
     uint64_t timer_acc_ = 0;

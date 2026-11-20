@@ -152,6 +152,8 @@ bool Ibm3477System::is_twinax_register(uint32_t off) {
 }
 
 void Ibm3477System::reset() {
+    if (audio_ && tone_on()) audio_->tone(false, 0.0);
+    if (audio_ && speaker_gate()) audio_->speaker(false);
     ic_.reset();
     latch_.fill(0);
     status_latch_ = 0;
@@ -207,15 +209,21 @@ void Ibm3477System::mmio_write8(uint32_t off, uint8_t v) {
         ic_.set_keyboard_enabled(v & 1);
         return;
     case 0x10:
-        if ((v ^ status_latch_) & 0x80)
+        if ((v ^ status_latch_) & 0x80) {
             LOG_DEBUG("sound", "alarm tone %s (setting %02X)", (v & 0x80) ? "on" : "off", v & 0x7F);
+            // The pitch behind the low bits is not known yet [hyp]: 0 Hz.
+            if (audio_) audio_->tone((v & 0x80) != 0, 0.0);
+        }
         status_latch_ = v;
         return;
     case 0x12: kbd_->write(0, v); return;
     case 0x13: kbd_->write(1, v); return;
     case 0x14: kbd_->write(2, v); return;
     case 0x15:
-        if ((v ^ misc_) & 0x02) LOG_TRACE("sound", "speaker gate %s", (v & 0x02) ? "on" : "off");
+        if ((v ^ misc_) & 0x02) {
+            LOG_TRACE("sound", "speaker gate %s", (v & 0x02) ? "on" : "off");
+            if (audio_) audio_->speaker((v & 0x02) != 0);
+        }
         misc_ = v;
         // Bits 2-4, 6 and 7 control the Twinax engine's loopback test path.
         if (twinax_) twinax_->twinax_write(off, v);
