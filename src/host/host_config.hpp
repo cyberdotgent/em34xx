@@ -15,15 +15,43 @@
 
 namespace tn34xx {
 
+// How the TLS transport checks the server certificate (see docs/tn5250.md).
+enum class TlsVerify {
+    System,   // chain to the host's certificate store (+ ca_file) and hostname
+    None,     // accept any certificate; its fingerprint is logged
+};
+
+const char* tls_verify_name(TlsVerify v);
+// "system" (also "default", "on", "true") or "none" (also "insecure",
+// "off", "false").
+bool parse_tls_verify(const std::string& text, TlsVerify& out);
+
+// Protocol version bounds for TLS. Any: no bound (only valid as a maximum).
+enum class TlsVersion { Any = 0, Ssl3, Tls1_0, Tls1_1, Tls1_2, Tls1_3 };
+
+// "ssl3", "1.0", "1.1", "1.2", "1.3" ("any" for Any).
+const char* tls_version_name(TlsVersion v);
+// Accepts those names, also with a "tls"/"tlsv" prefix ("TLSv1.2",
+// "tls1.0"), and "sslv3"; "any" or "" give Any.
+bool parse_tls_version(const std::string& text, TlsVersion& out);
+
 struct Tn5250Config {
     std::string host;                    // empty = not configured
     uint16_t port = 23;
     std::string device_name;             // DEVNAME; empty lets the host choose
     std::string terminal_type;           // RFC 1205 type; empty = derive per station
                                          // (see station_terminal_type)
-    bool tls = false;
-    bool tls_verify = true;
-    std::string ca_file;
+    bool tls = false;                    // TLS from the first byte (port 992 by convention)
+    TlsVerify tls_verify = TlsVerify::System;
+    // SHA-256 fingerprint of the server's leaf certificate. When set it
+    // decides alone: a match is accepted even if the chain does not verify,
+    // a mismatch is refused even if it does.
+    std::string tls_cert_sha256;
+    std::string ca_file;                 // extra trust anchors (PEM), on top of the system store
+    // Protocol versions. 1.2 and newer by default; old IBM i / OS/400
+    // hosts may need 1.0 or 1.1 (some only SSLv3).
+    TlsVersion tls_min_version = TlsVersion::Tls1_2;
+    TlsVersion tls_max_version = TlsVersion::Any;
     std::string codepage = "37";         // EBCDIC CCSID used for translation
     std::map<std::string, std::string> env;  // extra RFC 2877 NEW-ENVIRON variables
 
@@ -69,12 +97,22 @@ struct StationConfig {
     std::string device_name;             // TN5250 DEVNAME; empty = host assigned
                                          // (the first display falls back to tn5250.device_name)
     std::string profile;                 // TN5250 terminal type; empty = default for the type
+    // TLS protocol bounds for this station's session; empty = the
+    // [tn5250] setting. Values as parse_tls_version().
+    std::string tls_min_version{};   // (initialised: keeps 4-member brace
+                                     // initialisers free of -Wmissing-field-initializers)
+    std::string tls_max_version{};
 };
 
 // Terminal type for one station: its `profile`, else tn5250.terminal_type
 // (--tn5250-type), else derived_terminal_type(model, display).
 std::string station_terminal_type(const Tn5250Config& tn5250, const StationConfig& station,
                                   const std::string& model, DisplaySubtype display);
+
+// Apply a station's TLS overrides (tls_min_version, tls_max_version) to
+// the session configuration built from [tn5250]. Unparsable values are
+// left alone; TwinaxConfig::validate() reports them.
+void apply_station_tls(Tn5250Config& cfg, const StationConfig& station);
 
 // Parses the CLI shorthand ADDR[:TYPE[:DEVNAME]], e.g. "1:printer:PRT01".
 bool parse_station_spec(const std::string& text, StationConfig& out, std::string& error);

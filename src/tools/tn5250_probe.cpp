@@ -24,7 +24,15 @@ void usage() {
     std::fprintf(stderr,
                  "usage: tn5250-probe HOST [PORT] [--ttype TYPE | --mono] [--devname NAME]\n"
                  "                    [--codepage 37|500|273] [--env NAME=VALUE] [--timeout SECONDS]\n"
-                 "                    [--fields]\n");
+                 "                    [--fields] [--tls [--insecure | --pin SHA256] [--ca FILE]\n"
+                 "                    [--tls-min VER] [--tls-max VER]]\n"
+                 "  --tls        TLS from the first byte; PORT defaults to 992. The server\n"
+                 "               certificate is checked against the system store and HOST\n"
+                 "  --insecure   accept any certificate (its SHA-256 fingerprint is printed)\n"
+                 "  --pin HASH   accept only the certificate with this SHA-256 fingerprint\n"
+                 "  --ca FILE    extra trusted CA certificates (PEM)\n"
+                 "  --tls-min V, --tls-max V   protocol bounds: ssl3, 1.0, 1.1, 1.2 (default\n"
+                 "               minimum), 1.3\n");
 }
 
 std::string row_text(const Engine& e, int r, const CodePage& cp) {
@@ -45,6 +53,7 @@ int main(int argc, char** argv) {
     Tn5250Config cfg;
     int timeout = 15;
     bool show_fields = false;
+    int port = 0;
     for (int i = 1; i < argc; ++i) {
         const std::string a = argv[i];
         auto next = [&]() -> std::string {
@@ -57,6 +66,15 @@ int main(int argc, char** argv) {
         else if (a == "--codepage") cfg.codepage = next();
         else if (a == "--timeout") timeout = std::atoi(next().c_str());
         else if (a == "--fields") show_fields = true;
+        else if (a == "--tls") cfg.tls = true;
+        else if (a == "--insecure") { cfg.tls = true; cfg.tls_verify = TlsVerify::None; }
+        else if (a == "--pin") { cfg.tls = true; cfg.tls_cert_sha256 = next(); }
+        else if (a == "--ca") { cfg.tls = true; cfg.ca_file = next(); }
+        else if (a == "--tls-min" || a == "--tls-max") {
+            TlsVersion& v = a == "--tls-min" ? cfg.tls_min_version : cfg.tls_max_version;
+            cfg.tls = true;
+            if (!parse_tls_version(next(), v)) { usage(); return 2; }
+        }
         else if (a == "--env") {
             const std::string kv = next();
             const size_t eq = kv.find('=');
@@ -64,9 +82,15 @@ int main(int argc, char** argv) {
             cfg.env[kv.substr(0, eq)] = kv.substr(eq + 1);
         } else if (a == "-h" || a == "--help") { usage(); return 0; }
         else if (cfg.host.empty()) cfg.host = a;
-        else cfg.port = uint16_t(std::atoi(a.c_str()));
+        else port = std::atoi(a.c_str());
     }
     if (cfg.host.empty()) { usage(); return 2; }
+    cfg.port = uint16_t(port > 0 ? port : (cfg.tls ? 992 : 23));
+    const std::string invalid = cfg.validate();
+    if (!invalid.empty()) {
+        std::fprintf(stderr, "tn5250-probe: %s\n", invalid.c_str());
+        return 2;
+    }
     const CodePage* cp = CodePage::find(cfg.codepage);
     if (!cp) {
         std::fprintf(stderr, "unsupported codepage %s (37, 500, 273)\n", cfg.codepage.c_str());

@@ -1,6 +1,7 @@
 #include "config/config.hpp"
 
 #include "input/keyboard_ids.hpp"
+#include "util/fingerprint.hpp"
 #include "util/strings.hpp"
 
 #include <toml++/toml.hpp>
@@ -129,6 +130,8 @@ bool load_config_file(const std::string& path, AppConfig& cfg, std::string& erro
                 }
                 get(*st, "tn5250_device_name", sc.device_name);
                 get(*st, "profile", sc.profile);
+                get(*st, "tls_min_version", sc.tls_min_version);
+                get(*st, "tls_max_version", sc.tls_max_version);
                 cfg.twinax.stations.push_back(sc);
             }
         }
@@ -142,7 +145,22 @@ bool load_config_file(const std::string& path, AppConfig& cfg, std::string& erro
         get(*t, "device_name", cfg.tn5250.device_name);
         get(*t, "terminal_type", cfg.tn5250.terminal_type);
         get(*t, "tls", cfg.tn5250.tls);
-        get(*t, "tls_verify", cfg.tn5250.tls_verify);
+        if (get(*t, "tls_verify", b)) {
+            cfg.tn5250.tls_verify = b ? TlsVerify::System : TlsVerify::None;
+        } else if (get(*t, "tls_verify", s) && !parse_tls_verify(s, cfg.tn5250.tls_verify)) {
+            error = path + ": tn5250.tls_verify must be \"system\" or \"none\"";
+            return false;
+        }
+        get(*t, "tls_cert_sha256", cfg.tn5250.tls_cert_sha256);
+        if (get(*t, "tls_min_version", s) &&
+            (!parse_tls_version(s, cfg.tn5250.tls_min_version) || cfg.tn5250.tls_min_version == TlsVersion::Any)) {
+            error = path + ": tn5250.tls_min_version must be \"ssl3\", \"1.0\", \"1.1\", \"1.2\" or \"1.3\"";
+            return false;
+        }
+        if (get(*t, "tls_max_version", s) && !parse_tls_version(s, cfg.tn5250.tls_max_version)) {
+            error = path + ": tn5250.tls_max_version must be \"ssl3\", \"1.0\", \"1.1\", \"1.2\", \"1.3\" or \"any\"";
+            return false;
+        }
         get(*t, "ca_file", cfg.tn5250.ca_file);
         get(*t, "codepage", cfg.tn5250.codepage);
         if (auto* env = (*t)["env"].as_table()) {
@@ -246,9 +264,19 @@ Host link (configuration only; the TN5250 bridge is not implemented yet):
       --tn5250-device NAME  device name (DEVNAME)
       --tn5250-type TYPE    terminal type for every display station (default:
                             derived, 3477 colour IBM-3477-FC, mono IBM-3477-FG)
-      --tn5250-tls          use TLS
-      --tn5250-no-verify    do not verify the server certificate
-      --tn5250-ca FILE      CA bundle for TLS
+      --tn5250-tls          use TLS (servers listen on port 992 by convention)
+      --tn5250-tls-verify MODE
+                            system (default: the host's certificate store
+                            plus --tn5250-ca, and the host name) or none
+      --tn5250-tls-insecure accept any server certificate (= verify none);
+                            its SHA-256 fingerprint is logged
+      --tn5250-tls-pin HASH accept only the server certificate with this
+                            SHA-256 fingerprint (AB:CD:... or abcd...), even
+                            if it does not chain to a trusted CA
+      --tn5250-ca FILE      extra trusted CA certificates (PEM) for TLS
+      --tn5250-tls-min VER  oldest protocol to offer: ssl3, 1.0, 1.1, 1.2
+                            (default) or 1.3; lower it for old IBM i/OS/400
+      --tn5250-tls-max VER  newest protocol to offer (default: newest known)
       --tn5250-codepage CP  EBCDIC code page (default 37)
       --tn5250-env N=V      extra NEW-ENVIRON variable (repeatable)
 
@@ -377,7 +405,30 @@ bool parse_command_line(int argc, char** argv, AppConfig& cfg, std::string& erro
         } else if (a == "--tn5250-device") { if (!need(cfg.tn5250.device_name)) return false; }
         else if (a == "--tn5250-type") { if (!need(cfg.tn5250.terminal_type)) return false; }
         else if (a == "--tn5250-tls") cfg.tn5250.tls = true;
-        else if (a == "--tn5250-no-verify") cfg.tn5250.tls_verify = false;
+        else if (a == "--tn5250-tls-insecure" || a == "--tn5250-no-verify") cfg.tn5250.tls_verify = TlsVerify::None;
+        else if (a == "--tn5250-tls-verify") {
+            if (!need(v)) return false;
+            if (!parse_tls_verify(v, cfg.tn5250.tls_verify)) { error = "--tn5250-tls-verify must be system or none"; return false; }
+        } else if (a == "--tn5250-tls-min") {
+            if (!need(v)) return false;
+            if (!parse_tls_version(v, cfg.tn5250.tls_min_version) || cfg.tn5250.tls_min_version == TlsVersion::Any) {
+                error = "--tn5250-tls-min must be ssl3, 1.0, 1.1, 1.2 or 1.3";
+                return false;
+            }
+        } else if (a == "--tn5250-tls-max") {
+            if (!need(v)) return false;
+            if (!parse_tls_version(v, cfg.tn5250.tls_max_version)) {
+                error = "--tn5250-tls-max must be ssl3, 1.0, 1.1, 1.2, 1.3 or any";
+                return false;
+            }
+        } else if (a == "--tn5250-tls-pin") {
+            if (!need(cfg.tn5250.tls_cert_sha256)) return false;
+            Sha256Digest d;
+            if (!parse_sha256_fingerprint(cfg.tn5250.tls_cert_sha256, d)) {
+                error = "--tn5250-tls-pin needs a SHA-256 fingerprint (32 hex bytes, colons optional)";
+                return false;
+            }
+        }
         else if (a == "--tn5250-ca") { if (!need(cfg.tn5250.ca_file)) return false; }
         else if (a == "--tn5250-codepage") { if (!need(cfg.tn5250.codepage)) return false; }
         else if (a == "--tn5250-env") {
@@ -432,7 +483,10 @@ std::string config_to_toml(const AppConfig& cfg) {
         {"device_name", cfg.tn5250.device_name},
         {"terminal_type", cfg.tn5250.terminal_type},
         {"tls", cfg.tn5250.tls},
-        {"tls_verify", cfg.tn5250.tls_verify},
+        {"tls_verify", tls_verify_name(cfg.tn5250.tls_verify)},
+        {"tls_cert_sha256", cfg.tn5250.tls_cert_sha256},
+        {"tls_min_version", tls_version_name(cfg.tn5250.tls_min_version)},
+        {"tls_max_version", tls_version_name(cfg.tn5250.tls_max_version)},
         {"ca_file", cfg.tn5250.ca_file},
         {"codepage", cfg.tn5250.codepage},
         {"env", env},
@@ -443,6 +497,8 @@ std::string config_to_toml(const AppConfig& cfg) {
             toml::table st{{"address", int64_t(sc.address)}, {"type", station_type_name(sc.type)}};
             if (!sc.device_name.empty()) st.insert("tn5250_device_name", sc.device_name);
             if (!sc.profile.empty()) st.insert("profile", sc.profile);
+            if (!sc.tls_min_version.empty()) st.insert("tls_min_version", sc.tls_min_version);
+            if (!sc.tls_max_version.empty()) st.insert("tls_max_version", sc.tls_max_version);
             stations.push_back(std::move(st));
         }
         root["twinax"].as_table()->insert("station", std::move(stations));

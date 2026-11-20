@@ -141,6 +141,14 @@ void Client::run() {
         state_ = ConnState::Failed;
     };
     if (!t) { fail(err); return; }
+    // Transport diagnostics (TLS certificate details) go to the session log,
+    // and to the tn5250 log category at their own level, so that a
+    // certificate warning shows without --log tn5250=debug.
+    t->set_log([this](LogLevel level, const std::string& line) {
+        if (log_enabled("tn5250", level)) log_write("tn5250", level, "%s", line.c_str());
+        std::lock_guard<std::mutex> g(mu_);
+        log_.push_back(line);
+    });
     log(format("connecting to %s:%u", cfg_.host.c_str(), cfg_.port));
     if (!t->connect(cfg_.host, cfg_.port, err)) { fail(err); return; }
     log("connected (" + t->describe() + ")");

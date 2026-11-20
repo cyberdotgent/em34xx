@@ -48,8 +48,14 @@ add_executable(tn34xx_tn5250_tests
   test_tn5250_negotiation.cpp
   test_tn5250_datastream.cpp
   test_tn5250_editing.cpp
+  test_tn5250_tls.cpp
   test_bridge.cpp
   fake_station.cpp
 )
 target_link_libraries(tn34xx_tn5250_tests PRIVATE tn34xx_bridge tn34xx_tn5250 tn34xx_warnings doctest::doctest)
+if(TN34XX_TLS_BACKEND STREQUAL "openssl")
+  # The TLS test runs its own in-process OpenSSL server.
+  target_compile_definitions(tn34xx_tn5250_tests PRIVATE TN34XX_TLS_OPENSSL=1)
+  target_link_libraries(tn34xx_tn5250_tests PRIVATE OpenSSL::SSL OpenSSL::Crypto)
+endif()
 add_test(NAME tn5250 COMMAND tn34xx_tn5250_tests)

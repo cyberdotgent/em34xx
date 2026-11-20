@@ -24,10 +24,7 @@ private:
 } // namespace
 
 std::unique_ptr<Transport> make_transport(const Tn5250Config& cfg, std::string& error) {
-    if (cfg.tls) {
-        error = "TLS is not available in this build (no TLS library yet); use port 23 without tls";
-        return nullptr;
-    }
+    if (cfg.tls) return make_tls_transport(cfg, error);
     return std::unique_ptr<Transport>(new PlainTcpTransport());
 }
 

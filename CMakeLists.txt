@@ -15,6 +15,39 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 option(TN34XX_BUILD_TESTS "Build unit tests and the CPU test-vector runner" OFF)
 option(TN34XX_WARNINGS_AS_ERRORS "Treat compiler warnings as errors" OFF)
 
+# TLS for the TN5250 client uses the host's own stack: SChannel on Windows
+# (always there), the system libssl/libcrypto elsewhere (not from vcpkg).
+#   AUTO (default): use it when found, else build without TLS
+#   ON: fail configuration without it;  OFF: build without TLS
+set(TN34XX_TLS AUTO CACHE STRING "TLS for the TN5250 client: AUTO, ON or OFF")
+set_property(CACHE TN34XX_TLS PROPERTY STRINGS AUTO ON OFF)
+string(TOUPPER "${TN34XX_TLS}" _tn34xx_tls)
+set(TN34XX_TLS_BACKEND none)
+if(NOT _tn34xx_tls MATCHES "^(AUTO|ON|OFF)$")
+  message(FATAL_ERROR "TN34XX_TLS must be AUTO, ON or OFF (got '${TN34XX_TLS}')")
+endif()
+if(NOT _tn34xx_tls STREQUAL "OFF")
+  if(WIN32)
+    set(TN34XX_TLS_BACKEND schannel)
+  else()
+    find_package(OpenSSL 1.1.1)
+    if(OPENSSL_FOUND)
+      set(TN34XX_TLS_BACKEND openssl)
+    elseif(_tn34xx_tls STREQUAL "ON")
+      message(FATAL_ERROR "TN34XX_TLS=ON, but the system OpenSSL development files were not found "
+                          "(install libssl-dev / openssl-devel, or configure with -DTN34XX_TLS=AUTO or OFF)")
+    endif()
+  endif()
+endif()
+if(TN34XX_TLS_BACKEND STREQUAL "openssl")
+  message(STATUS "TN5250 TLS: system OpenSSL ${OPENSSL_VERSION} (${OPENSSL_SSL_LIBRARY})")
+elseif(TN34XX_TLS_BACKEND STREQUAL "schannel")
+  message(STATUS "TN5250 TLS: Windows SChannel (secur32, crypt32)")
+else()
+  message(STATUS "TN5250 TLS: disabled (TN34XX_TLS=${TN34XX_TLS}); install the OpenSSL development "
+                 "files (libssl-dev / openssl-devel) and reconfigure to enable it")
+endif()
+
 find_package(SDL3 CONFIG REQUIRED)
 find_package(replxx CONFIG REQUIRED)
 find_package(tomlplusplus CONFIG REQUIRED)
@@ -34,6 +67,7 @@ endif()
 add_library(tn34xx_core STATIC
   src/util/log.cpp
   src/util/sha256.cpp
+  src/util/fingerprint.cpp
   src/util/strings.cpp
   src/bus/bus.cpp
   src/bus/probe_device.cpp
@@ -100,11 +134,18 @@ add_library(tn34xx_tn5250 STATIC
   src/tn5250/engine.cpp
   src/tn5250/record.cpp
   src/tn5250/telnet.cpp
+  src/tn5250/tls_policy.cpp
+  src/tn5250/tls_${TN34XX_TLS_BACKEND}.cpp
   src/tn5250/transport.cpp
 )
 target_link_libraries(tn34xx_tn5250
   PUBLIC tn34xx_core Threads::Threads
   PRIVATE tn34xx_warnings)
+if(TN34XX_TLS_BACKEND STREQUAL "openssl")
+  target_link_libraries(tn34xx_tn5250 PRIVATE OpenSSL::SSL OpenSSL::Crypto)
+elseif(TN34XX_TLS_BACKEND STREQUAL "schannel")
+  target_link_libraries(tn34xx_tn5250 PRIVATE secur32 crypt32)
+endif()
 
 # --- TN5250 bridge: the workstation controller with TN5250 sessions --------
 add_library(tn34xx_bridge STATIC

@@ -1,5 +1,6 @@
 #include "host/host_config.hpp"
 
+#include "util/fingerprint.hpp"
 #include "util/strings.hpp"
 
 namespace tn34xx {
@@ -9,6 +10,18 @@ std::string Tn5250Config::validate() const {
     if (port == 0) return "tn5250 port must be non-zero";
     if (device_name.size() > 10) return "tn5250 device name is longer than 10 characters";
     if (!tls && (!ca_file.empty())) return "tn5250 ca_file is set but tls is disabled";
+    if (!tls_cert_sha256.empty()) {
+        Sha256Digest d;
+        if (!parse_sha256_fingerprint(tls_cert_sha256, d))
+            return "tn5250 tls_cert_sha256 must be 32 hex bytes, e.g. AB:CD:...; got '" + tls_cert_sha256 + "'";
+        if (!tls) return "tn5250 tls_cert_sha256 is set but tls is disabled";
+        if (tls_verify == TlsVerify::None)
+            return "tn5250 tls_cert_sha256 and tls_verify = \"none\" contradict each other; drop one";
+    }
+    if (tls_min_version == TlsVersion::Any) return "tn5250 tls_min_version must be ssl3, 1.0, 1.1, 1.2 or 1.3";
+    if (tls_max_version != TlsVersion::Any && tls_max_version < tls_min_version)
+        return format("tn5250 tls_min_version %s is newer than tls_max_version %s", tls_version_name(tls_min_version),
+                      tls_version_name(tls_max_version));
     for (const auto& kv : env)
         if (kv.first.empty()) return "tn5250 environment variable with empty name";
     return {};
@@ -32,10 +45,63 @@ std::string Tn5250Config::describe() const {
     std::string out = format("tn5250: %s:%u%s\n", host.c_str(), port, tls ? " (TLS)" : "");
     out += format("  terminal type %s, device name %s, codepage %s\n", terminal_type.empty() ? "(derived from model and display)" : terminal_type.c_str(),
                   device_name.empty() ? "(host assigned)" : device_name.c_str(), codepage.c_str());
-    if (tls) out += format("  verify %s%s\n", tls_verify ? "on" : "off",
-                           ca_file.empty() ? "" : (", CA " + ca_file).c_str());
+    if (tls) {
+        std::string how = tls_cert_sha256.empty() ? tls_verify_name(tls_verify) : "pinned " + tls_cert_sha256;
+        if (!ca_file.empty()) how += ", CA " + ca_file;
+        out += format("  verify %s\n", how.c_str());
+        out += format("  protocol %s to %s\n", tls_version_name(tls_min_version),
+                      tls_max_version == TlsVersion::Any ? "newest" : tls_version_name(tls_max_version));
+    }
     for (const auto& kv : env) out += format("  env %s=%s\n", kv.first.c_str(), kv.second.c_str());
     return out;
+}
+
+const char* tls_verify_name(TlsVerify v) {
+    switch (v) {
+    case TlsVerify::System: return "system";
+    case TlsVerify::None: return "none";
+    }
+    return "?";
+}
+
+bool parse_tls_verify(const std::string& text, TlsVerify& out) {
+    const std::string t = to_lower(trim(text));
+    if (t == "system" || t == "default" || t == "on" || t == "true" || t == "yes") out = TlsVerify::System;
+    else if (t == "none" || t == "insecure" || t == "off" || t == "false" || t == "no") out = TlsVerify::None;
+    else return false;
+    return true;
+}
+
+const char* tls_version_name(TlsVersion v) {
+    switch (v) {
+    case TlsVersion::Any: return "any";
+    case TlsVersion::Ssl3: return "ssl3";
+    case TlsVersion::Tls1_0: return "1.0";
+    case TlsVersion::Tls1_1: return "1.1";
+    case TlsVersion::Tls1_2: return "1.2";
+    case TlsVersion::Tls1_3: return "1.3";
+    }
+    return "?";
+}
+
+bool parse_tls_version(const std::string& text, TlsVersion& out) {
+    std::string t = to_lower(trim(text));
+    if (t.empty() || t == "any") { out = TlsVersion::Any; return true; }
+    if (t == "ssl3" || t == "sslv3" || t == "ssl3.0" || t == "3.0") { out = TlsVersion::Ssl3; return true; }
+    if (starts_with(t, "tlsv")) t = t.substr(4);
+    else if (starts_with(t, "tls")) t = t.substr(3);
+    if (t == "1" || t == "1.0" || t == "10") out = TlsVersion::Tls1_0;
+    else if (t == "1.1" || t == "11") out = TlsVersion::Tls1_1;
+    else if (t == "1.2" || t == "12") out = TlsVersion::Tls1_2;
+    else if (t == "1.3" || t == "13") out = TlsVersion::Tls1_3;
+    else return false;
+    return true;
+}
+
+void apply_station_tls(Tn5250Config& cfg, const StationConfig& station) {
+    TlsVersion v;
+    if (!station.tls_min_version.empty() && parse_tls_version(station.tls_min_version, v)) cfg.tls_min_version = v;
+    if (!station.tls_max_version.empty() && parse_tls_version(station.tls_max_version, v)) cfg.tls_max_version = v;
 }
 
 const char* twinax_host_kind_name(TwinaxHostKind kind) {
@@ -114,6 +180,11 @@ std::string TwinaxConfig::validate(unsigned max_sessions, int max_printers) cons
         seen |= 1u << st.address;
         if (st.device_name.size() > 10)
             return format("station %u: tn5250 device name is longer than 10 characters", st.address);
+        TlsVersion v;
+        if (!st.tls_min_version.empty() && (!parse_tls_version(st.tls_min_version, v) || v == TlsVersion::Any))
+            return format("station %u: tls_min_version must be ssl3, 1.0, 1.1, 1.2 or 1.3", st.address);
+        if (!st.tls_max_version.empty() && !parse_tls_version(st.tls_max_version, v))
+            return format("station %u: tls_max_version must be ssl3, 1.0, 1.1, 1.2, 1.3 or any", st.address);
     }
     if (list.size() > kMaxStationsPerBus)
         return format("%zu twinax stations configured, but a cable carries at most %u",

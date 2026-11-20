@@ -188,15 +188,6 @@ TEST_CASE("tn5250 records: header encode/decode, RFC 1205 message light example"
     CHECK_FALSE(decode_record({0x00, 0x05, 0x12}, back, err));
 }
 
-TEST_CASE("tn5250 client: TLS is refused until a TLS transport exists") {
-    Tn5250Config cfg;
-    cfg.host = "h";
-    cfg.tls = true;
-    std::string err;
-    CHECK(make_transport(cfg, err) == nullptr);
-    CHECK(err.find("TLS") != std::string::npos);
-}
-
 TEST_CASE("tn5250 terminal type: derived from model and display, overridable per station") {
     using tn34xx::DisplaySubtype;
     CHECK(derived_terminal_type("3477", DisplaySubtype::Color) == "IBM-3477-FC");
