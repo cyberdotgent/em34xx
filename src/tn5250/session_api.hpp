@@ -34,22 +34,35 @@ namespace tn5250 {
 // order (0x20 "normal" when there is none). `ext_primary` and `ext_color`
 // are the Write Extended Attribute values (FR 15.6.11.1/2; 0 = none).
 //
-// Extended attributes and the 3477: the Query Reply does not claim
-// extended primary or colour attribute support (capability byte 2 is 0),
-// so a conforming host does not send WEA, and the controller may ignore
-// ext_primary/ext_color and paint from `ch`/`attr` alone. The engine keeps
-// the planes because they cost little and make Save/Restore exact. If the
-// bridge ever drives the 3477's ECB planes (spec-3477-device-protocol.md
-// section 2), claim the support in Engine::query_reply() at the same time.
+// Extended attributes and the 3477. The 3477 has three extended character
+// buffers (spec-3477-device-protocol.md section 2: device address 60h ECB,
+// E0h Both; in extended mode each position is PS char + primary, text and
+// colour ECB), and the cell keeps one plane for each:
+//   ext_primary  primary ECB: highlighting, alternate character sets and
+//                graphics; from WEA type 01 (FR 15.6.11.1)
+//   ext_text     text ECB: word processing / text assist (the 3477 has a
+//                text-assist WCD bit); fed by the WP-mode data stream (WEA
+//                type 02, text-support structured fields FR 15.27.4), none
+//                of which the engine implements yet, so it stays 0
+//   ext_color    colour ECB: per-character colour; from WEA type 03
+//                (FR 15.6.11.2)
+// Decision: the Query Reply does NOT advertise extended attribute or text
+// support (capability bytes 2 and 4 stay 0) until the controller actually
+// drives the ECB; it paints in basic mode today. A conforming host then
+// sends no WEA and the planes stay 0. When the controller gains ECB
+// painting, set the matching bits in Engine::query_reply() in the same
+// change.
 struct Cell {
     uint8_t ch = 0x00;
     uint8_t attr = 0x20;
     uint8_t ext_primary = 0;
     uint8_t ext_color = 0;
+    uint8_t ext_text = 0;            // text ECB; always 0 today (see above)
 
     bool is_attribute() const { return ch >= 0x20 && ch <= 0x3F; }
     bool operator==(const Cell& o) const {
-        return ch == o.ch && attr == o.attr && ext_primary == o.ext_primary && ext_color == o.ext_color;
+        return ch == o.ch && attr == o.attr && ext_primary == o.ext_primary && ext_color == o.ext_color &&
+               ext_text == o.ext_text;
     }
     bool operator!=(const Cell& o) const { return !(*this == o); }
 };

@@ -39,3 +39,13 @@ if(EXISTS "${PROJECT_SOURCE_DIR}/roms/95f4171.bin" AND EXISTS "${PROJECT_SOURCE_
                    --rc "${CMAKE_CURRENT_SOURCE_DIR}/rc/3477-smoke.rc")
   set_tests_properties(rom_3477_smoke PROPERTIES LABELS "rom")
 endif()
+
+# TN5250 client (src/tn5250): negotiation, data stream, field editing.
+add_executable(tn34xx_tn5250_tests
+  unit_main.cpp
+  test_tn5250_negotiation.cpp
+  test_tn5250_datastream.cpp
+  test_tn5250_editing.cpp
+)
+target_link_libraries(tn34xx_tn5250_tests PRIVATE tn34xx_tn5250 tn34xx_warnings doctest::doctest)
+add_test(NAME tn5250 COMMAND tn34xx_tn5250_tests)
