@@ -34,6 +34,7 @@ struct ModelInfo {
     uint64_t clock_hz = 0;       // nominal CPU clock, used for pacing
     unsigned max_sessions = 1;   // twinax station addresses (sessions) the unit can answer on;
                                  // never more than TwinaxConfig::kMaxStationsPerBus (7)
+    unsigned max_printer_sessions = 0;  // of those, how many may be printer sessions
     std::vector<RomSpec> roms;
     std::vector<KnownBadRom> known_bad_roms;
     std::vector<std::string> notes;  // hypotheses and open questions

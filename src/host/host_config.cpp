@@ -102,7 +102,7 @@ std::vector<StationConfig> TwinaxConfig::effective_stations() const {
     return {st};
 }
 
-std::string TwinaxConfig::validate(unsigned max_sessions) const {
+std::string TwinaxConfig::validate(unsigned max_sessions, int max_printers) const {
     if (station_address > 6) return "twinax station address must be 0..6";
     if (!stations.empty() && station_address != 0)
         return "use either a station list or the single station address, not both";
@@ -121,6 +121,12 @@ std::string TwinaxConfig::validate(unsigned max_sessions) const {
     if (max_sessions && list.size() > max_sessions)
         return format("%zu twinax stations configured, but this terminal supports at most %u session(s)",
                       list.size(), max_sessions);
+    unsigned printers = 0;
+    for (const StationConfig& st : list) printers += st.type == StationType::Printer ? 1u : 0u;
+    if (max_printers >= 0 && printers > unsigned(max_printers))
+        return max_printers == 0 ? std::string("this terminal has no printer session")
+                                 : format("%u printer stations configured, but this terminal supports at most %d",
+                                          printers, max_printers);
     return {};
 }
 

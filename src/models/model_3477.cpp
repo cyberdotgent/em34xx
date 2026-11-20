@@ -70,6 +70,7 @@ public:
         info_.address_bits = 20;
         info_.clock_hz = 8000000;
         info_.max_sessions = 2;
+        info_.max_printer_sessions = 1;   // display + printer [doc PAI 14.0 via 3197; obs]
         info_.roms = {
             {"system ROM (C0000-DFFFF)", "95f4172.bin", 0x20000,
              "290a58cd5db6543957bdcb2c9e92efefd62a54e37bcd239d41d9bd9cdd6be1d0", 0xC0000},

@@ -107,6 +107,15 @@ TEST_CASE("station list from the command line") {
     CHECK(st[2].type == StationType::Display);
     CHECK(cfg.twinax.validate(4).empty());
     CHECK_FALSE(cfg.twinax.validate(2).empty());   // a 3477 has two sessions
+    CHECK(cfg.twinax.validate(4, 1).empty());
+    CHECK(cfg.twinax.validate(4, 0).find("no printer") != std::string::npos);   // a 3486
+
+    // A 3477: display + printer on its two sessions.
+    TwinaxConfig dp;
+    dp.stations = {StationConfig{0, StationType::Display, "", ""}, StationConfig{1, StationType::Printer, "PRT01", ""}};
+    CHECK(dp.validate(2, 1).empty());
+    dp.stations[0].type = StationType::Printer;
+    CHECK(dp.validate(2, 1).find("at most 1") != std::string::npos);
 
     const char* bad[] = {"tn34xx", "--station", "7:display"};
     AppConfig b;
