@@ -6,7 +6,9 @@
 //     current CS (if the address is inside that segment's 64 KiB window);
 //   - memory addresses in m/M/Z packets are linear (physical) addresses;
 //   - cs/ss/ds/es hold the real segment values.
-// "monitor <cmd>" in GDB runs a tn34xx monitor command and shows its output.
+// "monitor <cmd>" in GDB runs a tn34xx monitor command. Its output is
+// streamed to GDB as console-output ("O<hex>") packets while the command
+// runs, followed by a final "OK".
 #pragma once
 
 #include "net/socket.hpp"
@@ -48,6 +50,7 @@ private:
     std::string read_memory(uint32_t addr, uint32_t len);
     bool write_memory(uint32_t addr, const std::string& hex);
     std::string query(const std::string& packet);
+    std::string monitor_command(const std::string& hex_cmd, TcpSocket& client);
 
     Emulator& emu_;
     Monitor* monitor_;

@@ -10,6 +10,7 @@
 #include <memory>
 #include <mutex>
 #include <string>
+#include <thread>
 #include <vector>
 
 namespace tn34xx {
@@ -28,6 +29,12 @@ public:
 
     // Execute a command and return its output instead of printing it.
     std::string execute_captured(const std::string& line, bool& ok);
+
+    // Execute a command, handing its output to `sink` as it is produced
+    // (possibly in many small pieces) instead of printing it. Output from
+    // other threads while the command runs still goes to stdout.
+    using OutputSink = std::function<void(const std::string&)>;
+    bool execute_streamed(const std::string& line, const OutputSink& sink);
 
     // Run a script file. Returns false if a command failed or the script
     // could not be read. Stops early when "quit" is executed.
@@ -106,7 +113,8 @@ private:
     Emulator& emu_;
     std::recursive_mutex exec_mutex_;  // monitor prompt vs. gdb "monitor"
     std::vector<Command> commands_;
-    std::string* capture_ = nullptr;
+    const OutputSink* sink_ = nullptr;
+    std::thread::id sink_thread_;
     bool waiting_ = false;          // a command is blocked waiting for a stop
     bool quit_ = false;
     unsigned failures_ = 0;

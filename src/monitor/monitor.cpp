@@ -110,8 +110,8 @@ Monitor::~Monitor() = default;
 // Infrastructure
 
 void Monitor::out(const std::string& text) {
-    if (capture_) {
-        *capture_ += text;
+    if (sink_ && std::this_thread::get_id() == sink_thread_) {
+        (*sink_)(text);
         return;
     }
     std::fputs(text.c_str(), stdout);
@@ -158,13 +158,28 @@ bool Monitor::execute(const std::string& raw) {
 }
 
 std::string Monitor::execute_captured(const std::string& line, bool& ok) {
-    std::lock_guard<std::recursive_mutex> lock(exec_mutex_);
     std::string buf;
-    std::string* prev = capture_;
-    capture_ = &buf;
-    ok = execute(line);
-    capture_ = prev;
+    ok = execute_streamed(line, [&buf](const std::string& text) { buf += text; });
     return buf;
+}
+
+bool Monitor::execute_streamed(const std::string& line, const OutputSink& sink) {
+    std::lock_guard<std::recursive_mutex> lock(exec_mutex_);
+    const OutputSink* prev = sink_;
+    const std::thread::id prev_thread = sink_thread_;
+    sink_ = &sink;
+    sink_thread_ = std::this_thread::get_id();
+    bool ok;
+    try {
+        ok = execute(line);
+    } catch (...) {
+        sink_ = prev;
+        sink_thread_ = prev_thread;
+        throw;
+    }
+    sink_ = prev;
+    sink_thread_ = prev_thread;
+    return ok;
 }
 
 bool Monitor::run_script(const std::string& path) {

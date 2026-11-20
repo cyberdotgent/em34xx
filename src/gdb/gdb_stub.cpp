@@ -5,6 +5,7 @@
 #include "util/log.hpp"
 #include "util/strings.hpp"
 
+#include <algorithm>
 #include <chrono>
 #include <cstring>
 #include <vector>
@@ -57,6 +58,11 @@ const char kTargetXml[] = R"(<?xml version="1.0"?>
 )";
 
 constexpr unsigned kNumRegs = 32;
+
+// Advertised maximum packet size, and the most monitor output bytes sent in
+// one "O" packet (hex doubles it, so 2 * kMaxConsoleChunk + 1 < kPacketSize).
+constexpr unsigned kPacketSize = 0x4000;
+constexpr size_t kMaxConsoleChunk = 1024;
 
 unsigned reg_size(unsigned n) { return (n >= 16 && n < 24) ? 10 : 4; }
 
@@ -335,7 +341,7 @@ bool GdbStub::write_memory(uint32_t addr, const std::string& hex) {
 }
 
 std::string GdbStub::query(const std::string& p) {
-    if (starts_with(p, "qSupported")) return "PacketSize=4000;qXfer:features:read+;QStartNoAckMode+";
+    if (starts_with(p, "qSupported")) return format("PacketSize=%x;", kPacketSize) + "qXfer:features:read+;QStartNoAckMode+";
     if (p == "qAttached") return "1";
     if (p == "qC") return "QC1";
     if (p == "qfThreadInfo") return "m1";
@@ -351,17 +357,35 @@ std::string GdbStub::query(const std::string& p) {
         const std::string chunk = xml.substr(off, len);
         return (off + chunk.size() >= xml.size() ? "l" : "m") + chunk;
     }
-    if (starts_with(p, "qRcmd,")) {
-        std::vector<uint8_t> bytes;
-        if (!from_hex(p.substr(6), bytes)) return "E01";
-        const std::string cmd(bytes.begin(), bytes.end());
-        if (!monitor_) return to_hex(std::string("no monitor available\n"));
-        bool ok = true;
-        std::string output = monitor_->execute_captured(cmd, ok);
-        if (output.empty()) return "OK";
-        return to_hex(output);
-    }
     return {};
+}
+
+std::string GdbStub::monitor_command(const std::string& hex_cmd, TcpSocket& client) {
+    std::vector<uint8_t> bytes;
+    if (!from_hex(hex_cmd, bytes)) return "E01";
+    const std::string cmd(bytes.begin(), bytes.end());
+    if (!monitor_) return to_hex(std::string("no monitor available\n"));
+
+    // Stream the output as "O" packets of at most kMaxConsoleChunk bytes,
+    // flushing whenever a full chunk is pending; GDB prints each as it
+    // arrives. A command error is reported in the output text ("error:
+    // ...") and the reply is still OK: an "E" reply only makes GDB print
+    // "Protocol error with Rcmd".
+    std::string pending;
+    bool link_ok = true;
+    auto flush = [&](bool all) {
+        while (link_ok && (pending.size() >= kMaxConsoleChunk || (all && !pending.empty()))) {
+            const size_t n = std::min(pending.size(), kMaxConsoleChunk);
+            link_ok = send_packet(client, "O" + to_hex(pending.substr(0, n)));
+            pending.erase(0, n);
+        }
+    };
+    monitor_->execute_streamed(cmd, [&](const std::string& text) {
+        pending += text;
+        flush(false);
+    });
+    flush(true);
+    return "OK";
 }
 
 std::string GdbStub::handle(const std::string& p, TcpSocket& client, bool& detach) {
@@ -442,6 +466,7 @@ std::string GdbStub::handle(const std::string& p, TcpSocket& client, bool& detac
     case 'T':
         return "OK";
     case 'q':
+        if (starts_with(p, "qRcmd,")) return monitor_command(p.substr(6), client);
         return query(p);
     case 'Q':
         if (p == "QStartNoAckMode") {
