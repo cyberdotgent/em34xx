@@ -2,6 +2,7 @@
 #include "fake_station.hpp"
 
 #include "host/wsc/device_commands.hpp"
+#include "host/wsc/idle_host.hpp"
 #include "host/wsc/keyboard_map.hpp"
 #include "host/wsc/link_scheduler.hpp"
 #include "host/wsc/screen_writer.hpp"
@@ -722,4 +723,17 @@ TEST_CASE("tn5250 session adapter drives a station") {
     CHECK(e.keys[0] == tn5250::Key::FieldAdvance);
     CHECK(e.keys[1] == tn5250::Key::Help);
     REQUIRE(b.run_until([&] { return f.cell(1, 3) == 0x81; }));
+}
+
+TEST_CASE("local controller: on line with a local screen, typed characters echo") {
+    Bench b({display_at(0)});
+    b.host = std::make_unique<tn34xx::wsc::LocalController>(std::vector<StationConfig>{display_at(0)});
+    FakeStation f(0);
+    b.plug(f);
+    REQUIRE(b.run_until([&] { return b.host->station(0)->state() == StationState::Online; }));
+    b.run_for(100 * kMs);
+    CHECK((f.indicators() & 0x02) == 0);   // keyboard not inhibited
+    f.press(0x1C);                          // a
+    REQUIRE(b.run_until([&] { return f.cell(0, 0) == 0x81; }));
+    CHECK(f.cursor() == 1);
 }

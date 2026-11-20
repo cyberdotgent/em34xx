@@ -66,6 +66,7 @@ enum class TwinaxHostKind {
     None,     // nothing on the line: the terminal sees no controller
     Script,   // frames are injected from the monitor ("twinax send")
     Tn5250,   // bridge to a TN5250 session (not implemented yet)
+    Wsc,      // the workstation controller with a local screen, no TN5250 session
 };
 
 const char* twinax_host_kind_name(TwinaxHostKind kind);

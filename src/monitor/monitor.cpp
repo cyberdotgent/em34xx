@@ -958,7 +958,7 @@ bool Monitor::cmd_twinax(const std::vector<std::string>& a) {
         }
         if (msg.empty()) return fail("usage: twinax send data/addr ...");
         script->queue(msg);
-        out(format("queued %zu frame(s); no link hardware is modelled yet, so nothing consumes them\n", msg.size()));
+        out(format("queued %zu frame(s); the link engine sends them when it runs\n", msg.size()));
         return true;
     }
     if (sub == "recv") {

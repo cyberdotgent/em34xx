@@ -109,6 +109,7 @@ const char* twinax_host_kind_name(TwinaxHostKind kind) {
     case TwinaxHostKind::None: return "none";
     case TwinaxHostKind::Script: return "script";
     case TwinaxHostKind::Tn5250: return "tn5250";
+    case TwinaxHostKind::Wsc: return "wsc";
     }
     return "?";
 }
@@ -118,6 +119,7 @@ bool parse_twinax_host_kind(const std::string& text, TwinaxHostKind& out) {
     if (t == "none") out = TwinaxHostKind::None;
     else if (t == "script") out = TwinaxHostKind::Script;
     else if (t == "tn5250") out = TwinaxHostKind::Tn5250;
+    else if (t == "wsc") out = TwinaxHostKind::Wsc;
     else return false;
     return true;
 }

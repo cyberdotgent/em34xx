@@ -109,7 +109,7 @@ bool load_config_file(const std::string& path, AppConfig& cfg, std::string& erro
     }
     if (auto* t = root["twinax"].as_table()) {
         if (get(*t, "host", s) && !parse_twinax_host_kind(s, cfg.twinax.host)) {
-            error = path + ": twinax.host must be none, script or tn5250";
+            error = path + ": twinax.host must be none, script, tn5250 or wsc";
             return false;
         }
         if (get(*t, "station_address", i)) cfg.twinax.station_address = unsigned(i);
@@ -253,7 +253,8 @@ Debugging:
       --log-file FILE       also write log output to FILE
 
 Host link (configuration only; the TN5250 bridge is not implemented yet):
-      --twinax-host KIND    none (default), script, tn5250
+      --twinax-host KIND    none (default), script, tn5250, wsc (controller
+                            with a local screen, no TN5250 session)
       --station ADDR[:TYPE[:DEVNAME]]
                             a station address the terminal answers on, 0..6;
                             TYPE display (default) or printer; repeatable,
@@ -385,7 +386,7 @@ bool parse_command_line(int argc, char** argv, AppConfig& cfg, std::string& erro
         else if (a == "--log-file") { if (!need(cfg.log_file)) return false; }
         else if (a == "--twinax-host") {
             if (!need(v)) return false;
-            if (!parse_twinax_host_kind(v, cfg.twinax.host)) { error = "--twinax-host must be none, script or tn5250"; return false; }
+            if (!parse_twinax_host_kind(v, cfg.twinax.host)) { error = "--twinax-host must be none, script, tn5250 or wsc"; return false; }
         } else if (a == "--station-address") {
             if (!need(v)) return false;
             uint64_t n;

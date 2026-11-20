@@ -1,5 +1,6 @@
 #include "host/twinax_link.hpp"
 
+#include "host/wsc/idle_host.hpp"
 #include "util/log.hpp"
 #include "util/strings.hpp"
 
@@ -114,6 +115,8 @@ std::unique_ptr<TwinaxHost> make_twinax_host(const TwinaxConfig& twinax, const T
         if (tn5250_factory) return tn5250_factory(twinax, tn5250, error);
         LOG_WARN("tn5250", "the TN5250 bridge is not linked in; the line will stay idle");
         return std::make_unique<Tn5250TwinaxHost>(tn5250);
+    case TwinaxHostKind::Wsc:
+        return wsc::make_local_controller(twinax, error);
     }
     error = "unknown twinax host kind";
     return nullptr;

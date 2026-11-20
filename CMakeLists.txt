@@ -94,6 +94,7 @@ add_library(tn34xx_core STATIC
   src/host/host_config.cpp
   src/host/twinax_link.cpp
   src/host/wsc/device_commands.cpp
+  src/host/wsc/idle_host.cpp
   src/host/wsc/keyboard_map.cpp
   src/host/wsc/link_scheduler.cpp
   src/host/wsc/screen_writer.cpp

@@ -229,6 +229,23 @@ The table for the **IBM Enhanced keyboard** is typed in from PAI fig. 147
 national layouts are not typed in yet: their keys reach the engine as
 "unmapped" with the raw scan code.
 
+## The controller without a host session
+
+`--twinax-host wsc` runs the same controller (link scheduler and one
+station state machine per configured address) with a local screen in place
+of the TN5250 session (`src/host/wsc/idle_host.*`). Discovery,
+identification, initialisation and polling are exactly those of the bridge;
+each display station then shows a blank 24x80 screen with the keyboard
+unlocked, typed characters are echoed at the cursor and an AID key clears
+the screen. It brings a terminal on line without an IBM i system, which is
+how the 3477 bring-up checks its link hardware:
+
+```
+build/debug/tn34xx --model 3477 --nvram 3477.nvram --twinax-host wsc
+```
+
+`twinax status` shows each station's state, identity and counters.
+
 ## Running the bridge
 
 ```
