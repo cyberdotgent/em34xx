@@ -30,20 +30,20 @@ the two Twinax channels the even byte is channel 0 and the odd byte channel 1
 
 | Address | Dir | Function | Status |
 | --- | --- | --- | --- |
-| `20000/1` | W | Twinax channel command (ch 0 / ch 1) | Observed access, hypothesis meaning. Stub. |
+| `20000/1` | R/W | Twinax channel control (ch 0 / ch 1), see [Twinax engine](#twinax-engine-20000-20009-20015-20020-2002b) | Observed access, hypothesis meaning. |
 | `20002/3` | R | Interrupt request register (16 bits); also read as per-channel status | Observed. |
 | `20002/3` | W | Acknowledge: write 1 to clear | Hypothesis, strong (`FFFF` clears all at init; handlers write their own bit). |
 | `20004/5` | R/W | Interrupt enable mask, 1 = enabled; readable | Observed use; bit map hypothesis. |
 | `20006` | W | Written `FF` at init; function unknown | Stored. |
 | `20007` | R/W | Bit 0: keyboard interrupt enable | Observed. |
-| `20008/9` | W | Twinax configuration (station/mode; `20009` bit 7 = engine run) | Hypothesis. Stub. |
+| `20008/9` | W | Twinax station addresses (`20008`) and engine control (`20009`), see below | Observed use, hypothesis meaning. |
 | `2000A` | R | Configuration straps, see below | Observed. |
 | `2000A` | W | Timed output latch, function unknown | Stored. |
 | `20010` | W | Status/alarm latch: bit 7 = alarm tone on, bits 6-0 = tone setting; `9B` while booting or after a fatal error | Hypothesis, strong. Tone changes are logged (`sound` category). |
 | `20011` | W | Alarm companion | Stored. |
 | `20012-20014` | | Keyboard interface, see below | Observed. |
-| `20015` | W | Bit 1 = speaker gate (click/beep codes); bit 0 set at end of POST; bits 6, 3, 2 = Twinax wrap/loop-back mode | Hypothesis. Wrap mode not modelled. |
-| `20020-2002F` | R/W | Twinax engine: transmit DMA address (`20020`) and count (`20022`), frame/pattern registers (`20024-28`), receiver data/status (`2002B`) | Hypothesis. Plain storage. |
+| `20015` | W | Bit 1 = speaker gate (click/beep codes); bit 0 set at end of POST; bits 7, 6, 4, 3, 2 = Twinax loop-back test control | Hypothesis. |
+| `20020-2002F` | R/W | Twinax engine loop-back test registers: transmit DMA address (`20020`) and count (`20022`), frame generator (`20024-28`), receive latch (`2002B`) | Hypothesis. |
 | `20030` | W | Printer port data | Hypothesis, strong. Stub. |
 | `20031` | R/W | Printer port control (bit 0 strobe, bit 1 init) / status (low nibble) | Hypothesis, strong. Stub: reads back the last control value. |
 
@@ -161,22 +161,129 @@ exit. Without an image the EEPROM is **ephemeral**: blank at start,
 discarded at exit. The monitor shows its state in `info` and offers
 `eeprom`, `eeprom dump` and `eeprom save [FILE]`.
 
+## Twinax engine (`20000-20009`, `20015`, `20020-2002B`)
+
+Implemented in `src/devices/ibm3477/twinax_engine.*` as a generic engine
+with N station channels (two on the 3477). All entries are **hypotheses**
+built from the firmware's register traffic and the 5250 station protocol
+(documented: IBM 5250 Product Attachment Information), unless marked
+observed. With this model the POST communications test (`COM`) passes
+(observed).
+
+### RAM structures (the engine is a bus master)
+
+The engine's tables live in ordinary RAM, which the firmware fills and the
+POST RAM test covers (observed). Buffer addresses are 16-bit linear
+addresses (first 64 KiB).
+
+| RAM | Contents |
+| --- | --- |
+| `0060-007F` | Command-class table, indexed by `command & 1F`: `00` queue, `40` write activate, `80` poll, `C0` read activate. The normal setting gives Read Activate (`00`) `C0`, Activate Write (`01`) `40` and Poll (`10`) `80` (documented command codes); the self-test assigns other codes on purpose (observed). |
+| `0080-00FF` | Channel 0 programs, 32 bytes each, one per class (`class >> 6`) |
+| `0100-017F` | Channel 1 programs |
+| `0180-018F` | Channel 0 descriptor |
+| `0190-019F` | Channel 1 descriptor |
+
+Descriptor fields: `+0/+1` activate buffer address, `+2/+3` activate count,
+`+4` activate mode (0 = not armed), `+5` free bytes in the command queue,
+`+6/+7` queue write address, `+8` station address and fill, `+9` mode,
+`+A` function control (bit 2 or 3 set = two-frame poll response), `+B`
+polled flag (the poll program clears it), `+C` poll status (exception code
+in bits 3-1, `0E` = power-on), `+D` poll byte 2 (keyboard scan code),
+`+E` latched activate mode, `+F` zero source.
+
+### Programs
+
+For each message addressed to an enabled channel the engine runs the
+channel's program for the command's class, one byte per step, with one
+accumulator and a 16-byte register file shared by all channels:
+
+| Opcode | Action |
+| --- | --- |
+| `2r` | register `r` := accumulator |
+| `3n` | descriptor byte `n` := accumulator |
+| `4r` | accumulator := register `r` |
+| `5n` | accumulator := descriptor byte `n` |
+| `8x`/`9x` flags | `08`: if the accumulator is 0, raise invalid activate (`20`) and stop; `02`: queue mode (store the command frame too, raise `02` and `08` when done); `10`: raise activate done (`04`); `04`: end |
+| `A1` | transmit `r2/r3` bytes from RAM at `r0/r1` as the response (last frame address 7) |
+| `A2` | store the message's data frames at `r0/r1`, at most `r2/r3` bytes (more raise overrun `10`); `r0-r3` are updated |
+| `C0` | start the response; for the poll class it is the status response |
+
+Any data transfer sets the channel's busy latch.
+
+### Registers
+
+| Address | Function |
+| --- | --- |
+| `20000/1` W | Bit 7: drop busy. Bit 4: a new poll byte 2 was posted (the next poll flips the response level). |
+| `20000/1` R | Bit 7: busy latch. Bit 3: program running (never seen set here). |
+| `20008` | Station addresses: channel 0 bits 2-0, channel 1 bits 5-3. |
+| `20009` | Bit 1/2: channel 0/1 enable. Bit 7: engine run (0 = held; held, nothing is taken from the line). Bits 3-6 are written per channel but have no modelled effect. |
+| `20015` | Bit 6: loop-back (line disconnected). Bits 3/2: transmit path; while loop-back is on, every write with bit 3 or 2 set sends the frame generator's message. Bit 4: send it with a parity error. Bit 7 (or `20025` bit 5): the message comes from the transmit DMA. |
+| `20020/1` | Transmit DMA address, `20022/3` count. |
+| `20024` | Frame generator: bits 2-0 = address of the first frame. |
+| `20025` | Bit 5: DMA message. Bit 2 or 3: two frames (else one). |
+| `20026` | First frame data (command). `20027`: second frame data (address 7). `20028`: written with the same value as `20027`; no modelled effect. |
+| `2002B` R | Loop-back receive latch: data of the last frame on the looped line (the station's response, or the last transmitted byte when nothing answers). |
+
+### Channel events
+
+Request bits in the gate array (`20002` for channel 0, `20003` for
+channel 1; see [Interrupts](#interrupts)): `01` poll response sent (vector
+`07h`/`08h`), `02` command queued, `04` activate done, `08` end of a queued
+message, `10` overrun, `20` invalid activate, `40` line parity error (vectors
+`09h`/`0Ah`).
+
+### Poll response
+
+Status byte: bit 7 busy, bit 6 line parity error, bit 5 toggles on every
+response (the self-test checks this), bits 4-1 from descriptor `+C`, bit 0
+response level. Busy = the busy latch or any unacknowledged request bit of
+the channel (this makes the self-test's second poll read busy, observed
+requirement). A poll with bit 6 (`40`) resets the line parity error first.
+After a parity error the channel ignores everything but polls. With `+A`
+bits 2-3 clear the response is one frame with address 7 (power-on, before
+Set Mode, documented); otherwise two frames: status with the station
+address, then byte 2 (register 7 for channel 0, 8 for channel 1) with
+address 7.
+
+### Line timing
+
+The line runs at 1 Mbit/s: a message takes about 8 + 16 x frames bit times,
+the station answers 45 bit times after the end of the command (documented:
+45 +- 15 us), all counted in CPU clocks from the model's clock. The engine
+follows the `TwinaxHost` contract: it takes a message only when the line is
+idle and the engine runs, and reports either the response or
+`no_response()`. Loop-back messages are processed at once.
+
+### Bring-up transcript (script host)
+
+Observed, firmware past POST with the failed display test skipped by hand
+and a blank EEPROM, `--twinax-host script`:
+
+```
+twinax send 30/0      # Poll with ACK to station 0
+twinax recv           # no messages from the station
+twinax status         # 1 message(s) queued, 0 delivered
+```
+
+The firmware is in Offline Setup and leaves the engine held (`20009`
+bit 7 = 0), so the message is never taken from the line; this is the
+expected behaviour of a held engine. Per the model, once the firmware runs
+the engine with station 0 configured, the same poll is answered with one
+frame `0e/7` (power-on exception, not busy) until Set Mode; after
+`13/0 00/7` and the firmware's handling, polls are answered with two frames
+`xx/0 byte2/7`.
+
 ## Boot progress with real devices (no forced results)
 
 Observed with `--display green`, an ephemeral EEPROM and no Twinax device:
 
 1. Reset, register-only RAM test, ROM checksums, strap decoding.
-2. POST tests: RAM passes, then the communications loop-back test (error
-   `COM`) fails and POST stops with the alarm tone on (`20010` = `9B`) and
-   the CPU halted. This is expected until the Twinax engine is modelled.
-
-What the `COM` test needs from the Twinax engine (hypothesis from the
-register traffic): with wrap mode selected in `20015`, a transmit DMA of a
-short buffer (address `20020`, count `20022`) looped back to the receiver,
-which writes the received bytes to RAM through the channel's receive
-descriptor and updates the descriptor's status and count; the last byte is
-also visible in `2002B`. A link device that implements the wrap path at
-`20000-2002F` (hook: `Ibm3477TwinaxPort`) should get POST past `COM`.
+2. POST tests: RAM passes and the communications loop-back test (`COM`)
+   passes with the Twinax engine model (observed). POST then stops at the
+   display test (`VDO`) with the alarm tone on (`20010` = `9B`) and the CPU
+   halted.
 
 Later stages, observed only by letting the failed tests continue from the
 monitor (bring-up exploration, not a product setting):
@@ -203,8 +310,9 @@ monitor (bring-up exploration, not a product setting):
 
 ## Next steps
 
-1. Twinax engine: the wrap/loop-back path for POST, then the link to
-   `TwinaxHost` (a polling controller is enough for the boot screens).
+1. Twinax engine: check the poll, Set Mode and activate handshake against
+   the running firmware once it gets past Offline Setup (needs a valid
+   setup EEPROM).
 2. Monitor sense nibble in `2012F` for the display test.
 3. Confirm the strap/display-type mapping and the CPU type and clock on a
    board.
