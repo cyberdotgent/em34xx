@@ -351,6 +351,7 @@ void Monitor::register_commands() {
     add("speed", {}, "[percent|max]", "show or set emulation speed", [this](A a) { return cmd_speed(a); });
     add("screenshot", {}, "file.bmp|file.ppm [raw]", "save the display (aspect-corrected unless raw)", [this](A a) { return cmd_screenshot(a); });
     add("twinax", {}, "status|send f/a ...|recv", "inspect or drive the Twinax line", [this](A a) { return cmd_twinax(a); });
+    add("key", {}, "[+|-]name ...", "press and release host keys (HID names, e.g. enter f3 a 0x28)", [this](A a) { return cmd_key(a); });
     add("eeprom", {"nvram"}, "[dump|save [file]]", "show, dump or save the setup EEPROM", [this](A a) { return cmd_eeprom(a); });
     add("assert", {}, "expr [message]", "fail the script if expr is zero", [this](A a) { return cmd_assert(a); });
     add("echo", {}, "text", "print text", [this](A a) { return cmd_echo(a); });
@@ -967,6 +968,64 @@ bool Monitor::cmd_twinax(const std::vector<std::string>& a) {
         return true;
     }
     return fail("usage: twinax status|send|recv");
+}
+
+namespace {
+
+// Host key names for the key command, as USB HID usages (what the window
+// front end sends).
+bool parse_host_key(const std::string& name, uint32_t& usage) {
+    const std::string n = to_lower(name);
+    if (n.size() == 1 && n[0] >= 'a' && n[0] <= 'z') { usage = 0x04 + uint32_t(n[0] - 'a'); return true; }
+    if (n.size() == 1 && n[0] >= '1' && n[0] <= '9') { usage = 0x1E + uint32_t(n[0] - '1'); return true; }
+    if (n == "0") { usage = 0x27; return true; }
+    if (n.size() >= 2 && n[0] == 'f' && n[1] != 'f') {
+        uint64_t f = 0;
+        if (parse_uint(n.substr(1), f, 10) && f >= 1 && f <= 24) {
+            usage = f <= 12 ? 0x3A + uint32_t(f - 1) : 0x68 + uint32_t(f - 13);
+            return true;
+        }
+    }
+    static const struct { const char* name; uint32_t usage; } names[] = {
+        {"enter", 0x28}, {"return", 0x28}, {"esc", 0x29}, {"escape", 0x29}, {"backspace", 0x2A},
+        {"tab", 0x2B}, {"space", 0x2C}, {"minus", 0x2D}, {"equals", 0x2E}, {"comma", 0x36},
+        {"period", 0x37}, {"slash", 0x38}, {"capslock", 0x39}, {"insert", 0x49}, {"home", 0x4A},
+        {"pageup", 0x4B}, {"delete", 0x4C}, {"end", 0x4D}, {"pagedown", 0x4E}, {"right", 0x4F},
+        {"left", 0x50}, {"down", 0x51}, {"up", 0x52}, {"kpenter", 0x58}, {"lctrl", 0xE0},
+        {"lshift", 0xE1}, {"lalt", 0xE2}, {"rctrl", 0xE4}, {"rshift", 0xE5}, {"ralt", 0xE6},
+    };
+    for (const auto& k : names) {
+        if (n == k.name) { usage = k.usage; return true; }
+    }
+    uint64_t v = 0;
+    if (n.size() > 2 && n[0] == '0' && n[1] == 'x' && parse_uint(n.substr(2), v, 16) && v <= 0xFFFF) {
+        usage = uint32_t(v);
+        return true;
+    }
+    return false;
+}
+
+} // namespace
+
+bool Monitor::cmd_key(const std::vector<std::string>& a) {
+    if (a.size() < 2) return fail("usage: key [+|-]name ...  (+ press only, - release only)");
+    std::vector<HostKeyEvent> events;
+    for (size_t i = 1; i < a.size(); ++i) {
+        std::string name = a[i];
+        int mode = 0;   // 0 press and release, 1 press, 2 release
+        if (name.size() > 1 && (name[0] == '+' || name[0] == '-')) {
+            mode = name[0] == '+' ? 1 : 2;
+            name = name.substr(1);
+        }
+        uint32_t usage = 0;
+        if (!parse_host_key(name, usage)) return fail("unknown key '" + name + "'");
+        if (mode != 2) events.push_back(HostKeyEvent{usage, true, name});
+        if (mode != 1) events.push_back(HostKeyEvent{usage, false, name});
+    }
+    emu_.with_machine([&](Machine& m) {
+        for (const HostKeyEvent& ev : events) m.key_event(ev);
+    });
+    return true;
 }
 
 bool Monitor::cmd_assert(const std::vector<std::string>& a) {

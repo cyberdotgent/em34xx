@@ -111,6 +111,7 @@ private:
     bool cmd_speed(const std::vector<std::string>& a);
     bool cmd_screenshot(const std::vector<std::string>& a);
     bool cmd_twinax(const std::vector<std::string>& a);
+    bool cmd_key(const std::vector<std::string>& a);
     bool cmd_assert(const std::vector<std::string>& a);
     bool cmd_echo(const std::vector<std::string>& a);
     bool cmd_source(const std::vector<std::string>& a);
