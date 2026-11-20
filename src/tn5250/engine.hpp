@@ -118,6 +118,8 @@ public:
     KeyResult key_function(Key key) override;
     KeyResult key_aid(Aid aid) override;
     void set_record_sink(RecordSink sink) override { sink_ = std::move(sink); }
+    void set_device_ready(bool ready) override;
+    bool device_ready() const { return device_ready_; }
 
     // Inspection, for tests and the probe.
     const std::vector<Field>& fields() const { return fields_; }
@@ -189,6 +191,7 @@ private:
 
     // Keyboard state (FR 16.1).
     bool system_available_ = false;
+    bool device_ready_ = true;
     bool locked_ = true;
     bool insert_ = false;
     bool blink_ = false;

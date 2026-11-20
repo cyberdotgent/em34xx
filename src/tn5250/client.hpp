@@ -70,6 +70,7 @@ public:
     KeyResult key_function(Key key) override { return engine_.key_function(key); }
     KeyResult key_aid(Aid aid) override { return engine_.key_aid(aid); }
     void set_record_sink(RecordSink sink) override;
+    void set_device_ready(bool ready) override { engine_.set_device_ready(ready); }
 
 private:
     void run();

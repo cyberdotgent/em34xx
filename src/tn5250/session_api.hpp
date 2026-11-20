@@ -33,6 +33,14 @@ namespace tn5250 {
 // this position, i.e. the nearest attribute byte at or before it in reading
 // order (0x20 "normal" when there is none). `ext_primary` and `ext_color`
 // are the Write Extended Attribute values (FR 15.6.11.1/2; 0 = none).
+//
+// Extended attributes and the 3477: the Query Reply does not claim
+// extended primary or colour attribute support (capability byte 2 is 0),
+// so a conforming host does not send WEA, and the controller may ignore
+// ext_primary/ext_color and paint from `ch`/`attr` alone. The engine keeps
+// the planes because they cost little and make Save/Restore exact. If the
+// bridge ever drives the 3477's ECB planes (spec-3477-device-protocol.md
+// section 2), claim the support in Engine::query_reply() at the same time.
 struct Cell {
     uint8_t ch = 0x00;
     uint8_t attr = 0x20;
@@ -81,7 +89,18 @@ struct Indicators {
     bool cursor_blink = false;       // WTD CC1 / error state cursor blink
     ErrorState error = ErrorState::None;
     uint16_t error_code = 0;         // operator error code (BCD-style, e.g. 0x0005)
-    bool system_request = false;     // Sys Req line active
+    bool system_request = false;     // Sys Req line active (not used yet: Sys Req
+                                     // is sent to the host at once, RFC 1205 4.3)
+    // Keyboard clicker (FR 16.1): on in normal unlocked state, off when
+    // locked or in an error state.
+    bool clicker = false;
+    // Type-ahead (FR 16.3.1) is not implemented; keys typed while locked
+    // are ignored, so this stays false. TODO(type-ahead): buffer keys while
+    // locked and drive the 3477 Type-Ahead indicator from it.
+    bool type_ahead = false;
+    // Caps Lock is not session state: the controller owns shift/caps
+    // (it maps scan codes to EBCDIC) and drives the 3477 Caps Lock
+    // indicator itself.
 };
 
 struct ScreenSnapshot {
@@ -118,7 +137,11 @@ enum class Aid : uint8_t {
     QueryReply = 0x88,        // inbound only
 };
 // F1..F24 as an Aid; n outside 1..24 gives Aid::None.
-Aid function_key_aid(int n);
+inline Aid function_key_aid(int n) {
+    if (n >= 1 && n <= 12) return Aid(0x30 + n);
+    if (n >= 13 && n <= 24) return Aid(0xB0 + (n - 12));
+    return Aid::None;
+}
 
 // Non-AID operator functions (FR 16.2.2-16.3).
 enum class Key : uint8_t {
@@ -146,14 +169,41 @@ enum class Key : uint8_t {
     SysReq,
 };
 
-const char* key_name(Key k);
+inline const char* key_name(Key k) {
+    switch (k) {
+    case Key::FieldExit: return "FieldExit";
+    case Key::FieldPlus: return "Field+";
+    case Key::FieldMinus: return "Field-";
+    case Key::FieldAdvance: return "FieldAdvance";
+    case Key::FieldBackspace: return "FieldBackspace";
+    case Key::CursorUp: return "Up";
+    case Key::CursorDown: return "Down";
+    case Key::CursorLeft: return "Left";
+    case Key::CursorRight: return "Right";
+    case Key::Backspace: return "Backspace";
+    case Key::Home: return "Home";
+    case Key::NewLine: return "NewLine";
+    case Key::Insert: return "Insert";
+    case Key::Delete: return "Delete";
+    case Key::EraseEof: return "EraseEOF";
+    case Key::EraseInput: return "EraseInput";
+    case Key::Dup: return "Dup";
+    case Key::FieldMark: return "FieldMark";
+    case Key::Reset: return "Reset";
+    case Key::Help: return "Help";
+    case Key::Attention: return "Attention";
+    case Key::SysReq: return "SysReq";
+    }
+    return "?";
+}
 
 // What the engine did with a key, so the controller can sound the alarm or
 // repaint selectively.
 enum class KeyResult : uint8_t {
     Accepted,          // state changed or an AID/signal was sent
     Ignored,           // e.g. data key while the keyboard is locked
-    Error,             // operator error posted (see Indicators::error_code)
+    Error,             // operator error posted (see Indicators::error_code);
+                       // an alarm has been queued for take_alarms()
 };
 
 // ---------------------------------------------------------------------------
@@ -210,8 +260,11 @@ public:
     // Region changed since the last call (cells only; a size change marks
     // the whole screen). Clears the accumulated region.
     virtual Rect take_dirty() = 0;
-    // Number of alarms requested by the host (WTD CC1) or by operator
-    // errors since the last call.
+    // Number of alarms requested since the last call. Two sources: WTD
+    // CC1 "sound alarm" (FR Table 44), and every operator error the engine
+    // posts (one alarm per KeyResult::Error), as a 5494 sounds the alarm on
+    // entering pre-help error state. The controller turns each into a
+    // device alarm.
     virtual unsigned take_alarms() = 0;
     virtual void snapshot(ScreenSnapshot& out) const = 0;
 
@@ -227,6 +280,37 @@ public:
     // replaced (for example by a test harness).
     using RecordSink = std::function<void(const Record&)>;
     virtual void set_record_sink(RecordSink sink) = 0;
+
+    // --- device presence ---
+    // The controller reports whether the display station answers on the
+    // cable. TN5250 has no power-on/off notification for a display (SNA's
+    // LUSTAT does not exist on telnet), so the host is not told; the
+    // session stays up. On ready-after-lost the engine marks the whole
+    // screen dirty and bumps the generation so the controller repaints.
+    // TODO(device-lost policy): optionally end the telnet session after a
+    // configurable time without the device, so the host frees the job.
+    virtual void set_device_ready(bool ready) { (void)ready; }
+};
+
+// ---------------------------------------------------------------------------
+// Printer stations (not implemented)
+//
+// TODO(printer): a TN5250 printer session (RFC 4777 sections 8-10:
+// terminal type IBM-3812-1 etc., the startup response record, SCS data in
+// Print records, and the client's acknowledgement / error records). The
+// shape the controller would consume:
+class PrinterSession {
+public:
+    virtual ~PrinterSession() = default;
+    virtual void pump() = 0;
+    // Next chunk of SCS data for the printer; false if none is queued.
+    virtual bool take_scs(std::vector<uint8_t>& out) = 0;
+    // The printer accepted everything handed out so far.
+    virtual void acknowledge() = 0;
+    // The printer reported a problem (intervention required, paper out...);
+    // `code` is the 5250 printer status to forward to the host.
+    virtual void report_status(uint16_t code) = 0;
+    virtual void set_device_ready(bool ready) = 0;
 };
 
 } // namespace tn5250

@@ -102,40 +102,6 @@ constexpr uint8_t kImageVersion = 1;
 
 } // namespace
 
-Aid function_key_aid(int n) {
-    if (n >= 1 && n <= 12) return Aid(0x30 + n);
-    if (n >= 13 && n <= 24) return Aid(0xB0 + (n - 12));
-    return Aid::None;
-}
-
-const char* key_name(Key k) {
-    switch (k) {
-    case Key::FieldExit: return "FieldExit";
-    case Key::FieldPlus: return "Field+";
-    case Key::FieldMinus: return "Field-";
-    case Key::FieldAdvance: return "FieldAdvance";
-    case Key::FieldBackspace: return "FieldBackspace";
-    case Key::CursorUp: return "Up";
-    case Key::CursorDown: return "Down";
-    case Key::CursorLeft: return "Left";
-    case Key::CursorRight: return "Right";
-    case Key::Backspace: return "Backspace";
-    case Key::Home: return "Home";
-    case Key::NewLine: return "NewLine";
-    case Key::Insert: return "Insert";
-    case Key::Delete: return "Delete";
-    case Key::EraseEof: return "EraseEOF";
-    case Key::EraseInput: return "EraseInput";
-    case Key::Dup: return "Dup";
-    case Key::FieldMark: return "FieldMark";
-    case Key::Reset: return "Reset";
-    case Key::Help: return "Help";
-    case Key::Attention: return "Attention";
-    case Key::SysReq: return "SysReq";
-    }
-    return "?";
-}
-
 EngineOptions EngineOptions::for_terminal_type(const std::string& ttype) {
     EngineOptions o;
     // RFC 1205 terminal types look like IBM-tttt-mm.
@@ -220,6 +186,7 @@ Indicators Engine::indicators() const {
     i.cursor_blink = blink_ || error_ != ErrorState::None;
     i.error = error_;
     i.error_code = error_code_;
+    i.clicker = !locked_ && error_ == ErrorState::None;
     return i;
 }
 
@@ -243,6 +210,15 @@ void Engine::snapshot(ScreenSnapshot& out) const {
     out.cursor_col = cursor_col();
     out.indicators = indicators();
     out.generation = generation_;
+}
+
+void Engine::set_device_ready(bool ready) {
+    if (ready && !device_ready_) {
+        dirty_.add(0, 0);
+        dirty_.add(rows_ - 1, cols_ - 1);
+        changed();
+    }
+    device_ready_ = ready;
 }
 
 void Engine::set_system_available(bool on) {
