@@ -28,7 +28,7 @@ bool is_monochrome(DisplaySubtype s) { return s != DisplaySubtype::Color; }
 
 uint32_t phosphor_color(DisplaySubtype s) {
     switch (s) {
-    case DisplaySubtype::Green: return 0xFF33FF66u;       // P39-like green
+    case DisplaySubtype::Green: return 0xFF66FFB0u;       // mint green, measured on a real 3486 tube
     case DisplaySubtype::Amber: return 0xFFFFB000u;       // P134-like amber
     case DisplaySubtype::PaperWhite: return 0xFFE8E8DCu;  // P4-like, slightly warm
     case DisplaySubtype::Color: return 0xFFFFFFFFu;

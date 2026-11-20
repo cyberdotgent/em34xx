@@ -1,4 +1,5 @@
 #include "config/config.hpp"
+#include "frontend/crt_render.hpp"
 #include "machine/display_profile.hpp"
 
 #include <doctest/doctest.h>
@@ -84,7 +85,34 @@ TEST_CASE("framebuffer presentation follows the tube's aspect ratio") {
     fb.resize(960, 525);
     CHECK(fb.presented_height() == 720);
     fb.resize(1280, 525);
-    fb.border = 0.025;                      // 2.5% black margin on each side
-    CHECK(fb.presented_width() == 1347);
-    CHECK(fb.presented_height() == 1010);
+    fb.border_x = 0.06;                     // unequal margins as on a real tube
+    fb.border_y = 0.077;
+    CHECK(fb.presented_width() == 1455);
+    CHECK(fb.presented_height() == 1091);
+}
+
+TEST_CASE("CRT rendering: scan lines, border and aspect") {
+    Framebuffer fb;
+    fb.resize(8, 4);
+    fb.display_aspect = 4.0 / 3.0;
+    fb.border_x = 0.1;
+    fb.border_y = 0.1;
+    for (int x = 0; x < 8; ++x) fb.row(1)[x] = 0xFFFFFFFFu;   // one lit raster line
+    int w = 0, h = 0;
+    crt_fit(fb, 1000, 1000, w, h);
+    CHECK(w == 1000);
+    CHECK(h == 750);
+    std::vector<uint32_t> out;
+    CrtParams p;
+    crt_render(fb, 400, 300, p, out);
+    REQUIRE(out.size() == size_t(400 * 300));
+    auto g = [&](int x, int y) { return int((out[size_t(y) * 400 + size_t(x)] >> 8) & 0xFF); };
+    // Raster spans y 30..270 (60 output px per line); line 1 centre at y 120.
+    CHECK(g(200, 120) > 240);   // beam centre at full brightness
+    CHECK(g(200, 150) < 100);   // dark gap half-way to the next line (~1/3 incl. bloom)
+    CHECK(g(200, 60) < 20);     // unlit line stays dark
+    CHECK(g(10, 120) == 0);     // left border is black
+    p.enabled = false;          // sharp mode: no scan-line gaps
+    crt_render(fb, 400, 300, p, out);
+    CHECK(g(200, 140) > 240);
 }

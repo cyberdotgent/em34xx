@@ -9,10 +9,12 @@ namespace tn34xx {
 
 namespace {
 constexpr double kDisplayAspect = 4.0 / 3.0;
-// Black margin around the raster on each side, as a fraction of the tube.
-// Hypothesis, matched to a reference recording (~2.5%); the exact value
-// should eventually come from the CRT timing registers.
-constexpr double kDisplayBorder = 0.025;
+// Black margins around the raster, as a fraction of the visible tube on each
+// side. Measured on photographs of a real 3486 tube showing an 80x24+1
+// screen (same display design): the raster covers ~88% of the glass width
+// and ~85% of its height, so it is wider than 4:3 (about 1.38).
+constexpr double kDisplayBorderX = 0.06;
+constexpr double kDisplayBorderY = 0.077;
 }
 
 namespace {
@@ -51,7 +53,8 @@ constexpr uint32_t kYellow = 0xFFF0F040u;
 constexpr uint32_t kPink = 0xFFF070D0u;
 constexpr uint32_t kBlue = 0xFF5878FFu;
 // Monochrome intensities as grey levels; the display profile tints them.
-constexpr uint32_t kGreyNormal = 0xFFB0B0B0u;
+// Normal intensity is close to full brightness on a real tube (photos).
+constexpr uint32_t kGreyNormal = 0xFFD0D0D0u;
 constexpr uint32_t kGreyBright = 0xFFFFFFFFu;
 
 struct CellLook {
@@ -268,7 +271,8 @@ void Ibm3477Display::draw_row(Framebuffer& fb, uint32_t addr, int y0, int cols, 
 void Ibm3477Display::render(Framebuffer& fb) {
     // The 3477 uses a 4:3 CRT with a black border around the raster.
     fb.display_aspect = kDisplayAspect;
-    fb.border = kDisplayBorder;
+    fb.border_x = kDisplayBorderX;
+    fb.border_y = kDisplayBorderY;
     if (!enabled()) {
         const int w = last_w_ ? last_w_ : 80 * 12, h = last_h_ ? last_h_ : 25 * 21;
         if (fb.width != w || fb.height != h) fb.resize(w, h);
@@ -296,11 +300,17 @@ void Ibm3477Display::render(Framebuffer& fb) {
         draw_row(fb, base, r * g.cell_h, g.cols, g.cell_w, g.cell_h, r == cur_row ? cur_col : -1,
                  blink_phase);
     }
-    // Rule above the status line [hyp: 20128 bit 6].
-    if (g.status_rows > 0 && (regs_[kRegControl] & kCtlStatusRule)) {
+    // Rule above the status line [hyp: 20128 bit 6]. On a real tube it is
+    // drawn on the underline scan lines of the last main row, across the full
+    // width (observed: photographs of a 3486, where it lines up exactly with
+    // the field underlines and has their thickness).
+    if (g.status_rows > 0 && g.rows > 0 && (regs_[kRegControl] & kCtlStatusRule)) {
         const uint32_t colour =
             opts_.display == DisplaySubtype::Color ? kGreen : kGreyNormal;
-        std::fill_n(fb.row(g.rows * g.cell_h), w, colour);
+        const int ul_top = std::min<int>(regs_[kRegLineTop], g.cell_h - 1);
+        const int ul_bottom = std::min<int>(std::max<int>(regs_[kRegLineBottom], ul_top), g.cell_h - 1);
+        for (int line = ul_top; line <= ul_bottom; ++line)
+            std::fill_n(fb.row((g.rows - 1) * g.cell_h + line), w, colour);
     }
     ram_ = nullptr;
 }

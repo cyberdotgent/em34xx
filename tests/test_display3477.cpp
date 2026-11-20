@@ -9,7 +9,7 @@ using namespace tn34xx;
 
 namespace {
 
-constexpr uint32_t kGrey = 0xFFB0B0B0u;     // normal intensity
+constexpr uint32_t kGrey = 0xFFD0D0D0u;     // normal intensity
 constexpr uint32_t kBright = 0xFFFFFFFFu;   // high intensity
 constexpr uint32_t kBlack = 0xFF000000u;
 
@@ -160,11 +160,15 @@ TEST_CASE("3477 display: attributes, font 2 and the status line") {
     CHECK(px(fb, 0, 24 * 21) == kGrey);   // status line row from its own start address
     CHECK(px(fb, 5, 24 * 21) == kBlack);
 
-    // Rule above the status line.
-    CHECK(px(fb, 30, 24 * 21) == kBlack);
+    // Rule above the status line: drawn on the underline scan lines (18-19)
+    // of the last main row, as photographed on a real tube.
+    CHECK(px(fb, 30, 23 * 21 + 18) == kBlack);
     r.reg(0x28, 0x50);
     r.disp.render(fb);
-    CHECK(px(fb, 30, 24 * 21) == kGrey);
+    CHECK(px(fb, 30, 23 * 21 + 18) == kGrey);
+    CHECK(px(fb, 30, 23 * 21 + 19) == kGrey);
+    CHECK(px(fb, 30, 23 * 21 + 17) == kBlack);
+    CHECK(px(fb, 30, 24 * 21) == kBlack);   // not on the status row itself
 }
 
 TEST_CASE("3477 display: colour attributes") {

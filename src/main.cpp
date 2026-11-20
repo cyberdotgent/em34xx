@@ -164,6 +164,12 @@ int main(int argc, char** argv) {
     Emulator emu(std::move(machine));
     emu.set_speed_percent(cfg.speed_percent);
     Monitor monitor(emu);
+    {
+        CrtParams cp;
+        cp.enabled = cfg.crt;
+        cp.beam_sigma = cfg.crt_beam;
+        monitor.set_crt_params(cp);
+    }
     emu.set_stop_callback([&monitor](const StopEvent& ev) { monitor.notify_stop(ev); });
     emu.start();
 
@@ -209,6 +215,8 @@ int main(int argc, char** argv) {
         if (tty) monitor_thread = std::thread([&] { monitor.interactive(cfg.history_file); });
         FrontendOptions fo;
         fo.scale = cfg.scale;
+        fo.crt.enabled = cfg.crt;
+        fo.crt.beam_sigma = cfg.crt_beam;
         fo.title = "tn34xx: IBM " + model->info().name + " (" + display_subtype_name(cfg.terminal.display) + ")";
         if (!run_sdl_frontend(emu, fo, error)) {
             LOG_ERROR("video", "%s; use --headless", error.c_str());

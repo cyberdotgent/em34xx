@@ -5,6 +5,8 @@
 // error; failed assertions are counted and turn into a non-zero exit code.
 #pragma once
 
+#include "frontend/crt_render.hpp"
+
 #include <cstdint>
 #include <functional>
 #include <memory>
@@ -44,6 +46,9 @@ public:
     void interactive(const std::string& history_file);
     // Wake an interactive prompt that is blocked waiting for input.
     void interrupt_input();
+
+    // CRT presentation used by "screenshot" so it matches the window.
+    void set_crt_params(const CrtParams& p) { crt_params_ = p; }
 
     unsigned failures() const { return failures_; }
     bool quit_requested() const { return quit_; }
@@ -124,6 +129,8 @@ private:
     uint32_t next_unasm_ = 0;
     bool have_next_dump_ = false;
     bool have_next_unasm_ = false;
+
+    CrtParams crt_params_;
 
     struct ReplxxHolder;
     std::unique_ptr<ReplxxHolder> rx_;

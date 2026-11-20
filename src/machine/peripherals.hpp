@@ -17,19 +17,21 @@ struct Framebuffer {
     // CRT), so presentation stretches the frame to this ratio. 0 = square.
     double display_aspect = 0.0;
     // Black border between the edge of the visible tube and the active
-    // raster, as a fraction of the tube's width/height on each side (CRT
-    // overscan margin). 0 = the raster fills the presentation.
-    double border = 0.0;
+    // raster, as a fraction of the tube's width (left and right) and height
+    // (top and bottom). Real tubes have unequal horizontal and vertical
+    // margins. 0 = the raster fills the presentation.
+    double border_x = 0.0;
+    double border_y = 0.0;
 
     // Size of the whole presented tube area (raster plus border) in output
     // pixels, keeping the raster at its native width.
     int presented_width() const {
-        return border > 0.0 ? int(double(width) / (1.0 - 2.0 * border) + 0.5) : width;
+        return border_x > 0.0 ? int(double(width) / (1.0 - 2.0 * border_x) + 0.5) : width;
     }
     int presented_height() const {
         const int w = presented_width();
         if (display_aspect > 0.0) return int(double(w) / display_aspect + 0.5);
-        return border > 0.0 ? int(double(height) / (1.0 - 2.0 * border) + 0.5) : height;
+        return border_y > 0.0 ? int(double(height) / (1.0 - 2.0 * border_y) + 0.5) : height;
     }
 
     void resize(int w, int h) {

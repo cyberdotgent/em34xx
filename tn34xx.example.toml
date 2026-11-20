@@ -18,6 +18,8 @@ start_stopped = false
 # The same ROM serves every display subtype and language.
 [display]
 subtype = "green"        # green | amber | paperwhite | color
+crt = true               # scan-line CRT rendering (false: sharp pixels)
+crt_beam = 0.30          # beam width in line pitches; larger = softer, smaller gaps
 
 [keyboard]
 type = "122"             # 122 (terminal) | enhanced

@@ -2,6 +2,7 @@
 
 #include "bus/probe_device.hpp"
 #include "cpu/i86_disasm.hpp"
+#include "frontend/crt_render.hpp"
 #include "machine/emulator.hpp"
 #include "models/model.hpp"
 #include "monitor/expr.hpp"
@@ -917,17 +918,14 @@ bool Monitor::cmd_screenshot(const std::vector<std::string>& a) {
     emu_.with_machine([&](Machine& m) { m.render(fb); });
     const bool raw = a.size() > 2 && to_lower(a[2]) == "raw";
     if (!raw && (fb.presented_width() != fb.width || fb.presented_height() != fb.height)) {
-        // Draw the raster at the tube's proportions inside its black border
-        // (nearest-neighbour resampling).
+        // Render the whole tube as the window shows it (CRT scan lines,
+        // border, aspect), at a height of three output pixels per raster line.
+        int out_w = 1, out_h = 1;
+        const int target_h = int(fb.height * 3 / std::max(0.1, 1.0 - 2.0 * fb.border_y));
+        crt_fit(fb, 1 << 16, target_h, out_w, out_h);
         Framebuffer out;
-        out.resize(fb.presented_width(), fb.presented_height());
-        const int x0 = int(fb.border * out.width + 0.5), y0 = int(fb.border * out.height + 0.5);
-        const int rw = out.width - 2 * x0, rh = out.height - 2 * y0;
-        for (int y = 0; y < rh; ++y) {
-            const uint32_t* src = fb.row(std::min(fb.height - 1, int((y + 0.5) * fb.height / rh)));
-            uint32_t* dst = out.row(y0 + y) + x0;
-            for (int x = 0; x < rw; ++x) dst[x] = src[std::min(fb.width - 1, int((x + 0.5) * fb.width / rw))];
-        }
+        out.resize(out_w, out_h);
+        crt_render(fb, out_w, out_h, crt_params_, out.pixels);
         fb = std::move(out);
     }
     std::string err;

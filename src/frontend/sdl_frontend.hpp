@@ -2,6 +2,8 @@
 // Must run on the main thread.
 #pragma once
 
+#include "frontend/crt_render.hpp"
+
 #include <string>
 
 namespace tn34xx {
@@ -9,8 +11,9 @@ namespace tn34xx {
 class Emulator;
 
 struct FrontendOptions {
-    int scale = 2;
+    int scale = 1;
     std::string title;
+    CrtParams crt;
 };
 
 // Runs until the window is closed or the emulator is told to quit. Returns

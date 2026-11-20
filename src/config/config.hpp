@@ -23,6 +23,8 @@ struct AppConfig {
     TerminalOptions terminal;
 
     // Front end
+    bool crt = true;              // CRT scan-line presentation
+    double crt_beam = 0.30;       // beam sigma in line pitches
     bool headless = false;
     int scale = 1;
 

@@ -61,6 +61,7 @@ add_library(tn34xx_core STATIC
   src/monitor/monitor.cpp
   src/gdb/gdb_stub.cpp
   src/net/socket.cpp
+  src/frontend/crt_render.cpp
 )
 target_include_directories(tn34xx_core PUBLIC src)
 target_link_libraries(tn34xx_core

@@ -72,6 +72,8 @@ bool load_config_file(const std::string& path, AppConfig& cfg, std::string& erro
         get(*t, "eeprom", cfg.terminal.eeprom_path);
     }
     if (auto* t = root["display"].as_table()) {
+        get(*t, "crt", cfg.crt);
+        if (auto v = (*t)["crt_beam"].value<double>()) cfg.crt_beam = *v;
         if (get(*t, "subtype", s) && !parse_display_subtype(s, cfg.terminal.display)) {
             error = path + ": display.subtype must be green, amber, paperwhite or color";
             return false;
@@ -197,6 +199,7 @@ Machine:
 Unit options (one ROM serves all of these):
       --display SUBTYPE     green (default), amber, paperwhite (white), color
       --green, --amber, --paperwhite, --color   shorthands for --display
+      --no-crt              sharp pixels instead of CRT scan-line rendering
       --keyboard TYPE       122 (terminal, default) or enhanced
       --keyboard-layout L   keyboard country/layout, selects the terminal's
                             language (default us; see docs/keyboard.md)
@@ -306,7 +309,8 @@ bool parse_command_line(int argc, char** argv, AppConfig& cfg, std::string& erro
                 error = "--display must be green, amber, paperwhite or color";
                 return false;
             }
-        } else if (a == "--green") cfg.terminal.display = DisplaySubtype::Green;
+        } else if (a == "--no-crt") cfg.crt = false;
+        else if (a == "--green") cfg.terminal.display = DisplaySubtype::Green;
         else if (a == "--amber") cfg.terminal.display = DisplaySubtype::Amber;
         else if (a == "--paperwhite" || a == "--white") cfg.terminal.display = DisplaySubtype::PaperWhite;
         else if (a == "--color" || a == "--colour") cfg.terminal.display = DisplaySubtype::Color;
@@ -391,7 +395,9 @@ std::string config_to_toml(const AppConfig& cfg) {
             {"start_stopped", cfg.start_stopped},
             {"eeprom", cfg.terminal.eeprom_path},
         }},
-        {"display", toml::table{{"subtype", display_subtype_name(cfg.terminal.display)}}},
+        {"display", toml::table{{"subtype", display_subtype_name(cfg.terminal.display)},
+                                {"crt", cfg.crt},
+                                {"crt_beam", cfg.crt_beam}}},
         {"keyboard", toml::table{
             {"type", cfg.terminal.keyboard_type},
             {"layout", cfg.terminal.keyboard_layout},
