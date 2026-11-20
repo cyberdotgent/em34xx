@@ -193,12 +193,20 @@ TEST_CASE("key mode commands") {
     press(k, 0x06, false);
     CHECK(drain(k) == Bytes{0x32, 0xF0, 0x32, 0x21});
 
-    // 122-key terminal keyboard: FA takes a key list.
+    // 122-key terminal keyboard: FA behaves as FB (key list, typematic,
+    // no break code).
     k.host_write(0xFA);
     k.host_write(0x61);
-    CHECK(drain(k) == Bytes{0xFA, 0xFA});
-    CHECK(k.key_mode(0x61) == Set3Keyboard::TypematicMakeBreak);
-    CHECK(k.key_mode(0x21) != Set3Keyboard::TypematicMakeBreak);
+    k.host_write(0x6A);
+    CHECK(drain(k) == Bytes{0xFA, 0xFA, 0xFA});
+    CHECK(k.key_mode(0x61) == Set3Keyboard::Typematic);
+    CHECK(k.key_mode(0x6A) == Set3Keyboard::Typematic);
+    CHECK(k.key_mode(0x21) == Set3Keyboard::MakeOnly);
+    k.host_write(0xF4);
+    drain(k);
+    press(k, 0x50, true);   // cursor left (set 3 61): make only, no F0 61
+    press(k, 0x50, false);
+    CHECK(drain(k) == Bytes{0x61});
     k.host_write(0xF7);
     CHECK(k.key_mode(0x21) == Set3Keyboard::Typematic);
     k.host_write(0xF6);  // defaults

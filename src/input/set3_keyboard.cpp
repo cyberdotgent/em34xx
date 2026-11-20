@@ -303,10 +303,12 @@ void Set3Keyboard::command(uint8_t cmd) {
     case 0xFA:
         respond(kAck);
         if (type_ == KeyboardType::Terminal122) {
-            // The terminal keyboard takes a key list after FA, like FB/FC/FD
-            // (observed: 1390876 per seasip, and the 3477 firmware sends FA
-            // followed by key codes); the PC Enhanced keyboard sets all keys.
-            list_mode_ = TypematicMakeBreak;
+            // The terminal keyboard treats FA exactly as FB: it takes a key
+            // list and makes those keys typematic, with no break code
+            // (documented for the 1390876 by seasip: "Behaves as FB"; the
+            // 3477 firmware sends FA 61 6A for the horizontal cursor keys).
+            // The PC Enhanced keyboard sets all keys typematic/make/break.
+            list_mode_ = Typematic;
             pending_ = Pending::KeyList;
         } else {
             set_all(TypematicMakeBreak);
