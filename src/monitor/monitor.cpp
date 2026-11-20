@@ -11,11 +11,8 @@
 #include "util/log.hpp"
 #include "util/strings.hpp"
 
-#include <replxx.hxx>
-
 #include <algorithm>
 #include <atomic>
-#include <cerrno>
 #include <csignal>
 #include <cstdio>
 #include <fstream>
@@ -99,11 +96,7 @@ bool write_image(const std::string& path, const Framebuffer& fb, std::string& er
 
 } // namespace
 
-struct Monitor::ReplxxHolder {
-    replxx::Replxx rx;
-};
-
-Monitor::Monitor(Emulator& emu) : emu_(emu), rx_(std::make_unique<ReplxxHolder>()) {
+Monitor::Monitor(Emulator& emu) : emu_(emu) {
     register_commands();
 }
 
@@ -210,40 +203,11 @@ bool Monitor::run_script(const std::string& path) {
     return ok;
 }
 
-void Monitor::interactive(const std::string& history_file) {
-    replxx::Replxx& rx = rx_->rx;
-    rx.install_window_change_handler();
-    rx.set_max_history_size(1000);
-    if (!history_file.empty()) rx.history_load(history_file);
-    rx.set_completion_callback([this](const std::string& input, int& context_len) {
-        replxx::Replxx::completions_t out;
-        if (input.find(' ') != std::string::npos) return out;
-        context_len = int(input.size());
-        for (const Command& c : commands_)
-            if (starts_with(c.name, input)) out.emplace_back(c.name);
-        return out;
-    });
-    log_set_sink([this](const std::string& line) { rx_->rx.print("%s\n", line.c_str()); });
-
-    out("tn34xx monitor; 'help' lists commands, Ctrl-D or 'quit' exits.\n");
-    while (!quit_ && !emu_.quit_requested()) {
-        errno = 0;
-        const char* input = rx.input(emu_.running() ? "tn34xx (running)> " : "tn34xx> ");
-        if (!input) {
-            if (errno == EAGAIN) continue;  // Ctrl-C at the prompt or interrupt_input()
-            emu_.request_quit(int(emu_.exit_code()));
-            break;
-        }
-        const std::string line = input;
-        if (!trim(line).empty()) rx.history_add(line);
-        execute(line);
-    }
-    log_set_sink(nullptr);
-    if (!history_file.empty()) rx.history_save(history_file);
-}
-
-void Monitor::interrupt_input() {
-    rx_->rx.emulate_key_press(replxx::Replxx::KEY::control('C'));
+std::vector<std::string> Monitor::command_names() const {
+    std::vector<std::string> names;
+    names.reserve(commands_.size());
+    for (const Command& c : commands_) names.push_back(c.name);
+    return names;
 }
 
 void Monitor::notify_stop(const StopEvent& ev) {

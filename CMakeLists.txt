@@ -114,7 +114,7 @@ add_library(tn34xx_core STATIC
 target_include_directories(tn34xx_core PUBLIC src)
 target_link_libraries(tn34xx_core
   PUBLIC tomlplusplus::tomlplusplus
-  PRIVATE tn34xx_warnings replxx::replxx Threads::Threads)
+  PRIVATE tn34xx_warnings Threads::Threads)
 if(WIN32)
   target_link_libraries(tn34xx_core PRIVATE ws2_32)
   target_compile_definitions(tn34xx_core PUBLIC _WIN32_WINNT=0x0601 WINVER=0x0601)
@@ -164,8 +164,8 @@ add_executable(tn5250-probe src/tools/tn5250_probe.cpp)
 target_link_libraries(tn5250-probe PRIVATE tn34xx_tn5250 tn34xx_warnings)
 
 # --- Executable -----------------------------------------------------------
-add_executable(tn34xx src/main.cpp)
-target_link_libraries(tn34xx PRIVATE tn34xx_core tn34xx_bridge tn34xx_frontend tn34xx_warnings)
+add_executable(tn34xx src/main.cpp src/app/console.cpp)
+target_link_libraries(tn34xx PRIVATE tn34xx_core tn34xx_bridge tn34xx_frontend tn34xx_warnings replxx::replxx)
 
 if(TN34XX_BUILD_TESTS)
   enable_testing()

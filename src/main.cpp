@@ -1,4 +1,5 @@
 // tn34xx: hardware emulator for IBM 34xx-family 5250 terminals.
+#include "app/console.hpp"
 #include "config/config.hpp"
 #include "frontend/sdl_frontend.hpp"
 #include "gdb/gdb_stub.hpp"
@@ -225,7 +226,7 @@ int main(int argc, char** argv) {
     const bool tty = tn_isatty(tn_fileno(stdin)) != 0;
     if (cfg.headless) {
         if (tty) {
-            monitor.interactive(cfg.history_file);
+            make_terminal_console(monitor, emu, cfg.history_file)->run();
         } else {
             // Commands from a pipe: execute line by line.
             char buf[4096];
@@ -233,8 +234,12 @@ int main(int argc, char** argv) {
                 monitor.execute(buf);
         }
     } else {
+        std::unique_ptr<Console> console;
         std::thread monitor_thread;
-        if (tty) monitor_thread = std::thread([&] { monitor.interactive(cfg.history_file); });
+        if (tty) {
+            console = make_terminal_console(monitor, emu, cfg.history_file);
+            monitor_thread = std::thread([&] { console->run(); });
+        }
         FrontendOptions fo;
         fo.scale = cfg.scale;
         fo.crt.enabled = cfg.crt;
@@ -246,7 +251,7 @@ int main(int argc, char** argv) {
         }
         emu.request_quit(emu.exit_code());
         if (monitor_thread.joinable()) {
-            monitor.interrupt_input();
+            console->interrupt();
             monitor_thread.join();
         }
     }

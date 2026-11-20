@@ -1,7 +1,8 @@
 // Interactive and scripted debug monitor.
 //
-// Commands can come from an interactive prompt (replxx), from an rc file
-// (--rc), or from GDB's "monitor" command. Scripts stop at the first command
+// Commands can come from an interactive console (src/app/console.hpp), from
+// an rc file (--rc), from stdin, or from GDB's "monitor" command. The
+// monitor itself has no UI: it executes lines and writes their output. Scripts stop at the first command
 // error; failed assertions are counted and turn into a non-zero exit code.
 #pragma once
 
@@ -44,10 +45,8 @@ public:
     // could not be read. Stops early when "quit" is executed.
     bool run_script(const std::string& path);
 
-    // Interactive prompt until "quit", EOF, or the emulator is told to quit.
-    void interactive(const std::string& history_file);
-    // Wake an interactive prompt that is blocked waiting for input.
-    void interrupt_input();
+    // Command names, for completion in an interactive console.
+    std::vector<std::string> command_names() const;
 
     // What `connect` needs: the start-up configuration (defaults for every
     // setting the command does not give), the model's session limits, and
@@ -148,9 +147,6 @@ private:
     bool have_next_unasm_ = false;
 
     CrtParams crt_params_;
-
-    struct ReplxxHolder;
-    std::unique_ptr<ReplxxHolder> rx_;
 };
 
 } // namespace tn34xx
