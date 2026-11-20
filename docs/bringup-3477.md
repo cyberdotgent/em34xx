@@ -166,6 +166,47 @@ feedback polynomial) is unknown. Simple candidates (per-phase pixel parity,
 the expected values (observed in a fit against the emulator's frames). It
 also cannot be a monitor ID: the values change with the screen contents.
 
+What the test sets up (observed, from the register and RAM state at each
+measurement):
+
+- The character generator holds only the test's own glyphs: a 2x2 dot
+  block, a full-height pattern of alternating columns, and a 2x2 block in
+  the second font; everything else is zero after the RAM test.
+- The marked cells are: top-left reverse, top-right underlined,
+  bottom-left with column separators, bottom-right from the second font,
+  and the two ends of the status line (one of them high intensity). The
+  132-column format starts on an odd address (`4201`).
+- The "nearly empty" screen puts the striped glyph in the cells just
+  outside the main window and the status line, where it must not be
+  displayed.
+- Types 3 and 4 run with identical register settings, so their shared
+  expected values are one case, not two.
+- In all three formats, rows x scan lines + register `0E` is constant per
+  type: 551 lines on types 3/4, 529 on type 5. So `0E` is the vertical
+  blanking in scan lines and the frame length is fixed per tube.
+- An empty screen must give `0` on types 3/4 and `F` on type 5.
+
+A systematic search (private tooling) found **no model** reproducing the
+expected values. It tried a serial dot stream into every 4-bit linear
+register, with active-area-only, per-line-blanking and whole-frame clocking
+and several attribute interpretations; 4-bit slices of the character bus
+into 4-bit multiple-input signature registers; and event counters mod 16.
+The best candidates match 6-7 of 12 values, about what chance gives for that
+many candidates. The likely cause is the number of unknowns: dot width of
+the 80-column cell, column-separator and cursor shapes, horizontal blanking,
+and where the signature register taps the video path. A model fitted
+to these 12 values alone would be underdetermined anyway.
+
+Experiments on a real terminal that would pin it down:
+
+1. Photograph the 3486/3477 test-menu screens to get the column-separator,
+   cursor and underline shapes, which the model needs.
+2. With a scope or logic probe, find the horizontal total and the
+   dot clock (or simply the line frequency). This fixes the clock count
+   per line.
+3. Best: any documentation of the display gate array, or a board photo
+   with the part number.
+
 The emulator does not compute a signature: bits 7-4 read `0`, so an
 unmodified boot stops at the display test. This is the one remaining piece
 of POST hardware that is not modelled.
