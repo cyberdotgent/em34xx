@@ -113,9 +113,9 @@ void Client::log(const std::string& line) {
 
 void Client::queue_outbound(const Record& rec) {
     const auto framed = TelnetCodec::frame(encode_record(rec));
+    log(format("send record %s flags %s, %zu data bytes", opcode_name(rec.opcode), flags_text(rec.flags).c_str(),
+               rec.data.size()));
     std::lock_guard<std::mutex> g(mu_);
-    log_.push_back(format("send record %s flags %s, %zu data bytes", opcode_name(rec.opcode),
-                          flags_text(rec.flags).c_str(), rec.data.size()));
     outbound_.push_back(framed);
 }
 

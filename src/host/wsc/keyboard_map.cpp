@@ -304,6 +304,19 @@ const char* key_function_name(KeyFunction f) {
     return "?";
 }
 
+const char* operator_action_name(K k) {
+    switch (k) {
+    case K::Character: return "character";
+    case K::Function: return "function";
+    case K::Aid: return "aid";
+    case K::Attn: return "attn";
+    case K::SysReq: return "sysreq";
+    case K::Overrun: return "overrun";
+    case K::Unmapped: return "unmapped";
+    }
+    return "?";
+}
+
 void KeyboardMap::reset() {
     lshift_ = rshift_ = alt_ = caps_ = cmd_ = false;
 }

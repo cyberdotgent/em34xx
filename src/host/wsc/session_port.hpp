@@ -89,6 +89,8 @@ struct OperatorAction {
     bool alt = false;
 };
 
+const char* operator_action_name(OperatorAction::Kind k);
+
 class DisplaySessionPort {
 public:
     virtual ~DisplaySessionPort() = default;

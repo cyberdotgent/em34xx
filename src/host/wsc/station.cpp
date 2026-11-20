@@ -303,7 +303,17 @@ void Station::handle_byte2(uint8_t level, uint8_t byte2) {
     ++counters_.keys;
     poll_soon_ = true;   // the terminal may hold more keys: drain them quickly
     OperatorAction a;
-    if (keymap_.translate(byte2, a) && display_) display_->operator_action(a);
+    const bool acted = keymap_.translate(byte2, a);
+    if (!acted) {
+        LOG_DEBUG("wsc", "station %u: scan code %02X (shift state)", cfg_.address, byte2);
+    } else {
+        using K = OperatorAction::Kind;
+        LOG_DEBUG("wsc", "station %u: scan code %02X -> %s %02X%s%s%s", cfg_.address, byte2,
+                  operator_action_name(a.kind), a.kind == K::Aid ? a.aid : a.ebcdic,
+                  a.kind == K::Function ? " " : "", a.kind == K::Function ? key_function_name(a.function) : "",
+                  a.shift ? " (shift)" : "");
+    }
+    if (acted && display_) display_->operator_action(a);
 }
 
 void Station::begin_discovery(uint8_t st, bool, uint64_t now) {
