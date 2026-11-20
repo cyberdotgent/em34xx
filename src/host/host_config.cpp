@@ -102,6 +102,9 @@ std::string TwinaxConfig::validate(unsigned max_sessions) const {
         if (st.device_name.size() > 10)
             return format("station %u: tn5250 device name is longer than 10 characters", st.address);
     }
+    if (list.size() > kMaxStationsPerBus)
+        return format("%zu twinax stations configured, but a cable carries at most %u",
+                      list.size(), kMaxStationsPerBus);
     if (max_sessions && list.size() > max_sessions)
         return format("%zu twinax stations configured, but this terminal supports at most %u session(s)",
                       list.size(), max_sessions);

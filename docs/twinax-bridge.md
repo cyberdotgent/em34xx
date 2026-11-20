@@ -85,7 +85,9 @@ The controller drives each one separately.
 
 Rules from the documentation:
 
-- Addresses are 0-6; 7 marks the end of a message [doc PAI 2.4]. Each
+- Addresses are 0-6; 7 marks the end of a message [doc PAI 2.4], so one
+  cable carries at most 7 stations. The emulator enforces both that limit and
+  each model's own session limit (3477: 2, 3486: 2, 3489: 5). Each
   workstation on the cable needs its own address [doc 3489 UG 2.10].
 - Without shared addressing, every display session and the printer each
   need their own address. With **shared addressing** (3489, OS/400 V3R1 or

@@ -74,6 +74,10 @@ struct TwinaxConfig {
     std::vector<StationConfig> effective_stations() const;
     // max_sessions = the terminal model's limit (0 = do not check).
     std::string validate(unsigned max_sessions = 0) const;
+
+    // A 5250 Twinax cable carries at most 7 stations: addresses 0..6, with
+    // 7 reserved as the end-of-message marker.
+    static constexpr unsigned kMaxStationsPerBus = 7;
 };
 
 } // namespace tn34xx

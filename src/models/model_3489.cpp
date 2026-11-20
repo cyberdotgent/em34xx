@@ -21,7 +21,9 @@ public:
         info_.cpu = CpuLevel::I80286;
         info_.address_bits = 24;
         info_.clock_hz = 12000000;
-        info_.max_sessions = 4;
+        // 4 display sessions plus 1 printer session (IBM 3489 User's Guide
+        // GA18-7492, 1.1.5 and 2.9).
+        info_.max_sessions = 5;
         info_.roms = {
             {"system ROM", "IBM-3489.rom", 0x100000, "", 0xF00000},
         };
