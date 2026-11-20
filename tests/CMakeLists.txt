@@ -11,6 +11,7 @@ add_executable(tn34xx_unit_tests
   test_util.cpp
   test_keyboard.cpp
   test_display.cpp
+  test_display3477.cpp
 )
 target_link_libraries(tn34xx_unit_tests PRIVATE tn34xx_core doctest::doctest)
 add_test(NAME unit COMMAND tn34xx_unit_tests)

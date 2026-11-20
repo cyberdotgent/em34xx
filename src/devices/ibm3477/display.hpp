@@ -8,18 +8,32 @@
 //
 // Register map (offsets from 20100). Labels: [obs] observed in firmware
 // behaviour, [hyp] hypothesis.
-//   00-17  CRT timing block, written as one 24-byte table [obs];
-//          interpretation of the individual bytes [hyp]
-//   17-1A  cursor shape / position [hyp]
-//   21-22  status-line window: top-left (col, row) [hyp]
-//   23-24  main window: bottom-right (col, row), e.g. 4F 17 = 80x24 [obs values]
-//   25-2E  display mode block [obs written as a block]; 28 = enable/blanking [hyp]
+//   00-17  CRT timing block, written as one 24-byte table [obs]. Used here:
+//          0F = scan lines per row - 1, 11/12 = first/last underline scan
+//          line, 14 = rows including the status line, 15 = rows above the
+//          status line [hyp, consistent with every mode table]
+//   17/18  cursor column / row, 0-based [hyp]
+//   21-24  window corners (e.g. 23-24 = 4F 17 for 80x24) [obs values]; not
+//          needed for display: the boot screens appear before they are set
+//   25-2E  mode block [obs written as a block]:
+//          25 bit4 = 132 columns of 8-pixel cells [hyp]
+//          2A bit0 = 12-pixel cells, else 16-pixel cells [hyp; matches the
+//          width of the font the firmware loads for each mode]
+//   28     00 while the font is reloaded [obs]; bit4 video on, bit6 rule
+//          above the status line, bit7 cursor on [hyp]
 //   2F     W: bit0 SDA pull low, bit1 SCL pull low (I2C master) [obs]
 //          R: bit0 SDA low, bit1 SCL low, bit3 vertical retrace [obs],
-//             bits 7..4 monitor sense nibble [obs, value hyp]
+//             bits 7..4 monitor sense nibble [obs, meaning unknown]
 //   30-31  start offset of the main window, relative to 8000 [obs]
 //   34-35  start offset of the status line, relative to 8000 [obs]
 //   36     W: acknowledge the display interrupt (vector 0Ch) [obs]
+//   38-3B  block request (written 3B..38); completion raises the display
+//          interrupt [hyp: completes at the next vertical retrace]
+// Cells are 3 bytes (EBCDIC code, attribute, extension) [obs]; rows follow
+// each other without gaps [obs]. Glyph g of a font is 32 bytes at g*32, one
+// byte per scan line, bit 7 leftmost [obs]; font 1 at 18000 (+ extension
+// columns at 1A000), font 2 at 1C000 (+ 1E000) [obs]. See display.cpp for
+// the attribute decoding.
 // Everything else latches written values and reads them back.
 #pragma once
 
@@ -88,9 +102,12 @@ private:
     void set_irq_line(bool on);
     void draw_row(Framebuffer& fb, uint32_t addr, int y0, int cols, int cell_w, int cell_h,
                   int cursor_col, bool blink_phase);
+    uint8_t mem(uint32_t addr) const;
 
     Bus& bus_;
-    const TerminalOptions& opts_;
+    TerminalOptions opts_;
+    const Region* ram_ = nullptr;   // RAM region cached during render()
+    int last_w_ = 0, last_h_ = 0;
     std::array<uint8_t, 256> regs_{};
     std::function<void(bool)> irq_;
     I2cBus* i2c_ = nullptr;
@@ -102,6 +119,7 @@ private:
     uint64_t frames_ = 0;
     bool in_retrace_ = false;
     bool irq_pending_ = false;
+    bool block_pending_ = false;
 };
 
 } // namespace tn34xx
