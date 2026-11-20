@@ -115,6 +115,12 @@ public:
     void set_nvram(NonVolatileStore* n) { nvram_ = n; }
     NonVolatileStore* nvram() const { return nvram_; }
     void set_twinax_host(std::unique_ptr<TwinaxHost> host) { twinax_ = std::move(host); }
+    // Replaces the controller on the line and returns the old one, so the
+    // caller can destroy it outside the machine lock.
+    std::unique_ptr<TwinaxHost> swap_twinax_host(std::unique_ptr<TwinaxHost> host) {
+        twinax_.swap(host);
+        return host;
+    }
     TwinaxHost* twinax_host() const { return twinax_.get(); }
 
     void render(Framebuffer& fb);

@@ -5,7 +5,9 @@
 // error; failed assertions are counted and turn into a non-zero exit code.
 #pragma once
 
+#include "config/config.hpp"
 #include "frontend/crt_render.hpp"
+#include "host/twinax_link.hpp"
 
 #include <cstdint>
 #include <functional>
@@ -46,6 +48,17 @@ public:
     void interactive(const std::string& history_file);
     // Wake an interactive prompt that is blocked waiting for input.
     void interrupt_input();
+
+    // What `connect` needs: the start-up configuration (defaults for every
+    // setting the command does not give), the model's session limits, and
+    // the factory that builds the TN5250 bridge (main() owns the link to it).
+    struct ConnectContext {
+        AppConfig base;
+        unsigned max_sessions = 0;
+        int max_printers = -1;
+        Tn5250HostFactory factory;
+    };
+    void set_connect_context(ConnectContext c) { connect_ = std::move(c); }
 
     // CRT presentation used by "screenshot" so it matches the window.
     void set_crt_params(const CrtParams& p) { crt_params_ = p; }
@@ -111,6 +124,8 @@ private:
     bool cmd_speed(const std::vector<std::string>& a);
     bool cmd_screenshot(const std::vector<std::string>& a);
     bool cmd_twinax(const std::vector<std::string>& a);
+    bool cmd_connect(const std::vector<std::string>& a);
+    bool cmd_disconnect(const std::vector<std::string>& a);
     bool cmd_key(const std::vector<std::string>& a);
     bool cmd_assert(const std::vector<std::string>& a);
     bool cmd_echo(const std::vector<std::string>& a);
@@ -118,6 +133,7 @@ private:
     bool cmd_quit(const std::vector<std::string>& a);
 
     Emulator& emu_;
+    ConnectContext connect_;
     std::recursive_mutex exec_mutex_;  // monitor prompt vs. gdb "monitor"
     std::vector<Command> commands_;
     const OutputSink* sink_ = nullptr;

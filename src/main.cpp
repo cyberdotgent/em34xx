@@ -179,6 +179,14 @@ int main(int argc, char** argv) {
     emu.set_speed_percent(cfg.speed_percent);
     Monitor monitor(emu);
     {
+        Monitor::ConnectContext cc;
+        cc.base = cfg;
+        cc.max_sessions = model->info().max_sessions;
+        cc.max_printers = int(model->info().max_printer_sessions);
+        cc.factory = bridge;
+        monitor.set_connect_context(std::move(cc));
+    }
+    {
         CrtParams cp;
         cp.enabled = cfg.crt;
         cp.beam_sigma = cfg.crt_beam;

@@ -90,6 +90,9 @@ public:
     virtual void advance(uint64_t emu_ns) { (void)emu_ns; }
 
     virtual std::string describe() const = 0;
+    // Close the host session behind one station address and keep it closed
+    // (monitor `disconnect N`). False if this host has no such session.
+    virtual bool disconnect_station(unsigned address) { (void)address; return false; }
 };
 
 // No controller attached: the line is silent.

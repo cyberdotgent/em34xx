@@ -101,6 +101,7 @@ add_library(tn34xx_core STATIC
   src/host/wsc/station.cpp
   src/host/wsc/tn5250_adapter.cpp
   src/config/config.cpp
+  src/config/connect_args.cpp
   src/monitor/expr.cpp
   src/monitor/monitor.cpp
   src/gdb/gdb_stub.cpp
