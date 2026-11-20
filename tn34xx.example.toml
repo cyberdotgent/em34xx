@@ -1,0 +1,44 @@
+# Example tn34xx configuration. Command-line options override these values.
+
+model = "3477"
+rom_dir = "roms"
+allow_bad_rom = false
+
+[emulator]
+unmapped = "stop"        # stop | log | ignore
+speed = 100              # percent of nominal clock; 0 = unthrottled
+headless = false
+scale = 2
+start_stopped = false
+
+[monitor]
+rc = ""                  # monitor script run at start-up
+history = ""             # e.g. "~/.tn34xx_history"
+
+[gdb]
+enabled = false
+port = 1234
+wait = false
+
+[log]
+levels = "info"          # e.g. "info,bus=debug,mmio=trace"
+file = ""
+
+[twinax]
+host = "none"            # none | script | tn5250
+station_address = 0      # 0..6
+
+# The TN5250 bridge is not implemented yet; these settings are validated
+# and reported only.
+[tn5250]
+host = ""
+port = 23
+device_name = ""
+terminal_type = "IBM-3477-FC"
+tls = false
+tls_verify = true
+ca_file = ""
+codepage = "37"
+
+[tn5250.env]
+# KBDTYPE = "USB"
