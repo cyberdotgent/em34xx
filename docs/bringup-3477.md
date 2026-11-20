@@ -303,7 +303,7 @@ lines):
 
 So the board timing does not make the existing data decisive: the
 expected values are too few for any family flexible enough to contain a
-plausible gate-array design. The single-dot measurement below is still
+plausible gate-array design. The single-dot measurement above is still
 what is needed.
 
 **TEMPORARY shim (implemented, `src/devices/ibm3477/display.*`).** Until the
