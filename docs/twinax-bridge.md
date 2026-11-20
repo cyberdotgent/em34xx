@@ -368,6 +368,29 @@ its cable unplugged (no reconnect) while the other stations carry on.
   shows the Main Menu and signs off, typed through the Enhanced-keyboard scan
   codes.
 
+### Live results with the 3477 firmware
+
+Observed with the 3477 brought past its display test by hand (a private
+bring-up aid; the video signature is not modelled, see
+docs/bringup-3477.md) and a saved setup (`--nvram`), then `connect HOST` at
+the monitor:
+
+- pub400.com: the session negotiates, the cable is plugged, the terminal is
+  discovered (display, model 24, 122-key keyboard, 27x132 capable) and
+  shows the full sign-on panel in colour. `disconnect` takes the
+  controller away.
+- A local OS/400 V4 system: the sign-on panel, with the password field
+  non-display.
+- The terminal stays busy after an Activate Write carrying display data
+  (the Twinax engine's write data path is not modelled yet). The station
+  notices (busy timeout right after an Activate Write) and from then on
+  paints long runs with queue loads only (`FlushOptions::activate_write`);
+  the first paint is lost once and repainted.
+- Keystrokes from the 122-key keyboard do not reach the host as the right
+  characters yet: the cable scan codes the firmware sends do not match the
+  122-key table (being fixed separately). Signing on through the real
+  keyboard path waits for that.
+
 ## Status and next steps
 
 - Done: configuration, the `TwinaxHost` contract, layers (c) and (d), the
