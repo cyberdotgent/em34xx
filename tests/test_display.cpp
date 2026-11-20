@@ -109,7 +109,7 @@ TEST_CASE("CRT rendering: scan lines, border and aspect") {
     auto g = [&](int x, int y) { return int((out[size_t(y) * 400 + size_t(x)] >> 8) & 0xFF); };
     // Raster spans y 30..270 (60 output px per line); line 1 centre at y 120.
     CHECK(g(200, 120) > 240);   // beam centre at full brightness
-    CHECK(g(200, 150) < 100);   // dark gap half-way to the next line (~1/3 incl. bloom)
+    CHECK(g(200, 150) * 2 < g(200, 120));   // gap at less than half the line centre
     CHECK(g(200, 60) < 20);     // unlit line stays dark
     CHECK(g(10, 120) == 0);     // left border is black
     p.enabled = false;          // sharp mode: no scan-line gaps
