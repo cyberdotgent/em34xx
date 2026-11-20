@@ -63,7 +63,7 @@ bool load_config_file(const std::string& path, AppConfig& cfg, std::string& erro
             return false;
         }
         if (get(*t, "speed", i)) cfg.speed_percent = unsigned(i < 0 ? 0 : i);
-        if (get(*t, "headless", b)) cfg.headless = b;
+        if (get(*t, "headless", b) && b) cfg.frontend = "none";   // older spelling of [frontend] kind
         if (get(*t, "scale", i)) cfg.scale = int(i);
         if (get(*t, "start_stopped", b)) cfg.start_stopped = b;
         if (get(*t, "straps", i)) {
@@ -72,6 +72,12 @@ bool load_config_file(const std::string& path, AppConfig& cfg, std::string& erro
         }
         get(*t, "eeprom", cfg.terminal.eeprom_path);
         get(*t, "nvram", cfg.terminal.nvram_path);
+    }
+    if (auto* t = root["frontend"].as_table()) {
+        if (get(*t, "kind", s)) {
+            if (s.empty()) { error = path + ": frontend.kind must not be empty"; return false; }
+            cfg.frontend = to_lower(s);
+        }
     }
     if (auto* t = root["display"].as_table()) {
         get(*t, "crt", cfg.crt);
@@ -207,7 +213,9 @@ Unit options (one ROM serves all of these):
       --list-keyboards      list keyboard layouts and their IDs
 
 Front end and monitor:
-      --headless            no window; the monitor runs on stdin/stdout
+      --frontend KIND       sdl (default: a window) or none (no window; the
+                            monitor runs on stdin/stdout)
+      --headless            same as --frontend none
       --scale N             window size factor (default 1, aspect-corrected)
       --rc FILE             run monitor commands from FILE at start-up
       --batch               exit after the rc file (implies --headless)
@@ -336,14 +344,19 @@ bool parse_command_line(int argc, char** argv, AppConfig& cfg, std::string& erro
             cfg.terminal.straps = int(n);
         } else if (a == "--eeprom") { if (!need(cfg.terminal.eeprom_path)) return false; }
         else if (a == "--nvram") { if (!need(cfg.terminal.nvram_path)) return false; }
-        else if (a == "--headless") cfg.headless = true;
+        else if (a == "--headless") cfg.frontend = "none";
+        else if (a == "--frontend") {
+            if (!need(v)) return false;
+            if (v.empty()) { error = "--frontend needs a front-end name (sdl or none)"; return false; }
+            cfg.frontend = to_lower(v);
+        }
         else if (a == "--scale") {
             if (!need(v)) return false;
             uint64_t n;
             if (!parse_uint(v, n) || n < 1 || n > 8) { error = "--scale must be 1..8"; return false; }
             cfg.scale = int(n);
         } else if (a == "--rc") { if (!need(cfg.rc_file)) return false; }
-        else if (a == "--batch") { cfg.batch = true; cfg.headless = true; }
+        else if (a == "--batch") { cfg.batch = true; cfg.frontend = "none"; }
         else if (a == "-S" || a == "--stopped") cfg.start_stopped = true;
         else if (a == "--history") { if (!need(cfg.history_file)) return false; }
         else if (a == "--gdb") {
@@ -421,7 +434,6 @@ std::string config_to_toml(const AppConfig& cfg) {
         {"emulator", toml::table{
             {"unmapped", unmapped_policy_name(cfg.unmapped)},
             {"speed", int64_t(cfg.speed_percent)},
-            {"headless", cfg.headless},
             {"scale", int64_t(cfg.scale)},
             {"start_stopped", cfg.start_stopped},
             {"eeprom", cfg.terminal.eeprom_path},
@@ -437,6 +449,7 @@ std::string config_to_toml(const AppConfig& cfg) {
             {"keymap", cfg.terminal.keymap},
         }},
         {"monitor", toml::table{{"rc", cfg.rc_file}, {"history", cfg.history_file}}},
+        {"frontend", toml::table{{"kind", cfg.frontend}}},
         {"gdb", toml::table{{"enabled", cfg.gdb}, {"port", int64_t(cfg.gdb_port)}, {"wait", cfg.gdb_wait}}},
         {"log", toml::table{{"levels", cfg.log_spec}, {"file", cfg.log_file}}},
         {"twinax", toml::table{

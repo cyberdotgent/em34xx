@@ -1,4 +1,4 @@
-#include "frontend/sdl_frontend.hpp"
+#include "frontend/sdl/sdl_frontend.hpp"
 
 #include "machine/emulator.hpp"
 #include "present/display_profile.hpp"
@@ -8,6 +8,8 @@
 #include <SDL3/SDL.h>
 
 #include <algorithm>
+#include <atomic>
+#include <mutex>
 #include <vector>
 
 namespace tn34xx {
@@ -33,9 +35,44 @@ struct SdlSession {
     }
 };
 
+class SdlFrontend : public Frontend {
+public:
+    const char* name() const override { return "sdl"; }
+    bool run(Emulator& emu, const FrontendOptions& opts, std::string& error) override;
+    void request_quit() override { quit_.store(true); }
+    void set_title(const std::string& title) override {
+        std::lock_guard<std::mutex> lock(text_mutex_);
+        title_ = title;
+        have_title_ = true;
+    }
+    void set_status(const std::string& status) override {
+        std::lock_guard<std::mutex> lock(text_mutex_);
+        status_ = status;
+    }
+
+private:
+    std::string window_title(const Emulator& emu, const FrontendOptions& opts);
+
+    std::atomic<bool> quit_{false};
+    std::mutex text_mutex_;
+    std::string title_;
+    bool have_title_ = false;
+    std::string status_;
+};
+
+std::string SdlFrontend::window_title(const Emulator& emu, const FrontendOptions& opts) {
+    std::lock_guard<std::mutex> lock(text_mutex_);
+    const std::string& base = have_title_ ? title_ : opts.title;
+    std::string t = format("%s - %s", base.c_str(), emu.running() ? "running" : "stopped");
+    if (!status_.empty()) t += " - " + status_;
+    return t;
+}
+
 } // namespace
 
-bool run_sdl_frontend(Emulator& emu, const FrontendOptions& opts, std::string& error) {
+std::unique_ptr<Frontend> make_sdl_frontend() { return std::make_unique<SdlFrontend>(); }
+
+bool SdlFrontend::run(Emulator& emu, const FrontendOptions& opts, std::string& error) {
     if (!SDL_Init(SDL_INIT_VIDEO)) {
         error = std::string("SDL_Init failed: ") + SDL_GetError();
         return false;
@@ -70,7 +107,7 @@ bool run_sdl_frontend(Emulator& emu, const FrontendOptions& opts, std::string& e
     SDL_SetRenderVSync(s.renderer, 1);
 
     std::string last_title;
-    while (!emu.quit_requested()) {
+    while (!emu.quit_requested() && !quit_.load()) {
         SDL_Event e;
         while (SDL_PollEvent(&e)) {
             switch (e.type) {
@@ -132,7 +169,7 @@ bool run_sdl_frontend(Emulator& emu, const FrontendOptions& opts, std::string& e
         SDL_RenderTexture(s.renderer, s.texture, nullptr, &dst);
         SDL_RenderPresent(s.renderer);
 
-        const std::string title = format("%s - %s", opts.title.c_str(), emu.running() ? "running" : "stopped");
+        const std::string title = window_title(emu, opts);
         if (title != last_title) {
             SDL_SetWindowTitle(s.window, title.c_str());
             last_title = title;

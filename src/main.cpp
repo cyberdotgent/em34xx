@@ -1,7 +1,7 @@
 // tn34xx: hardware emulator for IBM 34xx-family 5250 terminals.
 #include "app/console.hpp"
 #include "config/config.hpp"
-#include "frontend/sdl_frontend.hpp"
+#include "frontend/registry.hpp"
 #include "gdb/gdb_stub.hpp"
 #include "host/wsc/tn5250_bridge.hpp"
 #include "machine/emulator.hpp"
@@ -91,6 +91,13 @@ int main(int argc, char** argv) {
     if (cfg.list_keyboards) {
         std::fputs(keyboard_layout_list().c_str(), stdout);
         return 0;
+    }
+    const FrontendEntry* frontend_entry = find_frontend(builtin_frontends(), cfg.frontend);
+    if (!frontend_entry) {
+        std::string names;
+        for (const FrontendEntry& e : builtin_frontends()) names += (names.empty() ? "" : ", ") + e.name;
+        std::fprintf(stderr, "tn34xx: unknown front end '%s' (available: %s)\n", cfg.frontend.c_str(), names.c_str());
+        return 2;
     }
     uint8_t kbd_id1 = 0, kbd_id2 = 0;
     if (!resolve_keyboard_id(cfg.terminal, kbd_id1, kbd_id2, error)) {
@@ -224,7 +231,7 @@ int main(int argc, char** argv) {
     else if (!cfg.start_stopped && cfg.rc_file.empty()) emu.resume();
 
     const bool tty = tn_isatty(tn_fileno(stdin)) != 0;
-    if (cfg.headless) {
+    if (!frontend_entry->create) {
         if (tty) {
             make_terminal_console(monitor, emu, cfg.history_file)->run();
         } else {
@@ -245,7 +252,8 @@ int main(int argc, char** argv) {
         fo.crt.enabled = cfg.crt;
         fo.crt.beam_sigma = cfg.crt_beam;
         fo.title = "tn34xx: IBM " + model->info().name + " (" + display_subtype_name(cfg.terminal.display) + ")";
-        if (!run_sdl_frontend(emu, fo, error)) {
+        std::unique_ptr<Frontend> frontend = frontend_entry->create();
+        if (!frontend->run(emu, fo, error)) {
             LOG_ERROR("video", "%s; use --headless", error.c_str());
             emu.request_quit(2);
         }

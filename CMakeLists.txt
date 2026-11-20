@@ -188,15 +188,19 @@ tn34xx_library(tn34xx_console src/app/console.cpp)
 target_link_libraries(tn34xx_console PUBLIC tn34xx_app PRIVATE replxx::replxx)
 
 # --- SDL3 front end -------------------------------------------------------
-tn34xx_library(tn34xx_frontend_sdl src/frontend/sdl_frontend.cpp)
+tn34xx_library(tn34xx_frontend_sdl src/frontend/sdl/sdl_frontend.cpp)
 target_link_libraries(tn34xx_frontend_sdl PUBLIC tn34xx_present PRIVATE SDL3::SDL3)
+
+# --- Front-end registry: the front ends linked into the executable -------
+tn34xx_library(tn34xx_frontends src/frontend/registry.cpp)
+target_link_libraries(tn34xx_frontends PUBLIC tn34xx_frontend_sdl)
 
 add_executable(tn5250-probe src/tools/tn5250_probe.cpp)
 target_link_libraries(tn5250-probe PRIVATE tn34xx_tn5250 tn34xx_warnings)
 
 # --- Executable -----------------------------------------------------------
 add_executable(tn34xx src/main.cpp)
-target_link_libraries(tn34xx PRIVATE tn34xx_app tn34xx_console tn34xx_frontend_sdl tn34xx_warnings)
+target_link_libraries(tn34xx PRIVATE tn34xx_app tn34xx_console tn34xx_frontends tn34xx_warnings)
 
 if(TN34XX_BUILD_TESTS)
   enable_testing()
