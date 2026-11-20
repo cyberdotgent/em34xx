@@ -1,0 +1,261 @@
+#include "input/keyboard_ids.hpp"
+#include "input/set3_keyboard.hpp"
+
+#include <doctest/doctest.h>
+
+#include <vector>
+
+using namespace tn34xx;
+
+namespace {
+
+std::vector<uint8_t> drain(Set3Keyboard& k) {
+    std::vector<uint8_t> v;
+    while (k.has_output()) v.push_back(k.read_output());
+    return v;
+}
+
+using Bytes = std::vector<uint8_t>;
+
+void press(Set3Keyboard& k, uint32_t hid, bool down) {
+    HostKeyEvent ev;
+    ev.hid_usage = hid;
+    ev.pressed = down;
+    k.host_key(ev);
+}
+
+} // namespace
+
+TEST_CASE("keyboard type parsing") {
+    KeyboardType t = KeyboardType::Enhanced;
+    CHECK(parse_keyboard_type("122", t));
+    CHECK(t == KeyboardType::Terminal122);
+    CHECK(parse_keyboard_type("Terminal", t));
+    CHECK(t == KeyboardType::Terminal122);
+    CHECK(parse_keyboard_type("enhanced", t));
+    CHECK(t == KeyboardType::Enhanced);
+    CHECK(parse_keyboard_type("101", t));
+    CHECK(parse_keyboard_type("102", t));
+    CHECK(t == KeyboardType::Enhanced);
+    CHECK_FALSE(parse_keyboard_type("84", t));
+    CHECK(std::string(keyboard_type_name(KeyboardType::Terminal122)) == "122");
+    CHECK(std::string(keyboard_type_name(KeyboardType::Enhanced)) == "enhanced");
+}
+
+TEST_CASE("keyboard ID table") {
+    uint8_t a = 0, b = 0;
+    REQUIRE(keyboard_id_bytes(KeyboardType::Terminal122, "us", a, b));
+    CHECK(a == 0xBF);
+    CHECK(b == 0xBF);   // 10111111
+    REQUIRE(keyboard_id_bytes(KeyboardType::Enhanced, "us", a, b));
+    CHECK(a == 0x7F);
+    CHECK(b == 0x7F);   // 01111111
+    REQUIRE(keyboard_id_bytes(KeyboardType::Terminal122, "de", a, b));
+    CHECK(b == 0xBE);
+    REQUIRE(keyboard_id_bytes(KeyboardType::Enhanced, "UK", a, b));
+    CHECK(b == 0x6C);
+    REQUIRE(keyboard_id_bytes(KeyboardType::Enhanced, "be", a, b));
+    CHECK(b == 0x7D);
+    REQUIRE(keyboard_id_bytes(KeyboardType::Terminal122, "fi", a, b));  // alias of se
+    CHECK(b == 0xAF);
+    REQUIRE(keyboard_id_bytes(KeyboardType::Enhanced, "hu", a, b));
+    CHECK(b == 0x41);
+    // No 122-key Hungarian keyboard, no Enhanced data-entry keyboard.
+    CHECK_FALSE(keyboard_id_bytes(KeyboardType::Terminal122, "hu", a, b));
+    CHECK_FALSE(keyboard_id_bytes(KeyboardType::Enhanced, "us-dataentry", a, b));
+    CHECK_FALSE(keyboard_id_bytes(KeyboardType::Enhanced, "xx", a, b));
+
+    // Names are unique, lowercase, and every pair follows the type rule.
+    const auto& ls = keyboard_layouts();
+    CHECK(ls.size() >= 30);
+    for (size_t i = 0; i < ls.size(); ++i) {
+        for (const char* p = ls[i].name; *p; ++p) CHECK_FALSE((*p >= 'A' && *p <= 'Z'));
+        for (size_t j = i + 1; j < ls.size(); ++j) CHECK(std::string(ls[i].name) != ls[j].name);
+        if (ls[i].id122) CHECK((ls[i].id122 & 0xC0) == 0x80);
+        if (ls[i].id_enhanced) CHECK((ls[i].id_enhanced & 0xC0) == 0x40);
+        if (ls[i].id122 && ls[i].id_enhanced) CHECK(ls[i].id122 == (ls[i].id_enhanced ^ 0xC0));
+    }
+}
+
+TEST_CASE("reset and BAT") {
+    Set3Keyboard k(KeyboardType::Terminal122, 0xBF, 0xBE);
+    k.power_on();
+    CHECK(drain(k) == Bytes{0xAA, 0xBF, 0xBE});
+
+    k.set_bat_sends_id(false);
+    k.host_write(0xFF);
+    CHECK(drain(k) == Bytes{0xFA, 0xAA});
+
+    Set3Keyboard e(KeyboardType::Enhanced, 0x7F, 0x7F);
+    e.power_on();
+    CHECK(drain(e) == Bytes{0xAA});
+}
+
+TEST_CASE("read ID, echo, resend, unknown command") {
+    Set3Keyboard k(KeyboardType::Enhanced, 0x7F, 0x6C);
+    k.power_on();
+    drain(k);
+    k.host_write(0xF2);
+    CHECK(drain(k) == Bytes{0xFA, 0x7F, 0x6C});
+    k.host_write(0xEE);
+    CHECK(drain(k) == Bytes{0xEE});
+    k.host_write(0xFE);
+    CHECK(drain(k) == Bytes{0xEE});
+    k.host_write(0xEF);
+    CHECK(drain(k) == Bytes{0xFE});
+}
+
+TEST_CASE("scan-code set select") {
+    Set3Keyboard k;
+    k.power_on();
+    drain(k);
+    k.host_write(0xF0);
+    k.host_write(0x00);
+    CHECK(drain(k) == Bytes{0xFA, 0xFA, 0x03});
+    k.host_write(0xF0);
+    k.host_write(0x03);
+    CHECK(drain(k) == Bytes{0xFA, 0xFA});
+    k.host_write(0xF0);
+    k.host_write(0x07);
+    CHECK(drain(k) == Bytes{0xFA, 0xFE});
+}
+
+TEST_CASE("set-3 default make/break") {
+    Set3Keyboard k(KeyboardType::Enhanced, 0x7F, 0x7F);
+    k.power_on();
+    drain(k);
+    // A letter is typematic make-only: no break code.
+    press(k, 0x04, true);   // a
+    press(k, 0x04, false);
+    CHECK(drain(k) == Bytes{0x1C});
+    // Shift is make/break.
+    press(k, 0xE1, true);
+    press(k, 0xE1, false);
+    CHECK(drain(k) == Bytes{0x12, 0xF0, 0x12});
+    // Esc on the Enhanced keyboard.
+    press(k, 0x29, true);
+    CHECK(drain(k) == Bytes{0x08});
+    CHECK(Set3Keyboard::default_key_mode(0x14) == Set3Keyboard::MakeBreak);
+    CHECK(Set3Keyboard::default_key_mode(0x07) == Set3Keyboard::MakeOnly);
+}
+
+TEST_CASE("122-key host mapping") {
+    CHECK(Set3Keyboard::hid_to_set3(KeyboardType::Terminal122, 0x68) == 0x08);  // F13
+    CHECK(Set3Keyboard::hid_to_set3(KeyboardType::Terminal122, 0x73) == 0x5F);  // F24
+    CHECK(Set3Keyboard::hid_to_set3(KeyboardType::Terminal122, 0x29) == 0x05);  // Esc
+    CHECK(Set3Keyboard::hid_to_set3(KeyboardType::Terminal122, 0x3A) == 0x07);  // F1
+    CHECK(Set3Keyboard::hid_to_set3(KeyboardType::Enhanced, 0x29) == 0x08);
+    CHECK(Set3Keyboard::hid_to_set3(KeyboardType::Enhanced, 0x68) == 0x00);
+    CHECK(Set3Keyboard::hid_to_set3(KeyboardType::Enhanced, 0x31) == 0x5C);
+    CHECK(Set3Keyboard::hid_to_set3(KeyboardType::Terminal122, 0x31) == 0x53);
+    CHECK(Set3Keyboard::hid_to_set3(KeyboardType::Enhanced, 0x1000) == 0x00);
+}
+
+TEST_CASE("key mode commands") {
+    Set3Keyboard k;
+    k.set_bat_sends_id(false);
+    k.power_on();
+    drain(k);
+
+    k.host_write(0xF8);  // all make/break
+    CHECK(drain(k) == Bytes{0xFA});
+    press(k, 0x04, true);
+    press(k, 0x04, false);
+    CHECK(drain(k) == Bytes{0x1C, 0xF0, 0x1C});
+
+    k.host_write(0xF9);  // all make-only
+    press(k, 0xE1, true);
+    press(k, 0xE1, false);
+    CHECK(drain(k) == Bytes{0xFA, 0x12});
+
+    // FC <codes> : those keys make/break; the list ends at the next command.
+    k.host_write(0xFC);
+    k.host_write(0x1C);
+    k.host_write(0x32);
+    k.host_write(0xF4);
+    CHECK(drain(k) == Bytes{0xFA, 0xFA, 0xFA, 0xFA});
+    CHECK(k.key_mode(0x1C) == Set3Keyboard::MakeBreak);
+    CHECK(k.key_mode(0x32) == Set3Keyboard::MakeBreak);
+    CHECK(k.key_mode(0x21) == Set3Keyboard::MakeOnly);
+    press(k, 0x05, true);   // b
+    press(k, 0x05, false);
+    press(k, 0x06, true);   // c
+    press(k, 0x06, false);
+    CHECK(drain(k) == Bytes{0x32, 0xF0, 0x32, 0x21});
+
+    k.host_write(0xFA);
+    CHECK(k.key_mode(0x21) == Set3Keyboard::TypematicMakeBreak);
+    k.host_write(0xF7);
+    CHECK(k.key_mode(0x21) == Set3Keyboard::Typematic);
+    k.host_write(0xF6);  // defaults
+    CHECK(k.key_mode(0x12) == Set3Keyboard::MakeBreak);
+    CHECK(k.key_mode(0x1C) == Set3Keyboard::Typematic);
+    drain(k);
+
+    // F5 disables scanning; F4 re-enables.
+    k.host_write(0xF5);
+    press(k, 0x04, true);
+    press(k, 0x04, false);
+    CHECK(drain(k) == Bytes{0xFA});
+    k.host_write(0xF4);
+    press(k, 0x04, true);
+    CHECK(drain(k) == Bytes{0xFA, 0x1C});
+}
+
+TEST_CASE("typematic repeat") {
+    Set3Keyboard k;
+    k.set_bat_sends_id(false);
+    k.power_on();
+    drain(k);
+    k.host_write(0xF3);
+    k.host_write(0x00);  // 30 cps (33.4 ms), 250 ms delay
+    CHECK(drain(k) == Bytes{0xFA, 0xFA});
+    press(k, 0x04, true);
+    press(k, 0x04, true);  // host auto-repeat is ignored
+    CHECK(drain(k) == Bytes{0x1C});
+    k.advance_us(249000);
+    CHECK_FALSE(k.has_output());
+    k.advance_us(1000);
+    CHECK(drain(k) == Bytes{0x1C});
+    k.advance_us(33360 * 2);
+    CHECK(drain(k) == Bytes{0x1C, 0x1C});
+    press(k, 0x04, false);
+    k.advance_us(1000000);
+    CHECK_FALSE(k.has_output());
+    // Make-only keys do not repeat.
+    press(k, 0x3A, true);   // F1
+    k.advance_us(1000000);
+    CHECK(drain(k) == Bytes{0x07});
+}
+
+TEST_CASE("LEDs") {
+    Set3Keyboard k;
+    k.power_on();
+    drain(k);
+    k.host_write(0xED);
+    k.host_write(0x05);
+    CHECK(drain(k) == Bytes{0xFA, 0xFA});
+    CHECK(k.scroll_lock_led());
+    CHECK_FALSE(k.num_lock_led());
+    CHECK(k.caps_lock_led());
+    k.host_write(0xED);
+    k.host_write(0x08);  // out of range
+    CHECK(drain(k) == Bytes{0xFA, 0xFE});
+    CHECK(k.leds() == 0x05);
+    k.host_write(0x02);
+    CHECK(drain(k) == Bytes{0xFA});
+    CHECK(k.leds() == 0x02);
+}
+
+TEST_CASE("buffer overrun") {
+    Set3Keyboard k;
+    k.set_bat_sends_id(false);
+    k.power_on();
+    drain(k);
+    for (uint8_t i = 0; i < 20; ++i) {
+        k.key(uint8_t(0x15 + i), true);
+    }
+    auto out = drain(k);
+    REQUIRE(out.size() == Set3Keyboard::kBufferLimit + 1);
+    CHECK(out.back() == 0x00);
+}
