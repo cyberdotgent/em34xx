@@ -1,5 +1,6 @@
 #include "config/config.hpp"
 
+#include "input/keyboard_ids.hpp"
 #include "util/strings.hpp"
 
 #include <toml++/toml.hpp>
@@ -123,6 +124,39 @@ bool load_config_file(const std::string& path, AppConfig& cfg, std::string& erro
     return true;
 }
 
+bool resolve_keyboard_id(const TerminalOptions& t, uint8_t& id1, uint8_t& id2, std::string& error) {
+    KeyboardType type;
+    if (!parse_keyboard_type(t.keyboard_type, type)) {
+        error = "unknown keyboard type '" + t.keyboard_type + "' (use 122 or enhanced)";
+        return false;
+    }
+    id1 = keyboard_id_first_byte(type);
+    if (t.keyboard_id >= 0) {
+        id2 = uint8_t(t.keyboard_id);
+        return true;
+    }
+    if (!find_keyboard_layout(t.keyboard_layout)) {
+        error = "unknown keyboard layout '" + t.keyboard_layout + "' (see --list-keyboards)";
+        return false;
+    }
+    if (!keyboard_id_bytes(type, t.keyboard_layout, id1, id2)) {
+        error = "no " + std::string(keyboard_type_name(type)) + " keyboard exists for layout '" +
+                t.keyboard_layout + "'";
+        return false;
+    }
+    return true;
+}
+
+std::string keyboard_layout_list() {
+    std::string out = format("%-14s %-6s %-9s %s\n", "layout", "122", "enhanced", "description");
+    for (const KeyboardLayoutInfo& l : keyboard_layouts()) {
+        out += format("%-14s %-6s %-9s %s%s\n", l.name, l.id122 ? format("%02X", l.id122).c_str() : "-",
+                      l.id_enhanced ? format("%02X", l.id_enhanced).c_str() : "-", l.description,
+                      l.documented ? "" : " (inferred)");
+    }
+    return out;
+}
+
 std::string usage_text(const char* argv0) {
     std::string u = format("usage: %s [options]\n", argv0);
     u += R"(
@@ -140,7 +174,8 @@ Unit options (one ROM serves all of these):
       --keyboard TYPE       122 (terminal, default) or enhanced
       --keyboard-layout L   keyboard country/layout, selects the terminal's
                             language (default us; see docs/keyboard.md)
-      --keyboard-id ID      override the keyboard ID byte (hex)
+      --keyboard-id ID      override the country ID byte (hex)
+      --list-keyboards      list keyboard layouts and their IDs
 
 Front end and monitor:
       --headless            no window; the monitor runs on stdin/stdout
@@ -214,6 +249,7 @@ bool parse_command_line(int argc, char** argv, AppConfig& cfg, std::string& erro
         else if (a == "-V" || a == "--version") cfg.show_version = true;
         else if (a == "--list-models") cfg.list_models = true;
         else if (a == "--check-roms") cfg.check_roms = true;
+        else if (a == "--list-keyboards") cfg.list_keyboards = true;
         else if (a == "-c" || a == "--config") { if (!need(v)) return false; }
         else if (a == "-m" || a == "--model") { if (!need(cfg.model)) return false; }
         else if (a == "-r" || a == "--rom-dir") { if (!need(cfg.rom_dir)) return false; }

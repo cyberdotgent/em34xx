@@ -50,7 +50,13 @@ struct AppConfig {
     bool show_version = false;
     bool list_models = false;
     bool check_roms = false;
+    bool list_keyboards = false;
 };
+
+// Check the keyboard type/layout and work out the two Read ID bytes the
+// emulated keyboard reports (an explicit keyboard_id replaces the second).
+bool resolve_keyboard_id(const TerminalOptions& t, uint8_t& id1, uint8_t& id2, std::string& error);
+std::string keyboard_layout_list();
 
 bool load_config_file(const std::string& path, AppConfig& cfg, std::string& error);
 

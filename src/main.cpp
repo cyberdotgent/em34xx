@@ -85,6 +85,15 @@ int main(int argc, char** argv) {
         list_models();
         return 0;
     }
+    if (cfg.list_keyboards) {
+        std::fputs(keyboard_layout_list().c_str(), stdout);
+        return 0;
+    }
+    uint8_t kbd_id1 = 0, kbd_id2 = 0;
+    if (!resolve_keyboard_id(cfg.terminal, kbd_id1, kbd_id2, error)) {
+        std::fprintf(stderr, "tn34xx: %s\n", error.c_str());
+        return 2;
+    }
 
     if (!cfg.log_spec.empty() && !log_configure(cfg.log_spec, error)) {
         std::fprintf(stderr, "tn34xx: %s\n", error.c_str());
@@ -137,9 +146,9 @@ int main(int argc, char** argv) {
     machine->reset();
     LOG_INFO("machine", "%s ready, CPU %s, reset vector at %06X", model->info().description.c_str(),
              cpu_level_name(model->info().cpu), machine->cpu().pc_linear());
-    LOG_INFO("machine", "display %s, keyboard %s/%s%s", display_subtype_name(cfg.terminal.display),
-             cfg.terminal.keyboard_type.c_str(), cfg.terminal.keyboard_layout.c_str(),
-             cfg.terminal.keyboard_id >= 0 ? format(" (ID override %02X)", cfg.terminal.keyboard_id).c_str() : "");
+    LOG_INFO("machine", "display %s, keyboard %s/%s, ID %02X %02X%s", display_subtype_name(cfg.terminal.display),
+             cfg.terminal.keyboard_type.c_str(), cfg.terminal.keyboard_layout.c_str(), kbd_id1, kbd_id2,
+             cfg.terminal.keyboard_id >= 0 ? " (override)" : "");
 
     Emulator emu(std::move(machine));
     emu.set_speed_percent(cfg.speed_percent);

@@ -54,3 +54,23 @@ TEST_CASE("display and keyboard options from the command line") {
     REQUIRE(parse_command_line(3, const_cast<char**>(argv2), c2, err));
     CHECK(c2.terminal.display == DisplaySubtype::Color);
 }
+
+TEST_CASE("keyboard ID resolution") {
+    TerminalOptions t;
+    uint8_t a = 0, b = 0;
+    std::string err;
+    REQUIRE(resolve_keyboard_id(t, a, b, err));   // 122-key US default
+    CHECK(a == 0xBF);
+    CHECK(b == 0xBF);
+    t.keyboard_type = "enhanced";
+    REQUIRE(resolve_keyboard_id(t, a, b, err));
+    CHECK(a == 0x7F);
+    CHECK(b == 0x7F);
+    t.keyboard_layout = "nosuch";
+    CHECK_FALSE(resolve_keyboard_id(t, a, b, err));
+    t.keyboard_id = 0x9F;                          // explicit override wins
+    REQUIRE(resolve_keyboard_id(t, a, b, err));
+    CHECK(b == 0x9F);
+    t.keyboard_type = "qwerty";
+    CHECK_FALSE(resolve_keyboard_id(t, a, b, err));
+}
