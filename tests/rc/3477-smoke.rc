@@ -1,0 +1,9 @@
+# Smoke test for the 3477 ROM set: the machine comes out of reset at the
+# reset vector and executes the first far jump into the system ROM.
+assert pc==ffff0 "reset vector"
+step
+assert cs==f000 "far jump into the F000 segment"
+policy ignore
+run #10000
+info
+quit
