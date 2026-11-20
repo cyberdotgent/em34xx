@@ -37,6 +37,18 @@ cmake --build --preset release
 The language level is deliberately C++17: the project must stay buildable
 with toolchains that target Windows 7 (x86).
 
+Executables (each front end is its own program; see
+[docs/architecture.md](docs/architecture.md)):
+
+| Program | Built when | What it is |
+| --- | --- | --- |
+| `tn34xx` | SDL3 found (`-DTN34XX_FRONTEND_SDL=AUTO`, default; `ON` requires it, `OFF` skips it) | SDL3 window plus the developer tooling: monitor console, GDB stub, scripts; `--headless` runs it without a window |
+| `tn34xx-headless` | always | the same without SDL: monitor on stdin/stdout, scripts, GDB stub |
+| `tn5250-probe` | always | stand-alone TN5250 client for protocol tests |
+
+Native end-user front ends (`tn34xxw` for Win32, `tn34xx.app` for Cocoa)
+are planned as separate executables without the developer tooling.
+
 ### Windows (MinGW-w64 cross build)
 
 Windows 7 and later, 32-bit (x86, the primary Windows target) or 64-bit,
@@ -50,7 +62,8 @@ cmake --build --preset mingw-x86-release
 ctest --preset mingw-x86-release -LE slow   # through wine, if installed
 ```
 
-The output is `build/mingw-x86-release/tn34xx.exe`, a console program that
+The output is `build/mingw-x86-release/tn34xx.exe` (and
+`tn34xx-headless.exe`), a console program that
 needs only system DLLs: the MinGW runtime, SDL3 and the other ports are
 linked statically. The toolchain files in `cmake/toolchains/` use the
 compilers' posix thread model (`*-g++-posix`) and `_WIN32_WINNT=0x0601`;
@@ -77,6 +90,7 @@ instead.
 ```sh
 build/release/tn34xx --model 3477              # window + monitor on the terminal
 build/release/tn34xx --headless -S             # monitor only, CPU stopped at reset
+build/release/tn34xx-headless -S               # the same, from the build without SDL
 build/release/tn34xx --batch --rc script.rc    # automated run; exit code from the script
 build/release/tn34xx --gdb -S                  # GDB stub on 127.0.0.1:1234
 ```
