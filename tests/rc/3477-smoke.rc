@@ -1,9 +1,17 @@
-# Smoke test for the 3477 ROM set: the machine comes out of reset at the
-# reset vector and executes the first far jump into the system ROM.
+# Smoke test for the 3477 ROM set with the modelled hardware (no forced
+# results). It checks hardware-visible progress only.
 assert pc==ffff0 "reset vector"
 step
 assert cs==f000 "far jump into the F000 segment"
-policy ignore
-run #10000
+assert byte[2000a]==0c "display-type straps for the default (green) unit"
+speed max
+run #3000000
+# POST has tested RAM and installed handlers for the hardware vectors.
+assert word[18]!=0||word[1a]!=0 "vector 06h (timer) installed"
+assert word[38]!=0||word[3a]!=0 "vector 0Eh (keyboard) installed"
+# Until the Twinax engine is modelled, POST stops at the communications
+# test with the alarm latch set; update this when the link device lands.
+assert byte[20010]==9b "POST stopped at the communications test (expected for now)"
+unmapped
 info
 quit
