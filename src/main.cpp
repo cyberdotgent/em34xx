@@ -2,6 +2,7 @@
 #include "config/config.hpp"
 #include "frontend/sdl_frontend.hpp"
 #include "gdb/gdb_stub.hpp"
+#include "host/wsc/tn5250_bridge.hpp"
 #include "machine/emulator.hpp"
 #include "models/model.hpp"
 #include "monitor/monitor.hpp"
@@ -148,7 +149,15 @@ int main(int argc, char** argv) {
         std::fprintf(stderr, "tn34xx: %s\n", error.c_str());
         return 2;
     }
-    std::unique_ptr<TwinaxHost> host = make_twinax_host(cfg.twinax, cfg.tn5250, error);
+    // The TN5250 bridge: the virtual workstation controller with one TN5250
+    // session per display station (src/host/wsc/tn5250_bridge.hpp).
+    const Tn5250HostFactory bridge = [&](const TwinaxConfig& tw, const Tn5250Config& tn, std::string& err) {
+        wsc::BridgeOptions bo;
+        bo.model = model->info().name;
+        bo.display = cfg.terminal.display;
+        return wsc::make_tn5250_bridge(tw, tn, std::move(bo), err);
+    };
+    std::unique_ptr<TwinaxHost> host = make_twinax_host(cfg.twinax, cfg.tn5250, error, bridge);
     if (!host) {
         std::fprintf(stderr, "tn34xx: %s\n", error.c_str());
         return 2;

@@ -104,12 +104,20 @@ target_link_libraries(tn34xx_tn5250
   PUBLIC tn34xx_core Threads::Threads
   PRIVATE tn34xx_warnings)
 
+# --- TN5250 bridge: the workstation controller with TN5250 sessions --------
+add_library(tn34xx_bridge STATIC
+  src/host/wsc/tn5250_bridge.cpp
+)
+target_link_libraries(tn34xx_bridge
+  PUBLIC tn34xx_tn5250 tn34xx_core
+  PRIVATE tn34xx_warnings)
+
 add_executable(tn5250-probe src/tools/tn5250_probe.cpp)
 target_link_libraries(tn5250-probe PRIVATE tn34xx_tn5250 tn34xx_warnings)
 
 # --- Executable -----------------------------------------------------------
 add_executable(tn34xx src/main.cpp)
-target_link_libraries(tn34xx PRIVATE tn34xx_core tn34xx_frontend tn34xx_warnings)
+target_link_libraries(tn34xx PRIVATE tn34xx_core tn34xx_bridge tn34xx_frontend tn34xx_warnings)
 
 if(TN34XX_BUILD_TESTS)
   enable_testing()

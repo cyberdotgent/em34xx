@@ -12,6 +12,7 @@
 
 #include <cstdint>
 #include <deque>
+#include <functional>
 #include <memory>
 #include <mutex>
 #include <string>
@@ -121,8 +122,8 @@ private:
     uint64_t no_response_count_ = 0;
 };
 
-// Placeholder for the TN5250 bridge. It validates and reports its
-// configuration but does not connect yet.
+// Configuration-only stand-in for the TN5250 bridge, used when no bridge
+// factory is linked in (see make_twinax_host). It never drives the line.
 class Tn5250TwinaxHost : public TwinaxHost {
 public:
     explicit Tn5250TwinaxHost(Tn5250Config cfg) : cfg_(std::move(cfg)) {}
@@ -135,7 +136,14 @@ private:
     Tn5250Config cfg_;
 };
 
+// Builds the TN5250 bridge (wsc::make_tn5250_bridge, in the tn34xx_bridge
+// library, which needs the TN5250 client). make_twinax_host() validates the
+// configuration and then calls it; without one it falls back to the
+// configuration-only Tn5250TwinaxHost placeholder.
+using Tn5250HostFactory = std::function<std::unique_ptr<TwinaxHost>(const TwinaxConfig&, const Tn5250Config&,
+                                                                    std::string& error)>;
+
 std::unique_ptr<TwinaxHost> make_twinax_host(const TwinaxConfig& twinax, const Tn5250Config& tn5250,
-                                             std::string& error);
+                                             std::string& error, const Tn5250HostFactory& tn5250_factory = nullptr);
 
 } // namespace tn34xx

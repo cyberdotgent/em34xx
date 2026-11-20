@@ -92,11 +92,11 @@ void Tn5250TwinaxHost::from_station(const TwinaxMessage& msg) {
 }
 
 std::string Tn5250TwinaxHost::describe() const {
-    return "twinax: tn5250 bridge (not implemented yet; configuration only)\n" + cfg_.describe();
+    return "twinax: tn5250 bridge (not linked in; configuration only)\n" + cfg_.describe();
 }
 
 std::unique_ptr<TwinaxHost> make_twinax_host(const TwinaxConfig& twinax, const Tn5250Config& tn5250,
-                                             std::string& error) {
+                                             std::string& error, const Tn5250HostFactory& tn5250_factory) {
     error = twinax.validate();
     if (!error.empty()) return nullptr;
     switch (twinax.host) {
@@ -111,7 +111,8 @@ std::unique_ptr<TwinaxHost> make_twinax_host(const TwinaxConfig& twinax, const T
             error = "twinax host 'tn5250' needs a tn5250 host name";
             return nullptr;
         }
-        LOG_WARN("tn5250", "the TN5250 bridge is not implemented yet; the line will stay idle");
+        if (tn5250_factory) return tn5250_factory(twinax, tn5250, error);
+        LOG_WARN("tn5250", "the TN5250 bridge is not linked in; the line will stay idle");
         return std::make_unique<Tn5250TwinaxHost>(tn5250);
     }
     error = "unknown twinax host kind";
