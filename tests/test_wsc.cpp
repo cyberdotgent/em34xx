@@ -214,9 +214,164 @@ TEST_CASE("keyboard map: Enhanced keyboard, shift and caps lock") {
     REQUIRE(km.translate(0xFF, a));
     CHECK(a.kind == OperatorAction::Kind::Overrun);
     KeyboardMap typewriter(0x02);
-    REQUIRE(typewriter.translate(0x1C, a));
+    REQUIRE(typewriter.translate(0x0B, a));   // Help on the typewriter keyboard
+    CHECK(a.aid == 0xF3);
+    REQUIRE(km.translate(0x0B, a));           // not a key on the Enhanced keyboard
     CHECK(a.kind == OperatorAction::Kind::Unmapped);
-    CHECK(a.scan == 0x1C);
+    CHECK(a.scan == 0x0B);
+}
+
+namespace {
+
+using AK = OperatorAction::Kind;
+
+struct Expect {
+    uint8_t scan;
+    AK kind;
+    uint8_t value;          // EBCDIC for Character, AID for Aid, else 0
+    KeyFunction function;
+};
+
+void check_layer(KeyboardMap& km, const std::vector<Expect>& rows) {
+    for (const Expect& e : rows) {
+        CAPTURE(int(e.scan));
+        OperatorAction a;
+        REQUIRE(km.translate(e.scan, a));
+        CHECK(a.kind == e.kind);
+        CHECK(a.scan == e.scan);
+        if (e.kind == AK::Character) CHECK(a.ebcdic == e.value);
+        if (e.kind == AK::Aid) CHECK(a.aid == e.value);
+        if (e.kind == AK::Function) CHECK(a.function == e.function);
+    }
+}
+
+constexpr KeyFunction N = KeyFunction::None;
+
+} // namespace
+
+TEST_CASE("keyboard map: 122-key typewriter, every position unshifted") {
+    KeyboardMap km(0x02);
+    REQUIRE_FALSE(km.enhanced_layout());
+    const std::vector<Expect> rows = {
+        // Typing block, lower case.
+        {0x0E, AK::Character, 0x79, N}, {0x16, AK::Character, 0xF1, N}, {0x1E, AK::Character, 0xF2, N},
+        {0x26, AK::Character, 0xF3, N}, {0x25, AK::Character, 0xF4, N}, {0x2E, AK::Character, 0xF5, N},
+        {0x36, AK::Character, 0xF6, N}, {0x3D, AK::Character, 0xF7, N}, {0x3E, AK::Character, 0xF8, N},
+        {0x46, AK::Character, 0xF9, N}, {0x45, AK::Character, 0xF0, N}, {0x4E, AK::Character, 0x60, N},
+        {0x55, AK::Character, 0x7E, N},
+        {0x15, AK::Character, 0x98, N}, {0x1D, AK::Character, 0xA6, N}, {0x24, AK::Character, 0x85, N},
+        {0x2D, AK::Character, 0x99, N}, {0x2C, AK::Character, 0xA3, N}, {0x35, AK::Character, 0xA8, N},
+        {0x3C, AK::Character, 0xA4, N}, {0x43, AK::Character, 0x89, N}, {0x44, AK::Character, 0x96, N},
+        {0x4D, AK::Character, 0x97, N}, {0x54, AK::Character, 0xBA, N}, {0x5B, AK::Character, 0xBB, N},
+        {0x53, AK::Character, 0xE0, N},
+        {0x1C, AK::Character, 0x81, N}, {0x1B, AK::Character, 0xA2, N}, {0x23, AK::Character, 0x84, N},
+        {0x2B, AK::Character, 0x86, N}, {0x34, AK::Character, 0x87, N}, {0x33, AK::Character, 0x88, N},
+        {0x3B, AK::Character, 0x91, N}, {0x42, AK::Character, 0x92, N}, {0x4B, AK::Character, 0x93, N},
+        {0x4C, AK::Character, 0x5E, N}, {0x52, AK::Character, 0x7D, N},
+        {0x1A, AK::Character, 0xA9, N}, {0x22, AK::Character, 0xA7, N}, {0x21, AK::Character, 0x83, N},
+        {0x2A, AK::Character, 0xA5, N}, {0x32, AK::Character, 0x82, N}, {0x31, AK::Character, 0x95, N},
+        {0x3A, AK::Character, 0x94, N}, {0x41, AK::Character, 0x6B, N}, {0x49, AK::Character, 0x4B, N},
+        {0x4A, AK::Character, 0x61, N}, {0x29, AK::Character, 0x40, N},
+        // Numeric pad.
+        {0x6C, AK::Character, 0xF7, N}, {0x75, AK::Character, 0xF8, N}, {0x7D, AK::Character, 0xF9, N},
+        {0x6B, AK::Character, 0xF4, N}, {0x73, AK::Character, 0xF5, N}, {0x74, AK::Character, 0xF6, N},
+        {0x69, AK::Character, 0xF1, N}, {0x72, AK::Character, 0xF2, N}, {0x7A, AK::Character, 0xF3, N},
+        {0x70, AK::Character, 0xF0, N}, {0x71, AK::Character, 0x4B, N}, {0x7B, AK::Character, 0x6B, N},
+        {0x7F, AK::Function, 0, KeyFunction::FieldMinus}, {0x7C, AK::Function, 0, KeyFunction::FieldPlus},
+        {0x79, AK::Aid, 0xF1, N},
+        // Editing and cursor keys.
+        {0x66, AK::Function, 0, KeyFunction::Backspace}, {0x0D, AK::Function, 0, KeyFunction::Tab},
+        {0x5A, AK::Function, 0, KeyFunction::FieldExit}, {0x58, AK::Aid, 0xF1, N},
+        {0x11, AK::Function, 0, KeyFunction::Reset}, {0x67, AK::Function, 0, KeyFunction::Insert},
+        {0x64, AK::Function, 0, KeyFunction::Delete}, {0x61, AK::Function, 0, KeyFunction::CursorLeft},
+        {0x6A, AK::Function, 0, KeyFunction::CursorRight}, {0x63, AK::Function, 0, KeyFunction::CursorUp},
+        {0x60, AK::Function, 0, KeyFunction::CursorDown},
+        // Left-hand block.
+        {0x05, AK::Attn, 0, N}, {0x06, AK::Aid, 0xBD, N}, {0x0C, AK::Function, 0, KeyFunction::EraseInput},
+        {0x0B, AK::Aid, 0xF3, N}, {0x03, AK::Aid, 0xF6, N}, {0x09, AK::Function, 0, KeyFunction::Record},
+        {0x0A, AK::Function, 0, KeyFunction::Play},
+        // Positions without a pinned legend stay unmapped.
+        {0x04, AK::Unmapped, 0, N}, {0x02, AK::Unmapped, 0, N}, {0x01, AK::Unmapped, 0, N},
+        {0x62, AK::Unmapped, 0, N}, {0x6E, AK::Unmapped, 0, N}, {0x6F, AK::Unmapped, 0, N},
+        {0x65, AK::Unmapped, 0, N}, {0x6D, AK::Unmapped, 0, N}, {0x76, AK::Unmapped, 0, N},
+        {0x77, AK::Unmapped, 0, N}, {0x7E, AK::Unmapped, 0, N},
+    };
+    check_layer(km, rows);
+    // F1..F12 in the lower row and F13..F24 in the upper row.
+    const uint8_t lower[12] = {0x07, 0x0F, 0x17, 0x1F, 0x27, 0x2F, 0x37, 0x3F, 0x47, 0x4F, 0x56, 0x5E};
+    const uint8_t upper[12] = {0x08, 0x10, 0x18, 0x20, 0x28, 0x30, 0x38, 0x40, 0x48, 0x50, 0x57, 0x5F};
+    for (int i = 0; i < 12; ++i) {
+        OperatorAction a;
+        REQUIRE(km.translate(lower[i], a));
+        CHECK(a.kind == AK::Aid);
+        CHECK(a.aid == 0x31 + i);
+        REQUIRE(km.translate(upper[i], a));
+        CHECK(a.kind == AK::Aid);
+        CHECK(a.aid == 0xB1 + i);
+    }
+}
+
+TEST_CASE("keyboard map: 122-key typewriter, shift, shift lock and alt layers") {
+    KeyboardMap km(0x0A);   // world trade: same positions, US graphics
+    OperatorAction a;
+    CHECK_FALSE(km.translate(0x59, a));   // right shift make
+    CHECK(km.shift());
+    const std::vector<Expect> shifted = {
+        {0x16, AK::Character, 0x5A, N}, {0x1E, AK::Character, 0x7C, N}, {0x36, AK::Character, 0x5F, N},
+        {0x1C, AK::Character, 0xC1, N}, {0x53, AK::Character, 0x4F, N}, {0x4A, AK::Character, 0x6F, N},
+        {0x6C, AK::Character, 0xF7, N},
+        {0x0D, AK::Function, 0, KeyFunction::Backtab}, {0x5A, AK::Function, 0, KeyFunction::NewLine},
+        {0x67, AK::Function, 0, KeyFunction::Dup}, {0x63, AK::Aid, 0xF5, N}, {0x60, AK::Aid, 0xF4, N},
+        {0x05, AK::SysReq, 0, N}, {0x07, AK::Aid, 0xB1, N}, {0x5E, AK::Aid, 0xBC, N},
+    };
+    check_layer(km, shifted);
+    CHECK_FALSE(km.translate(0xD9, a));   // right shift break
+    CHECK_FALSE(km.shift());
+
+    // Shift Lock holds every key in upper shift until a Shift key is pressed.
+    CHECK_FALSE(km.translate(0x14, a));
+    CHECK_FALSE(km.translate(0x94, a));
+    CHECK(km.caps_lock());
+    REQUIRE(km.translate(0x16, a));
+    CHECK(a.ebcdic == 0x5A);
+    REQUIRE(km.translate(0x14, a) == false);   // pressing it again keeps the lock
+    CHECK(km.caps_lock());
+    CHECK_FALSE(km.translate(0x12, a));
+    CHECK_FALSE(km.caps_lock());
+    CHECK_FALSE(km.translate(0x92, a));
+    REQUIRE(km.translate(0x16, a));
+    CHECK(a.ebcdic == 0xF1);
+
+    // Alt selects the front legends.
+    CHECK_FALSE(km.translate(0x19, a));
+    const std::vector<Expect> alt = {
+        {0x0B, AK::Function, 0, KeyFunction::Hex}, {0x0A, AK::Function, 0, KeyFunction::Test},
+        {0x62, AK::Function, 0, KeyFunction::Home}, {0x06, AK::Aid, 0xBD, N},
+    };
+    check_layer(km, alt);
+    REQUIRE(km.translate(0x1C, a));
+    CHECK(a.alt);
+    CHECK_FALSE(km.translate(0x99, a));
+    CHECK_FALSE(km.alt());
+}
+
+TEST_CASE("keyboard map: keyboard ID selects the layout") {
+    CHECK(KeyboardMap(0x82).enhanced_layout());
+    CHECK(KeyboardMap(0x8A).enhanced_layout());
+    CHECK_FALSE(KeyboardMap(0x02).enhanced_layout());
+    CHECK_FALSE(KeyboardMap(0x0A).enhanced_layout());
+    KeyboardMap km(0x82);
+    OperatorAction a;
+    REQUIRE(km.translate(0x05, a));            // Enhanced: no key at 05h
+    CHECK(a.kind == AK::Unmapped);
+    km.set_keyboard_id(0x02);
+    REQUIRE(km.translate(0x05, a));            // typewriter: Attn
+    CHECK(a.kind == AK::Attn);
+    // Caps Lock toggles on the Enhanced keyboard but only sets Shift Lock here.
+    km.set_keyboard_id(0x82);
+    km.translate(0x14, a);
+    km.translate(0x14, a);
+    CHECK_FALSE(km.caps_lock());
 }
 
 TEST_CASE("discovery handshake identifies a 3477 display") {
@@ -338,6 +493,34 @@ TEST_CASE("keystroke round trip") {
     b.run_for(200 * kMs);
     CHECK(d.actions.size() == 3);
     CHECK(b.host->station(0)->counters().keys == 5);
+}
+
+TEST_CASE("keystroke round trip with a 122-key typewriter keyboard") {
+    Bench b({display_at(0)});
+    FakeStationOptions opt;
+    opt.keyboard_id = 0x02;
+    FakeStation f(0, opt);
+    TestDisplay d;
+    b.plug(f);
+    b.host->station(0)->attach_display(&d);
+    REQUIRE(b.run_until([&] { return d.ready_count == 1; }));
+    CHECK(b.host->station(0)->identity().keyboard_id == 0x02);
+
+    f.press(0x14);   // Shift Lock make
+    f.press(0x94);   // and break
+    f.press(0x16);   // 1 -> !
+    f.press(0x12);   // shift releases the lock
+    f.press(0x92);
+    REQUIRE(b.run_until([&] { return d.actions.size() == 1; }));   // stay within the 7-key queue
+    f.press(0x53);   // backslash
+    f.press(0x0B);   // Help
+    f.press(0x08);   // F13 (upper row)
+    REQUIRE(b.run_until([&] { return d.actions.size() == 4; }));
+    CHECK(d.actions[0].ebcdic == 0x5A);
+    CHECK(d.actions[1].ebcdic == 0xE0);
+    CHECK(d.actions[2].kind == OperatorAction::Kind::Aid);
+    CHECK(d.actions[2].aid == 0xF3);
+    CHECK(d.actions[3].aid == 0xB1);
 }
 
 TEST_CASE("two display stations keep independent state") {

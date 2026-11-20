@@ -1,14 +1,16 @@
 // Scan codes from poll responses -> operator actions.
 //
 // Turning scan codes into characters is the controller's job; the terminal
-// sends key positions [doc PAI 2.1]. The tables here are typed in from the
-// 5250 Product Attachment Information (Oct 1989):
-//   - IBM Enhanced Keyboard, fig. 147 (key numbers and scan codes), US
-//     functions, with US characters in EBCDIC CCSID 37.
-// The 122-key typewriter keyboard of the 3180-2/3197/3477 (fig. 105) and
-// national layouts are extension points: their scan codes come back as
-// OperatorAction::Kind::Unmapped with the raw scan code, so the engine can
-// still act on them.
+// sends key positions [doc PAI 2.1]. On the 3477 the 5250 scan code on the
+// cable is the keyboard's own set-3 make code, bit 7 = break (docs/keyboard.md,
+// "5250 scan codes on the cable"). Two tables:
+//   - IBM Enhanced Keyboard (keyboard ID bit 80h set), typed in from the
+//     5250 Product Attachment Information (Oct 1989), fig. 147;
+//   - 122-key typewriter keyboard (keyboard ID 02h, 0Ah world trade), keyed
+//     by the same set-3 positions, legends from the 3489 User's Guide.
+// Both use US functions and US characters in EBCDIC CCSID 37; national
+// graphics are an extension point. Keys without a known legend come back as
+// OperatorAction::Kind::Unmapped with the raw scan code.
 #pragma once
 
 #include "host/wsc/session_port.hpp"
@@ -24,6 +26,7 @@ public:
     explicit KeyboardMap(uint8_t keyboard_id = 0x82) : keyboard_id_(keyboard_id) {}
     void set_keyboard_id(uint8_t id) { keyboard_id_ = id; reset(); }
     uint8_t keyboard_id() const { return keyboard_id_; }
+    bool enhanced_layout() const { return enhanced(); }
     void reset();
 
     // Feeds one poll byte 2 (non-zero, new response level). Returns false
@@ -32,7 +35,7 @@ public:
 
     bool shift() const { return lshift_ || rshift_; }
     bool alt() const { return alt_; }
-    bool caps_lock() const { return caps_; }
+    bool caps_lock() const { return caps_; }   // Shift Lock on the typewriter keyboard
 
 private:
     bool enhanced() const { return (keyboard_id_ & 0x80) != 0; }

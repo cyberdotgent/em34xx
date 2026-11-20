@@ -1,5 +1,7 @@
 #include "host/wsc/keyboard_map.hpp"
 
+#include <cstddef>
+
 namespace tn34xx {
 namespace wsc {
 
@@ -72,6 +74,46 @@ constexpr CharKey kEnhancedUs[] = {
     {0x7E, 0x6B, 0x6B, false},   // , (pad)
 };
 
+// 122-key typewriter keyboard, US. The 3477 reports the keyboard's set-3
+// make code as the 5250 scan code (see docs/keyboard.md, "5250 scan codes on
+// the cable"), so the typing block shares its codes with the Enhanced
+// keyboard. Differences: the backslash key sits left of Enter (53h, not 5Ch),
+// and the keypad has no '/' or '*'. US graphics as fig. 147 [hyp: the 122-key
+// US keytops carry the same CCSID 37 graphics].
+constexpr CharKey kTypewriterUs[] = {
+    {0x0E, 0x79, 0xA1, false},   // ` ~
+    {0x16, 0xF1, 0x5A, false}, {0x1E, 0xF2, 0x7C, false}, {0x26, 0xF3, 0x7B, false},
+    {0x25, 0xF4, 0x5B, false}, {0x2E, 0xF5, 0x6C, false}, {0x36, 0xF6, 0x5F, false},
+    {0x3D, 0xF7, 0x50, false}, {0x3E, 0xF8, 0x5C, false}, {0x46, 0xF9, 0x4D, false},
+    {0x45, 0xF0, 0x5D, false}, {0x4E, 0x60, 0x6D, false}, {0x55, 0x7E, 0x4E, false},
+    {0x15, 0x98, 0xD8, true}, {0x1D, 0xA6, 0xE6, true}, {0x24, 0x85, 0xC5, true},
+    {0x2D, 0x99, 0xD9, true}, {0x2C, 0xA3, 0xE3, true}, {0x35, 0xA8, 0xE8, true},
+    {0x3C, 0xA4, 0xE4, true}, {0x43, 0x89, 0xC9, true}, {0x44, 0x96, 0xD6, true},
+    {0x4D, 0x97, 0xD7, true},
+    {0x54, 0xBA, 0xC0, false},   // [ {
+    {0x5B, 0xBB, 0xD0, false},   // ] }
+    {0x53, 0xE0, 0x4F, false},   // \ | (left of Enter on the 122-key)
+    {0x1C, 0x81, 0xC1, true}, {0x1B, 0xA2, 0xE2, true}, {0x23, 0x84, 0xC4, true},
+    {0x2B, 0x86, 0xC6, true}, {0x34, 0x87, 0xC7, true}, {0x33, 0x88, 0xC8, true},
+    {0x3B, 0x91, 0xD1, true}, {0x42, 0x92, 0xD2, true}, {0x4B, 0x93, 0xD3, true},
+    {0x4C, 0x5E, 0x7A, false},   // ; :
+    {0x52, 0x7D, 0x7F, false},   // ' "
+    {0x1A, 0xA9, 0xE9, true}, {0x22, 0xA7, 0xE7, true}, {0x21, 0x83, 0xC3, true},
+    {0x2A, 0xA5, 0xE5, true}, {0x32, 0x82, 0xC2, true}, {0x31, 0x95, 0xD5, true},
+    {0x3A, 0x94, 0xD4, true},
+    {0x41, 0x6B, 0x4C, false},   // , <
+    {0x49, 0x4B, 0x6E, false},   // . >
+    {0x4A, 0x61, 0x6F, false},   // / ?
+    {0x29, 0x40, 0x40, false},   // space
+    // Numeric pad.
+    {0x6C, 0xF7, 0xF7, false}, {0x75, 0xF8, 0xF8, false}, {0x7D, 0xF9, 0xF9, false},
+    {0x6B, 0xF4, 0xF4, false}, {0x73, 0xF5, 0xF5, false}, {0x74, 0xF6, 0xF6, false},
+    {0x69, 0xF1, 0xF1, false}, {0x72, 0xF2, 0xF2, false}, {0x7A, 0xF3, 0xF3, false},
+    {0x70, 0xF0, 0xF0, false},
+    {0x71, 0x4B, 0x4B, false},   // . (pad)
+    {0x7B, 0x6B, 0x6B, false},   // , (pad, row 3 right)
+};
+
 struct FnKey {
     uint8_t scan;
     OperatorAction::Kind kind;   // Function or Aid (unshifted)
@@ -136,6 +178,87 @@ bool alt_action(uint8_t scan, OperatorAction& out) {
     }
 }
 
+
+// 122-key typewriter functions. Positions use the set-3 codes; legends are
+// from the 3489 User's Guide (GA18-7492) key tables, which share this
+// keyboard, and from the 3477 firmware's own handling of the left-hand
+// block (which keys it keeps for local functions). [hyp] marks a legend that
+// no source pins to a position.
+constexpr FnKey kTypewriterFunctions[] = {
+    {0x66, K::Function, F::Backspace, 0, K::Function, F::Backspace, 0},
+    {0x0D, K::Function, F::Tab, 0, K::Function, F::Backtab, 0},         // Field Advance / Field Backspace
+    {0x5A, K::Function, F::FieldExit, 0, K::Function, F::NewLine, 0},   // shifted New Line [hyp]
+    {0x58, K::Aid, F::None, 0xF1, K::Aid, F::None, 0xF1},             // Enter (right of the space bar)
+    {0x11, K::Function, F::Reset, 0, K::Function, F::Reset, 0},         // Reset (Alt: Quit, local)
+    {0x67, K::Function, F::Insert, 0, K::Function, F::Dup, 0},          // shifted Dup [hyp]
+    {0x64, K::Function, F::Delete, 0, K::Function, F::Delete, 0},
+    {0x61, K::Function, F::CursorLeft, 0, K::Function, F::CursorLeft, 0},
+    {0x6A, K::Function, F::CursorRight, 0, K::Function, F::CursorRight, 0},
+    {0x63, K::Function, F::CursorUp, 0, K::Aid, F::None, 0xF5},         // shift: Roll Up
+    {0x60, K::Function, F::CursorDown, 0, K::Aid, F::None, 0xF4},       // shift: Roll Down
+    // Keypad right column. Set-3 84h (top right) arrives as 7Fh: the 3477
+    // folds the two set-3 codes above 7Fh (83h, 84h) to 02h and 7Fh.
+    {0x7F, K::Function, F::FieldMinus, 0, K::Function, F::FieldMinus, 0},  // as Enhanced 7Fh [hyp]
+    {0x7C, K::Function, F::FieldPlus, 0, K::Function, F::FieldPlus, 0},    // [hyp]
+    {0x79, K::Aid, F::None, 0xF1, K::Aid, F::None, 0xF1},             // Enter (pad), as Enhanced
+    // Left-hand block.
+    {0x05, K::Attn, F::None, 0, K::SysReq, F::None, 0},               // Attn / SysRq
+    {0x06, K::Aid, F::None, 0xBD, K::Aid, F::None, 0xBD},             // Clear [hyp: unshifted]
+    {0x0C, K::Function, F::EraseInput, 0, K::Function, F::EraseInput, 0},
+    {0x0B, K::Aid, F::None, 0xF3, K::Aid, F::None, 0xF3},             // Help (Alt: Hex)
+    {0x03, K::Aid, F::None, 0xF6, K::Aid, F::None, 0xF6},             // Print
+    {0x09, K::Function, F::Record, 0, K::Function, F::Record, 0},       // Recrd (terminal-local)
+    {0x0A, K::Function, F::Play, 0, K::Function, F::Play, 0},           // Play (terminal-local; Alt: Test)
+    // F1..F12 in the lower row (shift gives F13..F24), F13..F24 in the upper row.
+    {0x07, K::Aid, F::None, 0x31, K::Aid, F::None, 0xB1},
+    {0x0F, K::Aid, F::None, 0x32, K::Aid, F::None, 0xB2},
+    {0x17, K::Aid, F::None, 0x33, K::Aid, F::None, 0xB3},
+    {0x1F, K::Aid, F::None, 0x34, K::Aid, F::None, 0xB4},
+    {0x27, K::Aid, F::None, 0x35, K::Aid, F::None, 0xB5},
+    {0x2F, K::Aid, F::None, 0x36, K::Aid, F::None, 0xB6},
+    {0x37, K::Aid, F::None, 0x37, K::Aid, F::None, 0xB7},
+    {0x3F, K::Aid, F::None, 0x38, K::Aid, F::None, 0xB8},
+    {0x47, K::Aid, F::None, 0x39, K::Aid, F::None, 0xB9},
+    {0x4F, K::Aid, F::None, 0x3A, K::Aid, F::None, 0xBA},
+    {0x56, K::Aid, F::None, 0x3B, K::Aid, F::None, 0xBB},
+    {0x5E, K::Aid, F::None, 0x3C, K::Aid, F::None, 0xBC},
+    {0x08, K::Aid, F::None, 0xB1, K::Aid, F::None, 0xB1},
+    {0x10, K::Aid, F::None, 0xB2, K::Aid, F::None, 0xB2},
+    {0x18, K::Aid, F::None, 0xB3, K::Aid, F::None, 0xB3},
+    {0x20, K::Aid, F::None, 0xB4, K::Aid, F::None, 0xB4},
+    {0x28, K::Aid, F::None, 0xB5, K::Aid, F::None, 0xB5},
+    {0x30, K::Aid, F::None, 0xB6, K::Aid, F::None, 0xB6},
+    {0x38, K::Aid, F::None, 0xB7, K::Aid, F::None, 0xB7},
+    {0x40, K::Aid, F::None, 0xB8, K::Aid, F::None, 0xB8},
+    {0x48, K::Aid, F::None, 0xB9, K::Aid, F::None, 0xB9},
+    {0x50, K::Aid, F::None, 0xBA, K::Aid, F::None, 0xBA},
+    {0x57, K::Aid, F::None, 0xBB, K::Aid, F::None, 0xBB},
+    {0x5F, K::Aid, F::None, 0xBC, K::Aid, F::None, 0xBC},
+};
+
+// Front-of-key legends, entered with Alt held (3489 UG 4.2.1).
+bool typewriter_alt_action(uint8_t scan, OperatorAction& out) {
+    switch (scan) {
+    case 0x0B: out.kind = K::Function; out.function = F::Hex; return true;   // Help / Hex
+    case 0x0A: out.kind = K::Function; out.function = F::Test; return true;  // Play / Test
+    case 0x62: out.kind = K::Function; out.function = F::Home; return true;  // Rule / Home
+    case 0x06: out.kind = K::Aid; out.aid = 0xBD; return true;                // Clear
+    default: return false;
+    }
+}
+
+template <size_t N>
+bool lookup(const FnKey (&table)[N], uint8_t key, bool upper, OperatorAction& out) {
+    for (const FnKey& f : table) {
+        if (f.scan != key) continue;
+        out.kind = upper ? f.shift_kind : f.kind;
+        out.function = upper ? f.shift_function : f.function;
+        out.aid = upper ? f.shift_aid : f.aid;
+        return true;
+    }
+    return false;
+}
+
 } // namespace
 
 const char* key_function_name(KeyFunction f) {
@@ -186,34 +309,45 @@ bool KeyboardMap::translate(uint8_t scan, OperatorAction& out) {
 
     // Make/break keys (fig. 147 "MB"): shifts, Alt, Caps Lock.
     switch (key) {
-    case 0x12: lshift_ = !brk; return false;
-    case 0x59: rshift_ = !brk; return false;
+    case 0x12: case 0x59:
+        (key == 0x12 ? lshift_ : rshift_) = !brk;
+        // On the typewriter keyboard the Shift key releases Shift Lock.
+        if (!brk && !enhanced()) caps_ = false;
+        return false;
     case 0x19: case 0x39: alt_ = !brk; return false;
-    case 0x14: if (!brk) caps_ = !caps_; return false;
+    case 0x14:   // Caps Lock (Enhanced, toggles) / Shift Lock (typewriter, sets)
+        if (!brk) caps_ = enhanced() ? !caps_ : true;
+        return false;
     default: break;
     }
     if (brk) return false;   // only shift-type keys report a break
 
     out.shift = shift();
     out.alt = alt_;
-    if (!enhanced()) return true;   // typewriter table not typed in yet: Unmapped
-
-    if (alt_ && alt_action(key, out)) return true;
-    for (const FnKey& f : kEnhancedFunctions) {
-        if (f.scan != key) continue;
-        out.kind = shift() ? f.shift_kind : f.kind;
-        out.function = shift() ? f.shift_function : f.function;
-        out.aid = shift() ? f.shift_aid : f.aid;
-        return true;
+    if (enhanced()) {
+        if (alt_ && alt_action(key, out)) return true;
+        if (lookup(kEnhancedFunctions, key, shift(), out)) return true;
+        for (const CharKey& c : kEnhancedUs) {
+            if (c.scan != key) continue;
+            const bool upper = c.letter ? (shift() != caps_) : shift();
+            out.kind = K::Character;
+            out.ebcdic = upper ? c.upper : c.lower;
+            return true;
+        }
+        return true;   // Unmapped
     }
-    for (const CharKey& c : kEnhancedUs) {
+
+    // Typewriter: Shift Lock holds the whole keyboard in upper shift.
+    const bool upper = shift() || caps_;
+    if (alt_ && typewriter_alt_action(key, out)) return true;
+    if (lookup(kTypewriterFunctions, key, upper, out)) return true;
+    for (const CharKey& c : kTypewriterUs) {
         if (c.scan != key) continue;
-        const bool upper = c.letter ? (shift() != caps_) : shift();
         out.kind = K::Character;
         out.ebcdic = upper ? c.upper : c.lower;
         return true;
     }
-    return true;   // Unmapped
+    return true;   // Unmapped (left block 01/02/04, Rule 62, 6E/6F/65/6D, 76/77/7E)
 }
 
 } // namespace wsc
