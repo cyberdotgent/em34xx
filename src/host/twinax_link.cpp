@@ -61,6 +61,11 @@ bool ScriptTwinaxHost::to_station(TwinaxMessage& out) {
     return true;
 }
 
+void ScriptTwinaxHost::no_response() {
+    std::lock_guard<std::mutex> lock(mutex_);
+    ++no_response_count_;
+}
+
 void ScriptTwinaxHost::queue(TwinaxMessage msg) {
     std::lock_guard<std::mutex> lock(mutex_);
     outgoing_.push_back(std::move(msg));
@@ -75,8 +80,10 @@ std::vector<TwinaxMessage> ScriptTwinaxHost::take_received() {
 
 std::string ScriptTwinaxHost::describe() const {
     std::lock_guard<std::mutex> lock(mutex_);
-    return format("twinax: script host, %zu message(s) queued, %llu delivered, %zu response(s) unread\n",
-                  outgoing_.size(), (unsigned long long)sent_count_, received_.size());
+    return format("twinax: script host, %zu message(s) queued, %llu delivered, %zu response(s) unread, "
+                  "%llu without response\n",
+                  outgoing_.size(), (unsigned long long)sent_count_, received_.size(),
+                  (unsigned long long)no_response_count_);
 }
 
 void Tn5250TwinaxHost::from_station(const TwinaxMessage& msg) {

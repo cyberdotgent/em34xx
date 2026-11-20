@@ -44,16 +44,49 @@ using TwinaxMessage = std::vector<TwinaxFrame>;
 
 std::string format_twinax_message(const TwinaxMessage& msg);
 
+// The station a controller -> terminal message is for: the first frame
+// carries the station address and selects the station; later frames belong
+// to it whatever their address field (7 = end of message). Returns 7 for an
+// empty message.
+inline uint8_t twinax_message_station(const TwinaxMessage& msg) {
+    return msg.empty() ? uint8_t(7) : msg.front().address;
+}
+
 // The controller side of the line.
+//
+// Contract with the terminal's link device (which owns line timing):
+//   - The line is half duplex. The link device calls to_station() only while
+//     the line is idle. After it transmits a message, it reports exactly one
+//     outcome before it calls to_station() again: from_station() with the
+//     addressed station's response, or no_response() when no station
+//     answered within the turnaround window. Messages that need no response
+//     (an Activate Write, or a queue load) are acknowledged with
+//     no_response() as well, after their transmit time.
+//   - A response therefore always belongs to the station that
+//     twinax_message_station() names for the last message sent; its frames
+//     carry address 7 on the last frame and are not otherwise addressed.
+//   - advance() feeds the emulated clock. The link device calls it with the
+//     machine's emulated time before each to_station() and whenever its own
+//     time moves on while the line is idle, so controller timers (poll
+//     cadence, busy timeouts, the terminal's 200 ms System Available window)
+//     follow emulated time, not wall time.
+// Several station addresses (dual-session terminals, a printer session) share
+// one host: the host addresses each message to one of them.
 class TwinaxHost {
 public:
     virtual ~TwinaxHost() = default;
     virtual const char* kind() const = 0;
 
-    // Terminal -> controller (a response or status message).
+    // Terminal -> controller (a response or status message) for the last
+    // message sent.
     virtual void from_station(const TwinaxMessage& msg) = 0;
-    // Controller -> terminal. Non-blocking; returns false when idle.
+    // Controller -> terminal. Non-blocking; returns false when the host has
+    // nothing to send at the current emulated time.
     virtual bool to_station(TwinaxMessage& out) = 0;
+    // The last message sent got no response (see the contract above).
+    virtual void no_response() {}
+    // Emulated time in nanoseconds since machine power-on; monotonic.
+    virtual void advance(uint64_t emu_ns) { (void)emu_ns; }
 
     virtual std::string describe() const = 0;
 };
@@ -74,6 +107,7 @@ public:
     const char* kind() const override { return "script"; }
     void from_station(const TwinaxMessage& msg) override;
     bool to_station(TwinaxMessage& out) override;
+    void no_response() override;
     std::string describe() const override;
 
     void queue(TwinaxMessage msg);
@@ -84,6 +118,7 @@ private:
     std::deque<TwinaxMessage> outgoing_;
     std::vector<TwinaxMessage> received_;
     uint64_t sent_count_ = 0;
+    uint64_t no_response_count_ = 0;
 };
 
 // Placeholder for the TN5250 bridge. It validates and reports its

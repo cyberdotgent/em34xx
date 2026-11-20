@@ -76,3 +76,13 @@ TEST_CASE("tn5250 host requires configuration") {
     tw.station_address = 7;
     CHECK(make_twinax_host(tw, tn, err) == nullptr);
 }
+
+TEST_CASE("message station and host events") {
+    CHECK(twinax_message_station({{0x10, 3}}) == 3);
+    CHECK(twinax_message_station({{0x13, 1}, {0x00, 7}}) == 1);
+    CHECK(twinax_message_station({}) == 7);
+    ScriptTwinaxHost h;
+    h.advance(1000);
+    h.no_response();
+    CHECK(h.describe().find("1 without response") != std::string::npos);
+}
