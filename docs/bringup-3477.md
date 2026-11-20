@@ -348,9 +348,9 @@ accumulator and a 16-byte register file shared by all channels:
 | `3n` | descriptor byte `n` := accumulator |
 | `4r` | accumulator := register `r` |
 | `5n` | accumulator := descriptor byte `n` |
-| `8x`/`9x` flags | `08`: if the accumulator is 0, raise invalid activate (`20`) and stop; `02`: queue mode (store the command frame too, raise `02` and `08` when done); `10`: raise activate done (`04`); `04`: end |
+| `8x`/`9x` flags | `08`: if the accumulator is 0, raise invalid activate (`20`) and stop; `02`: queue mode (store the command frame too, raise `02` when done); `10`: raise activate done (`04`); `04`: end |
 | `A1` | transmit `r2/r3` bytes from RAM at `r0/r1` as the response (last frame address 7) |
-| `A2` | store the message's data frames at `r0/r1`, at most `r2/r3` bytes (more raise overrun `10`); `r0-r3` are updated |
+| `A2` | store the message's data frames at `r0/r1`, at most `r2/r3` bytes (more raise overrun `10`); `r0-r3` are updated; at the end of the message raise end of message (`08`), in queue mode and for Activate Write data alike |
 | `C0` | start the response; for the poll class it is the status response |
 
 Any data transfer sets the channel's busy latch.
@@ -374,9 +374,17 @@ Any data transfer sets the channel's busy latch.
 
 Request bits in the gate array (`20002` for channel 0, `20003` for
 channel 1; see [Interrupts](#interrupts)): `01` poll response sent (vector
-`07h`/`08h`), `02` command queued, `04` activate done, `08` end of a queued
-message, `10` overrun, `20` invalid activate, `40` line parity error (vectors
+`07h`/`08h`), `02` command queued, `04` activate done, `08` end of a received
+message (a queue load or Activate Write data), `10` overrun, `20` invalid activate, `40` line parity error (vectors
 `09h`/`0Ah`).
+
+After an Activate Write the firmware's status handler takes `04` first
+(it records the new address counter and asks for a redraw) and only then
+`08`; the `08` path resets the command queue and writes `80` to the
+channel control register, which drops busy (observed in a trace of the
+firmware). Without `08` the terminal stays busy after every Activate Write.
+That the receiver raises `08` for Activate Write data as for a queued
+message is a hypothesis that this behaviour supports.
 
 ### Poll response
 
@@ -489,7 +497,7 @@ from the monitor (bring-up exploration, not a product setting):
 1. The video signature behind `2012F` bits 7-4 (display test). Needs
    hardware: the signature of a known screen on a real unit, or the gate
    array's documentation.
-2. Twinax engine: Activate Write and the data path beyond discovery (screen
-   writes, keystrokes) against a TN5250 host.
+2. Twinax engine: Activate Read/Write edge cases not yet seen from the
+   firmware (a zero count, a transfer cut short by a parity error).
 3. Confirm the strap/display-type mapping and the CPU type and clock on a
    board.

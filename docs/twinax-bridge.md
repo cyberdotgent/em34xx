@@ -384,11 +384,9 @@ the monitor:
   the emulated 122-key keyboard (through the host keymap, the firmware and
   the controller's 122-key cable-code table), the AS/400 Main Menu, then
   `SIGNOFF` back to the sign-on panel, and `disconnect`.
-- The terminal stays busy after an Activate Write carrying display data
-  (the Twinax engine's write data path is not modelled yet). The station
-  notices (busy timeout right after an Activate Write) and from then on
-  paints long runs with queue loads only (`FlushOptions::activate_write`);
-  the first paint is lost once and repainted.
+- Long runs are painted with Write Data and Activate Write from the first
+  paint on; the terminal drops busy after each transfer (the engine
+  reports the end of the Activate Write message, see docs/bringup-3477.md).
 - The emulated terminal showed the characters typed into a non-display
   field (the password). The controller now writes nulls to the device for
   every position of a non-display field (`Tn5250DisplayAdapter`), so field

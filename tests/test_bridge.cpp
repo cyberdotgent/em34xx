@@ -435,3 +435,37 @@ TEST_CASE("tn5250 bridge: typing on the 122-key keyboard echoes and reaches the 
     const Bytes pw{0x11, 0x07, 0x35, 0xA7, 0x83};
     CHECK(std::search(d.begin(), d.end(), pw.begin(), pw.end()) != d.end());
 }
+
+TEST_CASE("tn5250 bridge: the first paint of a long run arrives whole by Activate Write") {
+    TwinaxConfig tw;
+    tw.host = TwinaxHostKind::Tn5250;
+    Tn5250Config tn;
+    tn.host = "ibmi.example";
+    auto server = std::make_shared<ServerScript>();
+    server->push(negotiation());
+    // A full row of '=' (longer than any queue load) and text after it.
+    Bytes rule(80, 0x7E);
+    server->push(framed_record(tn5250_test::cat({{0x04, 0x40},
+                                                  {0x04, 0x11, 0x00, 0x08},
+                                                  {0x11, 0x0A, 0x01},
+                                                  rule,
+                                                  {0x11, 0x0B, 0x05},
+                                                  tn5250_test::eb("Welcome")})));
+    BridgeOptions opt;
+    opt.model = "3477";
+    opt.transport = [&](const StationConfig&, std::string&) -> std::unique_ptr<tn34xx::tn5250::Transport> {
+        return std::make_unique<ScriptTransport>(server);
+    };
+    std::string err;
+    auto host = make_tn5250_bridge(tw, tn, opt, err);
+    REQUIRE(host);
+    Bench b(*host);
+    FakeStation f(0);
+    b.plug(f);
+    REQUIRE(b.run_until([&] { return row_text(f, 10, 4, 7) == "Welcome"; }));
+    for (unsigned c = 0; c < 80; ++c) CHECK(f.cell(9, c) == 0x7E);
+    // Painted with Write Data + Activate Write, once: the device was never
+    // lost and rediscovered.
+    CHECK(f.activate_writes() >= 1);
+    CHECK(f.device_id_reads() == 1);
+}

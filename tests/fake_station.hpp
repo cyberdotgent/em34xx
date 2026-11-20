@@ -26,7 +26,6 @@ struct FakeStationOptions {
     bool is_3477 = true;            // answers Read Info with "3477" VPD
     uint8_t printer_id = 0x2D;      // 5219 (3812 SCS emulation)
     unsigned busy_polls = 1;        // polls answered busy after each queue load / activate
-    bool hang_on_activate_write = false;   // stays busy (until reset) after an Activate Write
 };
 
 class FakeStation {
@@ -64,6 +63,8 @@ public:
     size_t queue_size() const { return queue64_ ? 64 : 16; }
     const std::vector<uint8_t>& printed() const { return printed_; }
     unsigned loads() const { return loads_; }
+    unsigned activate_writes() const { return activate_writes_; }   // accepted ones
+    unsigned device_id_reads() const { return id_reads_; }          // Read Device ID commands
     uint8_t printer_status = 0;    // poll byte 2 of a printer
 
 private:
@@ -100,6 +101,8 @@ private:
     uint8_t indicators_ = 0, indicators_3477_ = 0;
     unsigned alarms_ = 0;
     unsigned loads_ = 0;
+    unsigned activate_writes_ = 0;
+    unsigned id_reads_ = 0;
     std::vector<uint8_t> printed_;
 };
 

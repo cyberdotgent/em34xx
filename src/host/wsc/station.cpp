@@ -143,10 +143,7 @@ void Station::next_message(uint64_t now, TwinaxMessage& out) {
 }
 
 void Station::op_done(uint64_t now) {
-    if (!ops_.empty()) {
-        last_done_ = ops_.front().kind;
-        ops_.pop_front();
-    }
+    if (!ops_.empty()) ops_.pop_front();
     waiting_ = false;
     ready_at_ = now;
     while (!ops_.empty() && ops_.front().kind == OpKind::Call) {
@@ -186,12 +183,6 @@ void Station::on_response(const TwinaxMessage& msg, uint64_t now) {
     if (!ops_.empty() && ops_.front().kind == OpKind::WaitReady) {
         if (status & status::Busy) {
             if (now - wait_started_ > timing_.busy_timeout_ns) {
-                if (last_done_ == OpKind::ActivateWrite && activate_write_ok_) {
-                    // The device stayed busy after an Activate Write: paint
-                    // with queue loads only from now on.
-                    activate_write_ok_ = false;
-                    LOG_WARN("wsc", "station %u: busy after Activate Write; painting without it", cfg_.address);
-                }
                 lose(now, "busy timeout");
                 return;
             }
@@ -412,7 +403,6 @@ void Station::queue_identify() {
 
 FlushOptions Station::flush_options() const {
     FlushOptions o;
-    o.activate_write = activate_write_ok_;
     if (id_.is_3477()) {
         o.queue_bytes = kQueueBytes3477;
         o.wcd_byte2_base = wcd::B2Queue64;

@@ -48,9 +48,6 @@ struct FlushOptions {
     unsigned clear_percent = 60;        // clear first if this share of cells must become null
     uint8_t wcd_byte2_base = 0;         // 3477: wcd::B2Queue64
     bool has_3477_indicators = false;   // send WCD-to-indicators (45)
-    // Long runs as Write Data + Activate Write; false splits them into
-    // queue-load-sized Write Data and Load Cursor runs instead.
-    bool activate_write = true;
 };
 
 // Plans the steps that bring a device showing `mirror` to `shadow`.

@@ -117,7 +117,8 @@ bool FakeStation::receive(const TwinaxMessage& msg, TwinaxMessage& response) {
             return false;
         }
         armed_write_ = false;
-        busy_ = opt_.hang_on_activate_write ? ~0u : opt_.busy_polls;
+        busy_ = opt_.busy_polls;
+        ++activate_writes_;
         if (!display()) {
             printed_.insert(printed_.end(), bytes.begin() + 1, bytes.end());
             return false;
@@ -209,6 +210,7 @@ void FakeStation::run_load(const std::vector<uint8_t>& b) {
             break;
         }
         case 0x0C:
+            ++id_reads_;
             arm_read({display() ? uint8_t(0xC2) : opt_.printer_id});
             return;
         case 0x12:
