@@ -428,6 +428,15 @@ std::string GdbStub::handle(const std::string& p, TcpSocket& client, bool& detac
         }
         return resume_and_report(client, p[0] == 's');
     }
+    case 'C':
+    case 'S': {
+        // C/S<sig>[;addr]: GDB sends these to continue/step after a stop it
+        // passes a signal for (e.g. SIGBUS after a bus fault). There is
+        // nothing to deliver a signal to, so it is dropped.
+        const auto semi = p.find(';');
+        if (semi != std::string::npos) write_register(8, parse_hex32(p.substr(semi + 1)));
+        return resume_and_report(client, p[0] == 'S');
+    }
     case 'Z':
     case 'z': {
         // Z<type>,<addr>,<kind>
