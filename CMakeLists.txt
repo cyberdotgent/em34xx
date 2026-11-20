@@ -50,6 +50,7 @@ add_library(tn34xx_core STATIC
   src/input/host_keymap.cpp
   src/input/keyboard_ids.cpp
   src/input/set3_keyboard.cpp
+  src/devices/battery_ram.cpp
   src/devices/i2c.cpp
   src/devices/ibm3477/display.cpp
   src/devices/ibm3477/i2c.cpp

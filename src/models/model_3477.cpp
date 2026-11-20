@@ -19,6 +19,7 @@
 #include "models/model.hpp"
 
 #include "config/config.hpp"
+#include "devices/battery_ram.hpp"
 #include "devices/i2c.hpp"
 #include "devices/ibm3477/display.hpp"
 #include "devices/ibm3477/i2c.hpp"
@@ -87,7 +88,11 @@ public:
             "system gate array at 20000: interrupt request/mask registers and fixed vectors "
             "(observed use, bit map hypothesis), 50 Hz timer (hypothesis)",
             "display type straps at 2000A: green/amber/paperwhite -> 0C, colour -> 0E (hypothesis)",
-            "setup EEPROM: 24C02-style at I2C address A0 (observed protocol, size hypothesis)",
+            "setup configuration in battery-backed RAM: POST never tests 01A0-0A9F and only "
+            "validates the checksummed setup block there; an hour meter and a power-on counter "
+            "live in the same range (observed); battery backing of the whole 128 KiB is a hypothesis",
+            "I2C EEPROM at A0 (24C02-style, size hypothesis): monitor alignment values, read and "
+            "written only in a service mode; not the setup configuration (observed)",
             "Twinax engine: two station channels, programs and descriptors in RAM; poll, activate and "
             "queue handling and the loopback test path follow docs/bringup-3477.md (hypothesis)",
             "display controller at 20100: character window from RAM, glyphs from character-generator "
@@ -102,6 +107,9 @@ public:
         Bus& bus = m.bus();
 
         bus.map_ram("ram", 0x00000, 0x20000);
+        // The setup configuration and the counters live in RAM that keeps
+        // its contents across power-off [hypothesis, strong: see the notes].
+        BatteryBackedRam& nvram = m.add_device<BatteryBackedRam>("nvram", bus, 0x00000u, 0x20000u);
         AbsentDevice& xram = m.add_device<AbsentDevice>("xram-absent");
         bus.map_mmio("xram-absent", 0x40000, 0x40000, &xram);
         AbsentDevice& feature = m.add_device<AbsentDevice>("feature-rom-absent");
@@ -109,6 +117,7 @@ public:
 
         uint8_t id1 = 0xBF, id2 = 0xBF;
         std::string error;
+        if (!nvram.open(opt.nvram_path, error)) throw std::runtime_error(error);
         if (!resolve_keyboard_id(opt, id1, id2, error)) throw std::runtime_error(error);
         KeyboardType type = KeyboardType::Terminal122;
         parse_keyboard_type(opt.keyboard_type, type);

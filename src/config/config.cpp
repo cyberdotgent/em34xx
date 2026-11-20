@@ -70,6 +70,7 @@ bool load_config_file(const std::string& path, AppConfig& cfg, std::string& erro
             cfg.terminal.straps = int(i);
         }
         get(*t, "eeprom", cfg.terminal.eeprom_path);
+        get(*t, "nvram", cfg.terminal.nvram_path);
     }
     if (auto* t = root["display"].as_table()) {
         get(*t, "crt", cfg.crt);
@@ -211,9 +212,12 @@ Unit options (one ROM serves all of these):
                             TOML file (see keymaps/ and docs/keyboard.md)
       --straps HEX          override the configuration strap byte (3477:
                             display type and boot mode; see docs/bringup-3477.md)
-      --eeprom FILE         setup EEPROM image; created on the first write.
-                            Without it the EEPROM is ephemeral (starts blank,
-                            discarded at exit)
+      --eeprom FILE         I2C EEPROM image (3477: monitor alignment values);
+                            created on the first write. Without it the EEPROM
+                            is ephemeral (starts blank, discarded at exit)
+      --nvram FILE          battery-backed RAM image (3477: holds the setup
+                            configuration); loaded at power-on, saved at exit.
+                            Without it the RAM starts cleared every time
       --list-keyboards      list keyboard layouts and their IDs
 
 Front end and monitor:
@@ -334,6 +338,7 @@ bool parse_command_line(int argc, char** argv, AppConfig& cfg, std::string& erro
             if (!parse_uint(v, n, 16) || n > 0xFF) { error = "--straps must be a hex byte"; return false; }
             cfg.terminal.straps = int(n);
         } else if (a == "--eeprom") { if (!need(cfg.terminal.eeprom_path)) return false; }
+        else if (a == "--nvram") { if (!need(cfg.terminal.nvram_path)) return false; }
         else if (a == "--headless") cfg.headless = true;
         else if (a == "--scale") {
             if (!need(v)) return false;
@@ -400,6 +405,7 @@ std::string config_to_toml(const AppConfig& cfg) {
             {"scale", int64_t(cfg.scale)},
             {"start_stopped", cfg.start_stopped},
             {"eeprom", cfg.terminal.eeprom_path},
+            {"nvram", cfg.terminal.nvram_path},
         }},
         {"display", toml::table{{"subtype", display_subtype_name(cfg.terminal.display)},
                                 {"crt", cfg.crt},

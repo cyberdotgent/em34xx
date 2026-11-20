@@ -1,5 +1,7 @@
 // IBM 3477 system hardware: interrupt controller, timer, keyboard interface,
 // two-wire bus and setup EEPROM.
+#include "bus/bus.hpp"
+#include "devices/battery_ram.hpp"
 #include "devices/i2c.hpp"
 #include "devices/ibm3477/i2c.hpp"
 #include "devices/ibm3477/keyboard_if.hpp"
@@ -410,5 +412,40 @@ TEST_CASE("I2C EEPROM ephemeral contents are discarded") {
     CHECK(e2.byte(0) == 0xFF);                 // a new ephemeral EEPROM is blank
     REQUIRE(e2.open(path, err));
     CHECK(e2.byte(0) == 0x11);
+    std::remove(path.c_str());
+}
+
+TEST_CASE("Battery-backed RAM keeps its contents across power cycles") {
+    const std::string path = temp_path("nvram.bin");
+    std::remove(path.c_str());
+    {
+        Bus bus{20};
+        bus.map_ram("ram", 0, 0x20000);
+        BatteryBackedRam nv("nvram", bus, 0, 0x20000);
+        std::string err;
+        REQUIRE(nv.open(path, err));   // missing file: RAM starts cleared
+        CHECK(bus.peek8(0x1A0) == 0x00);
+        bus.poke8(0x1A0, 0x5A);
+        bus.poke8(0x1FFFF, 0xA5);
+    }   // power-off: the image is written
+    {
+        Bus bus{20};
+        bus.map_ram("ram", 0, 0x20000);
+        BatteryBackedRam nv("nvram", bus, 0, 0x20000);
+        std::string err;
+        REQUIRE(nv.open(path, err));
+        CHECK(bus.peek8(0x1A0) == 0x5A);
+        CHECK(bus.peek8(0x1FFFF) == 0xA5);
+    }
+    {
+        // A wrong-sized image is refused; without a file the RAM is volatile.
+        Bus bus{20};
+        bus.map_ram("ram", 0, 0x20000);
+        BatteryBackedRam nv("nvram", bus, 0, 0x10000);
+        std::string err;
+        CHECK_FALSE(nv.open(path, err));
+        CHECK(err.find("expected 65536") != std::string::npos);
+        CHECK(nv.volatile_ram());
+    }
     std::remove(path.c_str());
 }

@@ -138,7 +138,7 @@ reset the firmware configures key modes with the standard set-3 commands:
 `F9` (all keys make-only), `FB` + a list of keys (typematic), `F3` + rate,
 `FC` + a list (make/break), `F4` (enable), expecting `FA` after every byte.
 
-### Setup EEPROM and the two-wire bus
+### Two-wire bus and the EEPROM
 
 The display controller register `2012F` bit-bangs an I2C bus (observed:
 bit 0 = SDA, bit 1 = SCL, written 1 pulls the line low, read 1 = line is
@@ -146,12 +146,22 @@ low; the master honours clock stretching). Devices:
 
 | Address | Device | Status |
 | --- | --- | --- |
-| `A0/A1` | Serial EEPROM holding the setup configuration (random reads, byte writes) | Observed protocol. Modelled as a 24C02 (256 bytes, 8-byte pages); size is a hypothesis. |
+| `A0/A1` | Serial EEPROM (random reads, byte writes) | Observed protocol. Modelled as a 24C02 (256 bytes, 8-byte pages); size is a hypothesis. |
 | `8C` | Write-only device, probably the monitor's deflection/geometry controller | Hypothesis. Acknowledges and logs (`i2c` category, debug). |
 
-The configuration is checksummed (pairs of bytes and blocks that sum to
-`EA`); a blank EEPROM fails the check and the firmware enters the setup
-menu, as a new unit would (observed).
+The EEPROM does **not** hold the setup configuration (observed): the only
+code that reads or writes it handles monitor alignment values (registers
+`01`-`1B` and `29`-`2B`, the latter also sent to `8C`), and it runs only in
+a service mode (a firmware state flag equal to 2), never on a normal boot or
+when Offline Setup saves. A normal boot therefore performs no EEPROM
+transaction at all.
+
+Bit 0 of `2012F` doubles as a static output: the firmware leaves it at 1
+(SDA pulled low) after POST on display types 3 and 4 and during the display
+test (rest values `19`/`01`), so the bus sees a START with SCL high and no
+traffic until the next transaction begins by releasing both lines, which is
+a STOP (observed). The bus model treats this like a real EEPROM: the device
+waits for an address and is reset by the STOP.
 
 Persistence: `--eeprom FILE` (or `[emulator] eeprom = "FILE"`) selects an
 image file. An existing file is loaded and must be exactly 256 bytes; a
@@ -160,6 +170,27 @@ transaction is saved when it ends (STOP), and pending changes are saved on
 exit. Without an image the EEPROM is **ephemeral**: blank at start,
 discarded at exit. The monitor shows its state in `info` and offers
 `eeprom`, `eeprom dump` and `eeprom save [FILE]`.
+
+### Battery-backed RAM (setup configuration)
+
+The setup configuration lives in RAM at `01A0` (observed): Offline Setup
+writes it there, POST test 7 validates it in place (byte pairs and two
+blocks that sum to `EA`; a blank or invalid block sends the firmware to
+Offline Setup), and nothing copies it to or from another device. The POST
+RAM tests skip `01A0-0A9F` (the other ranges are tested destructively), and
+the same range holds a power-on counter and an hour meter that is
+incremented once an hour (observed). This RAM must therefore keep its
+contents with the power off: **battery-backed static RAM** (hypothesis,
+strong). Whether the battery backs only part of the 128 KiB is unknown; the
+emulator keeps all of it, which the firmware cannot tell apart because it
+reinitialises everything else.
+
+`--nvram FILE` (or `[emulator] nvram = "FILE"`) selects the image
+(131072 bytes): it is loaded at power-on and written at exit (power-off).
+Without it the RAM starts cleared, as with a flat battery, and every boot
+enters Offline Setup. With it, a configuration saved in Offline Setup
+(F3) survives a restart and the next boot goes straight to the on-line
+screen (observed). `dev nvram` shows the state.
 
 ## Twinax engine (`20000-20009`, `20015`, `20020-2002B`)
 
@@ -295,9 +326,11 @@ monitor (bring-up exploration, not a product setting):
   `0Ch` and `0Eh`, runs the 50 Hz timer, completes the keyboard reset, ID and
   key-mode handshake, and then sends `EE` (echo) to the keyboard
   periodically as a presence check;
-- with a blank (or invalid) EEPROM it shows the **Offline Setup** menu
-  ("Customize workstation", "Update serial number", "Test workstation"),
-  as a new unit would.
+- with a blank (or invalid) setup block in RAM it shows the **Offline
+  Setup** menu ("Customize workstation", "Update serial number", "Test
+  workstation"), as a new unit would. Choosing a display address in
+  "Customize workstation" and leaving with F3 writes a valid block; with
+  `--nvram FILE` it survives a restart and the next boot skips setup.
 
 ## Board
 
@@ -312,7 +345,7 @@ monitor (bring-up exploration, not a product setting):
 
 1. Twinax engine: check the poll, Set Mode and activate handshake against
    the running firmware once it gets past Offline Setup (needs a valid
-   setup EEPROM).
+   setup block in battery-backed RAM).
 2. Monitor sense nibble in `2012F` for the display test.
 3. Confirm the strap/display-type mapping and the CPU type and clock on a
    board.

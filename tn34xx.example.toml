@@ -12,8 +12,11 @@ scale = 1                # window size factor; the image is shown at the tube's 
 start_stopped = false
 # straps = 0x0C          # override the configuration strap byte (3477 2000A);
                          # default derived from [display] subtype
-# eeprom = "3477.eeprom" # setup EEPROM image, created on the first write;
-                         # unset = ephemeral (blank, discarded at exit)
+# eeprom = "3477.eeprom" # I2C EEPROM image (3477: monitor alignment), created
+                         # on the first write; unset = ephemeral
+# nvram = "3477.nvram"   # battery-backed RAM image (3477: the setup
+                         # configuration); loaded at power-on, saved at exit;
+                         # unset = cleared at every power-on (Offline Setup)
 
 # The same ROM serves every display subtype and language.
 [display]

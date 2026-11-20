@@ -58,6 +58,8 @@ struct TerminalOptions {
     int straps = -1;
     // Setup EEPROM image file; empty = ephemeral (blank, discarded at exit).
     std::string eeprom_path;
+    // Image of the battery-backed RAM; empty = volatile (cleared at power-on).
+    std::string nvram_path;
 };
 
 struct Breakpoint {
