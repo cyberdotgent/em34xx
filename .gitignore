@@ -1,0 +1,5 @@
+# ROM images are proprietary research inputs and must never be committed.
+# See roms/ROMS.md for the expected file names and hashes.
+/roms/54g0011.bin
+/roms/95f4171.bin
+/roms/95f4172.bin
