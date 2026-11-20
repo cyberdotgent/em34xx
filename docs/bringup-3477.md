@@ -396,8 +396,9 @@ from the monitor (bring-up exploration, not a product setting):
   workstation"), as a new unit would. Choosing a display address in
   "Customize workstation" and leaving with F3 writes a valid block; with
   `--nvram FILE` it survives a restart and the next boot skips setup;
-- with a valid configuration it shows the IBM logo ("3477 Control
-  Program"), then the on-line screen, arms the Twinax engine for its
+- near the end of POST it shows the IBM logo ("3477 Control Program",
+  "Copyright IBM Corp. 1989"); with a valid configuration it then shows
+  the on-line screen, arms the Twinax engine for its
   station address and answers the controller: with `--twinax-host wsc` the
   station is discovered, identified and polled (see the transcripts
   above).
