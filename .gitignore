@@ -8,3 +8,7 @@
 /build/
 /vcpkg_installed/
 /testdata/
+
+# Private reverse-engineering notes derived from proprietary ROMs and
+# software (disassembly, dumps, extracted fonts). Never commit.
+/analysis_notes/
