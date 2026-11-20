@@ -78,6 +78,10 @@ if(WIN32)
   target_link_libraries(tn34xx_core PRIVATE ws2_32)
   target_compile_definitions(tn34xx_core PUBLIC _WIN32_WINNT=0x0601 WINVER=0x0601)
 endif()
+if(MINGW)
+  # C99 printf family (%zu, %llu) instead of msvcrt's; see util/strings.hpp.
+  target_compile_definitions(tn34xx_core PUBLIC __USE_MINGW_ANSI_STDIO=1)
+endif()
 
 # --- SDL3 front end -------------------------------------------------------
 add_library(tn34xx_frontend STATIC

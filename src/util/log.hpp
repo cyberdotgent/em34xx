@@ -21,8 +21,11 @@ bool log_configure(const std::string& spec, std::string& error);
 
 bool log_enabled(const char* category, LogLevel level);
 
+// gnu_printf on MinGW: see format() in util/strings.hpp.
 void log_write(const char* category, LogLevel level, const char* fmt, ...)
-#if defined(__GNUC__)
+#if defined(__MINGW32__)
+    __attribute__((format(gnu_printf, 3, 4)))
+#elif defined(__GNUC__)
     __attribute__((format(printf, 3, 4)))
 #endif
     ;
