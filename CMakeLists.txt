@@ -49,6 +49,7 @@ add_library(tn34xx_core STATIC
   src/models/model_3489.cpp
   src/input/keyboard_ids.cpp
   src/input/set3_keyboard.cpp
+  src/devices/i2c.cpp
   src/devices/ibm3477/display.cpp
   src/host/host_config.cpp
   src/host/twinax_link.cpp

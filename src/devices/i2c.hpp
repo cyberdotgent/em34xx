@@ -67,6 +67,7 @@ private:
     uint8_t shift_ = 0;
     bool ack_pending_ = false; // slave ACKs on the next acknowledge slot
     bool master_nack_ = false; // master NACKed a read byte
+    bool read_mode_ = false;   // R/W bit of the current address byte
     uint64_t transactions_ = 0;
 };
 
