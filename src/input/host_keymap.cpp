@@ -96,7 +96,7 @@ const Fn kFunctions[] = {
     {"backtab",     {0x67, R, R}, {0x0D, P, R}},
     {"tab",         {0x0D, R, R}, {0x0D, R, R}},
     {"changescreen",{0x67, R, P}, {0x67, R, P}},
-    {"jump",        {0x6F, R, R}, {0x6F, R, P}},
+    {"jump",        {0x6F, R, P}, {0x6F, R, P}},   // 122-key: Alt + the blank 6F key
     {"rule",        {0x62, R, R}, {0x6D, R, P}},
     {"home",        {0x62, R, P}, {0x6E, R, R}},
     {"rollup",      {0x63, P, R}, {0x6D, R, R}},
