@@ -3,3 +3,8 @@
 /roms/54g0011.bin
 /roms/95f4171.bin
 /roms/95f4172.bin
+
+# Build output and fetched test data
+/build/
+/vcpkg_installed/
+/testdata/

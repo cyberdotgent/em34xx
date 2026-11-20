@@ -1,0 +1,25 @@
+{
+  "$schema": "https://raw.githubusercontent.com/microsoft/vcpkg-tool/main/docs/vcpkg.schema.json",
+  "name": "tn34xx",
+  "version-string": "0.0.0",
+  "description": "Hardware emulator for IBM 34xx-family 5250 terminals",
+  "builtin-baseline": "52d80838fb40c755b1615fbc9c7b994a33742a22",
+  "dependencies": [
+    {
+      "name": "sdl3",
+      "default-features": false,
+      "features": [
+        { "name": "x11", "platform": "linux" },
+        { "name": "wayland", "platform": "linux" }
+      ]
+    },
+    "replxx",
+    "tomlplusplus"
+  ],
+  "features": {
+    "tests": {
+      "description": "Unit tests and the CPU test-vector runner",
+      "dependencies": [ "doctest", "nlohmann-json", "zlib" ]
+    }
+  }
+}
