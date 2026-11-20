@@ -236,11 +236,17 @@ bool Monitor::parse_value(const std::string& text, int64_t& outv) {
 
 std::string Monitor::regs_text(Machine& m) {
     const CpuRegs& r = m.cpu().regs();
-    return format("AX=%04X BX=%04X CX=%04X DX=%04X SP=%04X BP=%04X SI=%04X DI=%04X\n"
-                  "DS=%04X ES=%04X SS=%04X CS=%04X IP=%04X FL=%04X %s%s\n",
-                  r.gpr[AX], r.gpr[BX], r.gpr[CX], r.gpr[DX], r.gpr[SP], r.gpr[BP], r.gpr[SI], r.gpr[DI],
-                  r.seg[DS], r.seg[ES], r.seg[SS], r.seg[CS], r.ip, r.flags, flags_text(r.flags).c_str(),
-                  m.cpu().halted() ? " HALTED" : "");
+    std::string t = format("AX=%04X BX=%04X CX=%04X DX=%04X SP=%04X BP=%04X SI=%04X DI=%04X\n"
+                           "DS=%04X ES=%04X SS=%04X CS=%04X IP=%04X FL=%04X %s%s\n",
+                           r.gpr[AX], r.gpr[BX], r.gpr[CX], r.gpr[DX], r.gpr[SP], r.gpr[BP], r.gpr[SI], r.gpr[DI],
+                           r.seg[DS], r.seg[ES], r.seg[SS], r.seg[CS], r.ip, r.flags, flags_text(r.flags).c_str(),
+                           m.cpu().halted() ? " HALTED" : "");
+    // 80286 system registers, when the core has them (cpu/cpu.hpp).
+    if (const SystemRegs* s = m.cpu().system_regs())
+        t += format("MSW=%04X%s GDTR=%06X/%04X IDTR=%06X/%04X LDTR=%04X TR=%04X\n", s->msw,
+                    m.cpu().protected_mode() ? " (protected)" : "", s->gdtr.base, s->gdtr.limit, s->idtr.base,
+                    s->idtr.limit, s->ldtr.selector, s->tr.selector);
+    return t;
 }
 
 std::string Monitor::location_line(Machine& m) {
@@ -249,7 +255,7 @@ std::string Monitor::location_line(Machine& m) {
     DisasmResult d = disassemble([&](uint32_t a) { return bus.peek8(a); }, r.seg[CS], r.ip, m.cpu().level(),
                                  bus.address_mask());
     uint8_t bytes[16];
-    for (unsigned i = 0; i < d.length && i < 16; ++i) bytes[i] = bus.peek8(m.cpu().linear(r.seg[CS], uint16_t(r.ip + i)));
+    for (unsigned i = 0; i < d.length && i < 16; ++i) bytes[i] = bus.peek8(m.cpu().debug_linear(r.seg[CS], uint16_t(r.ip + i)));
     return format("%04X:%04X  %-20s %s\n", r.seg[CS], r.ip,
                   hex_bytes(bytes, std::min<unsigned>(d.length, 6)).c_str(), d.text.c_str());
 }
@@ -416,7 +422,7 @@ bool Monitor::cmd_proceed(const std::vector<std::string>&) {
         DisasmResult d = disassemble([&](uint32_t x) { return m.bus().peek8(x); }, r.seg[CS], r.ip,
                                      m.cpu().level(), m.bus().address_mask());
         is_call = d.is_call;
-        next = m.cpu().linear(r.seg[CS], uint16_t(r.ip + d.length));
+        next = m.cpu().debug_linear(r.seg[CS], uint16_t(r.ip + d.length));
         if (is_call) m.add_breakpoint(next, true);
     });
     if (!is_call) return cmd_step({"step"}, false);
@@ -611,7 +617,7 @@ bool Monitor::cmd_unassemble(const std::vector<std::string>& a) {
             DisasmResult d = disassemble([&](uint32_t x) { return bus.peek8(x); }, seg, off, m.cpu().level(),
                                          bus.address_mask());
             uint8_t bytes[16];
-            for (unsigned j = 0; j < d.length && j < 16; ++j) bytes[j] = bus.peek8(m.cpu().linear(seg, uint16_t(off + j)));
+            for (unsigned j = 0; j < d.length && j < 16; ++j) bytes[j] = bus.peek8(m.cpu().debug_linear(seg, uint16_t(off + j)));
             t += format("%04X:%04X  %-20s %s\n", seg, off, hex_bytes(bytes, std::min<unsigned>(d.length, 6)).c_str(),
                         d.text.c_str());
             off = uint16_t(off + d.length);

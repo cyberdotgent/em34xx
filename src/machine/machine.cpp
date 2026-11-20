@@ -24,7 +24,7 @@ const char* stop_reason_name(StopEvent::Reason r) {
 Machine::Machine(const ModelInfo& model)
     : model_(model),
       bus_(model.address_bits),
-      cpu_(bus_, model.cpu),
+      cpu_(make_cpu(bus_, model.cpu)),
       bp_bitmap_((size_t(bus_.address_mask()) + 1) / 8, 0),
       twinax_(std::make_unique<NullTwinaxHost>()) {}
 
@@ -40,7 +40,7 @@ void Machine::reset() {
     bus_.reset_devices();
     bus_.clear_stop();
     for (auto& d : devices_) d->reset();
-    cpu_.reset();
+    cpu_->reset();
 }
 
 bool Machine::breakpoint_hit(uint32_t pc, int& id) {
@@ -56,7 +56,7 @@ StopEvent Machine::run(uint64_t max_instructions, const std::atomic<bool>& user_
     StopEvent ev;
     const bool have_devices = !devices_.empty();
     for (uint64_t n = 0; n < max_instructions; ++n) {
-        const uint32_t pc = cpu_.pc_linear();
+        const uint32_t pc = cpu_->pc_linear();
         if (user_stop.load(std::memory_order_relaxed)) {
             ev.reason = StopEvent::Reason::User;
             ev.pc = pc;
@@ -76,15 +76,15 @@ StopEvent Machine::run(uint64_t max_instructions, const std::atomic<bool>& user_
 
         if (trace_hook) trace_hook(*this);
         bus_.set_pc_context(pc);
-        if (InterruptController* ic = bus_.interrupt_controller()) cpu_.set_intr(ic->intr_asserted());
-        const uint32_t cycles = cpu_.step();
+        if (InterruptController* ic = bus_.interrupt_controller()) cpu_->set_intr(ic->intr_asserted());
+        const uint32_t cycles = cpu_->step();
         if (have_devices)
             for (auto& d : devices_) d->tick(cycles);
 
         if (bus_.stop_pending()) {
             const BusStop s = bus_.stop_info();
             bus_.clear_stop();
-            ev.pc = cpu_.pc_linear();
+            ev.pc = cpu_->pc_linear();
             ev.detail = format("%s (instruction at %06x)", s.describe().c_str(), pc);
             if (s.cause == BusStop::Cause::Watchpoint) {
                 ev.reason = StopEvent::Reason::Watchpoint;
@@ -98,7 +98,7 @@ StopEvent Machine::run(uint64_t max_instructions, const std::atomic<bool>& user_
         }
     }
     ev.reason = StopEvent::Reason::None;
-    ev.pc = cpu_.pc_linear();
+    ev.pc = cpu_->pc_linear();
     return ev;
 }
 

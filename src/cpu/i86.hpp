@@ -1,5 +1,6 @@
-// Interpreter for the Intel 8086 family (8086/8088, 80186/80188; the 80286
-// level is reserved for protected-mode support later).
+// Interpreter for the Intel 8086 family (8086/8088, 80186/80188). The 80286
+// level runs here in real mode only; protected mode belongs in a separate
+// core behind the Cpu interface (cpu/cpu.hpp, docs/architecture.md).
 //
 // Execution is instruction-granular. Cycle counts are approximate: they are
 // deterministic and monotonic, good enough to pace timers, but not a
@@ -14,67 +15,50 @@
 
 namespace tn34xx {
 
-// Register indices follow the x86 instruction encoding.
-enum Reg16 { AX = 0, CX, DX, BX, SP, BP, SI, DI };
-enum SegReg { ES = 0, CS, SS, DS };
-
-enum Flag : uint16_t {
-    FLAG_CF = 1u << 0,
-    FLAG_PF = 1u << 2,
-    FLAG_AF = 1u << 4,
-    FLAG_ZF = 1u << 6,
-    FLAG_SF = 1u << 7,
-    FLAG_TF = 1u << 8,
-    FLAG_IF = 1u << 9,
-    FLAG_DF = 1u << 10,
-    FLAG_OF = 1u << 11,
-};
-
-struct CpuRegs {
-    uint16_t gpr[8] = {};
-    uint16_t seg[4] = {};
-    uint16_t ip = 0;
-    uint16_t flags = 0;
-};
-
-class I86 {
+class I86 : public Cpu {
 public:
     I86(CpuBus& bus, CpuLevel level);
 
-    CpuLevel level() const { return level_; }
+    CpuLevel level() const override { return level_; }
     bool is_186_or_later() const { return level_ >= CpuLevel::I80186; }
 
     // Reset: CS=FFFF, IP=0000, flags cleared, queue flushed.
-    void reset();
+    void reset() override;
 
     // Execute one instruction (or service one interrupt). Returns the number
     // of clock cycles consumed. A REP string instruction runs to completion
     // unless an interrupt becomes pending, in which case IP is rewound to the
     // prefix so the instruction resumes after the handler returns.
-    uint32_t step();
+    uint32_t step() override;
 
     // External interrupt inputs.
-    void set_intr(bool asserted) { intr_ = asserted; }
-    void raise_nmi() { nmi_pending_ = true; }
+    void set_intr(bool asserted) override { intr_ = asserted; }
+    void raise_nmi() override { nmi_pending_ = true; }
 
-    bool halted() const { return halted_; }
-    void set_halted(bool h) { halted_ = h; }
+    bool halted() const override { return halted_; }
+    void set_halted(bool h) override { halted_ = h; }
 
-    CpuRegs& regs() { return r_; }
-    const CpuRegs& regs() const { return r_; }
+    CpuRegs& regs() override { return r_; }
+    const CpuRegs& regs() const override { return r_; }
 
-    uint64_t cycles() const { return cycles_; }
-    uint64_t instructions() const { return instructions_; }
+    uint64_t cycles() const override { return cycles_; }
+    uint64_t instructions() const override { return instructions_; }
 
     // Linear address of CS:IP (the next instruction to execute).
-    uint32_t pc_linear() const { return linear(r_.seg[CS], r_.ip); }
+    uint32_t pc_linear() const override { return linear(r_.seg[CS], r_.ip); }
     uint32_t linear(uint16_t seg, uint16_t off) const {
         return ((uint32_t(seg) << 4) + off) & addr_mask_;
     }
-    uint32_t address_mask() const { return addr_mask_; }
+    uint32_t address_mask() const override { return addr_mask_; }
+    // Real mode: segment * 16 + offset, wrapped to the address width.
+    bool translate(uint16_t seg, uint32_t off, uint32_t& linear_out) const override {
+        if (off > 0xFFFF) return false;
+        linear_out = linear(seg, uint16_t(off));
+        return true;
+    }
 
     // Flags are stored normalised to what PUSHF would push.
-    uint16_t normalise_flags(uint16_t f) const;
+    uint16_t normalise_flags(uint16_t f) const override;
 
 private:
     // --- bus helpers -------------------------------------------------

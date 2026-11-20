@@ -3,7 +3,7 @@
 #pragma once
 
 #include "bus/bus.hpp"
-#include "cpu/i86.hpp"
+#include "cpu/cpu.hpp"
 #include "machine/display_subtype.hpp"
 #include "machine/peripherals.hpp"
 #include "machine/twinax_port.hpp"
@@ -75,7 +75,8 @@ public:
 
     const ModelInfo& model() const { return model_; }
     Bus& bus() { return bus_; }
-    I86& cpu() { return cpu_; }
+    Cpu& cpu() { return *cpu_; }
+    const Cpu& cpu() const { return *cpu_; }
 
     template <class T, class... Args>
     T& add_device(Args&&... args) {
@@ -133,7 +134,7 @@ private:
 
     const ModelInfo& model_;
     Bus bus_;
-    I86 cpu_;
+    std::unique_ptr<Cpu> cpu_;
     std::vector<std::unique_ptr<Device>> devices_;
     std::vector<Breakpoint> breakpoints_;
     std::vector<uint8_t> bp_bitmap_;   // one bit per linear address

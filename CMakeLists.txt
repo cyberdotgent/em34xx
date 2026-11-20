@@ -90,6 +90,7 @@ tn34xx_library(tn34xx_emu
   src/util/strings.cpp
   src/bus/bus.cpp
   src/bus/probe_device.cpp
+  src/cpu/cpu.cpp
   src/cpu/i86.cpp
   src/cpu/i86_disasm.cpp
   src/rom/romset.cpp

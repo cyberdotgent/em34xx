@@ -54,10 +54,26 @@ const char kTargetXml[] = R"(<?xml version="1.0"?>
     <reg name="fooff" bitsize="32" type="int" group="float"/>
     <reg name="fop" bitsize="32" type="int" group="float"/>
   </feature>
-</target>
 )";
 
-constexpr unsigned kNumRegs = 32;
+// 80286 system registers, appended as registers 32.. when the core has them
+// (Cpu::system_regs()). Read-only over GDB; set them from the firmware.
+const char* const kSystemRegNames[] = {"msw", "gdtr_base", "gdtr_limit", "idtr_base", "idtr_limit", "ldtr", "tr"};
+constexpr unsigned kNumSystemRegs = sizeof kSystemRegNames / sizeof kSystemRegNames[0];
+
+constexpr unsigned kNumCoreRegs = 32;
+
+std::string target_xml(bool system_regs) {
+    std::string xml = kTargetXml;
+    if (system_regs) {
+        xml += "  <feature name=\"org.tn34xx.i286.system\">\n";
+        for (unsigned i = 0; i < kNumSystemRegs; ++i)
+            xml += format("    <reg name=\"%s\" bitsize=\"32\" type=\"int32\" group=\"system\"%s/>\n",
+                          kSystemRegNames[i], i == 0 ? format(" regnum=\"%u\"", kNumCoreRegs).c_str() : "");
+        xml += "  </feature>\n";
+    }
+    return xml + "</target>\n";
+}
 
 // Advertised maximum packet size, and the most monitor output bytes sent in
 // one "O" packet (hex doubles it, so 2 * kMaxConsoleChunk + 1 < kPacketSize).
@@ -266,6 +282,19 @@ std::string GdbStub::read_register(unsigned n) {
     return emu_.with_machine([&](Machine& m) -> std::string {
         const CpuRegs& r = m.cpu().regs();
         static const int gpr_map[8] = {AX, CX, DX, BX, SP, BP, SI, DI};
+        const SystemRegs* s = m.cpu().system_regs();
+        if (n >= kNumCoreRegs && s) {
+            switch (n - kNumCoreRegs) {
+            case 0: return le32_hex(s->msw);
+            case 1: return le32_hex(s->gdtr.base);
+            case 2: return le32_hex(s->gdtr.limit);
+            case 3: return le32_hex(s->idtr.base);
+            case 4: return le32_hex(s->idtr.limit);
+            case 5: return le32_hex(s->ldtr.selector);
+            case 6: return le32_hex(s->tr.selector);
+            default: return std::string();
+            }
+        }
         if (n < 8) return le32_hex(r.gpr[gpr_map[n]]);
         if (n == 8) return le32_hex(m.cpu().pc_linear());
         if (n == 9) return le32_hex(r.flags);
@@ -284,8 +313,10 @@ bool GdbStub::write_register(unsigned n, uint32_t v) {
         static const int gpr_map[8] = {AX, CX, DX, BX, SP, BP, SI, DI};
         if (n < 8) { r.gpr[gpr_map[n]] = uint16_t(v); return true; }
         if (n == 8) {
-            // eip is linear; translate into the current code segment.
-            const uint32_t base = uint32_t(r.seg[CS]) << 4;
+            // eip is linear; translate into the current code segment
+            // (segment or, in protected mode, selector base).
+            uint32_t base = 0;
+            if (!m.cpu().translate(r.seg[CS], 0, base)) return false;
             if (v < base || v - base > 0xFFFF) return false;
             r.ip = uint16_t(v - base);
             return true;
@@ -295,13 +326,15 @@ bool GdbStub::write_register(unsigned n, uint32_t v) {
         if (n == 11) { r.seg[SS] = uint16_t(v); return true; }
         if (n == 12) { r.seg[DS] = uint16_t(v); return true; }
         if (n == 13) { r.seg[ES] = uint16_t(v); return true; }
-        return n < kNumRegs;  // fs/gs/x87: accepted and ignored
+        return n < kNumCoreRegs;  // fs/gs/x87: accepted and ignored; system registers: read-only
     });
 }
 
 std::string GdbStub::read_registers() {
     std::string s;
-    for (unsigned n = 0; n < kNumRegs; ++n) s += read_register(n);
+    const bool sys = emu_.with_machine([](Machine& m) { return m.cpu().system_regs() != nullptr; });
+    const unsigned count = kNumCoreRegs + (sys ? kNumSystemRegs : 0);
+    for (unsigned n = 0; n < count; ++n) s += read_register(n);
     return s;
 }
 
@@ -352,7 +385,8 @@ std::string GdbStub::query(const std::string& p) {
         const auto comma = range.find(',');
         const uint32_t off = parse_hex32(range.substr(0, comma));
         const uint32_t len = parse_hex32(range.substr(comma + 1));
-        const std::string xml = kTargetXml;
+        const bool sys = emu_.with_machine([](Machine& m) { return m.cpu().system_regs() != nullptr; });
+        const std::string xml = target_xml(sys);
         if (off >= xml.size()) return "l";
         const std::string chunk = xml.substr(off, len);
         return (off + chunk.size() >= xml.size() ? "l" : "m") + chunk;

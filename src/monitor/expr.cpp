@@ -28,7 +28,7 @@ public:
             ++pos_;
             int64_t off;
             if (!logic_or(off)) return false;
-            out = m_.cpu().linear(uint16_t(a), uint16_t(off));
+            out = m_.cpu().debug_linear(uint16_t(a), uint16_t(off));
         } else {
             out = uint32_t(a) & m_.bus().address_mask();
         }

@@ -36,6 +36,21 @@ TEST_CASE("reset vector") {
     CHECK(cpu.regs().flags == 0xF002);
 }
 
+TEST_CASE("Cpu interface: real-mode translation and no system registers") {
+    RamBus bus;
+    std::unique_ptr<Cpu> cpu = make_cpu(bus, CpuLevel::I80188);
+    CHECK(cpu->level() == CpuLevel::I80188);
+    uint32_t lin = 0;
+    REQUIRE(cpu->translate(0x1234, 0x0010, lin));
+    CHECK(lin == 0x12350);
+    REQUIRE(cpu->translate(0xFFFF, 0x0010, lin));
+    CHECK(lin == 0x00000);   // 20-bit wrap
+    CHECK_FALSE(cpu->translate(0x0000, 0x10000, lin));
+    CHECK(cpu->debug_linear(0xF000, 0xFFF0) == 0xFFFF0);
+    CHECK_FALSE(cpu->protected_mode());
+    CHECK(cpu->system_regs() == nullptr);
+}
+
 TEST_CASE("far jump, loop and string store") {
     RamBus bus;
     // FFFF:0000  jmp f000:0100
