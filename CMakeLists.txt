@@ -86,6 +86,22 @@ target_link_libraries(tn34xx_frontend
   PUBLIC tn34xx_core
   PRIVATE tn34xx_warnings SDL3::SDL3)
 
+# --- TN5250 client: the host side of the Twinax bridge (src/tn5250) --------
+add_library(tn34xx_tn5250 STATIC
+  src/tn5250/client.cpp
+  src/tn5250/codepage.cpp
+  src/tn5250/engine.cpp
+  src/tn5250/record.cpp
+  src/tn5250/telnet.cpp
+  src/tn5250/transport.cpp
+)
+target_link_libraries(tn34xx_tn5250
+  PUBLIC tn34xx_core Threads::Threads
+  PRIVATE tn34xx_warnings)
+
+add_executable(tn5250-probe src/tools/tn5250_probe.cpp)
+target_link_libraries(tn5250-probe PRIVATE tn34xx_tn5250 tn34xx_warnings)
+
 # --- Executable -----------------------------------------------------------
 add_executable(tn34xx src/main.cpp)
 target_link_libraries(tn34xx PRIVATE tn34xx_core tn34xx_frontend tn34xx_warnings)

@@ -1,4 +1,5 @@
-// Minimal blocking TCP sockets for the GDB stub (POSIX and Winsock).
+// Minimal blocking TCP sockets for the GDB stub and the TN5250 client
+// (POSIX and Winsock).
 #pragma once
 
 #include <cstddef>
@@ -24,6 +25,8 @@ public:
     // Wait up to timeout_ms for a connection; returns an invalid socket on
     // timeout.
     TcpSocket accept(int timeout_ms);
+    // Connect to host:port (name or address, IPv4 or IPv6). Blocking.
+    bool connect(const std::string& host, uint16_t port, std::string& error);
 
     // Wait up to timeout_ms for data. Returns >0 bytes read, 0 on timeout,
     // -1 on error or disconnect.

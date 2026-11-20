@@ -15,6 +15,7 @@ static bool ensure_init() {
 #else
 #include <arpa/inet.h>
 #include <netinet/in.h>
+#include <netdb.h>
 #include <netinet/tcp.h>
 #include <poll.h>
 #include <sys/socket.h>
@@ -112,6 +113,44 @@ TcpSocket TcpSocket::accept(int timeout_ms) {
     ::inet_ntop(AF_INET, &peer.sin_addr, buf, sizeof buf);
     out.peer_ = format("%s:%u", buf, ntohs(peer.sin_port));
     return out;
+}
+
+bool TcpSocket::connect(const std::string& host, uint16_t port, std::string& error) {
+    if (!ensure_init()) { error = "socket library initialisation failed"; return false; }
+    addrinfo hints{};
+    hints.ai_family = AF_UNSPEC;
+    hints.ai_socktype = SOCK_STREAM;
+    hints.ai_protocol = IPPROTO_TCP;
+    addrinfo* res = nullptr;
+    const std::string service = format("%u", port);
+    const int rc = ::getaddrinfo(host.c_str(), service.c_str(), &hints, &res);
+    if (rc != 0 || !res) {
+        error = format("cannot resolve %s", host.c_str());
+        return false;
+    }
+    error = format("cannot connect to %s:%u", host.c_str(), port);
+    for (addrinfo* ai = res; ai; ai = ai->ai_next) {
+        sock_t s = ::socket(ai->ai_family, ai->ai_socktype, ai->ai_protocol);
+        if (s == kInvalid) continue;
+        if (::connect(s, ai->ai_addr, static_cast<socklen_t>(ai->ai_addrlen)) != 0) {
+            close_sock(s);
+            continue;
+        }
+        int one = 1;
+        ::setsockopt(s, IPPROTO_TCP, TCP_NODELAY, reinterpret_cast<const char*>(&one), sizeof one);
+        char buf[64] = {};
+        if (ai->ai_family == AF_INET)
+            ::inet_ntop(AF_INET, &reinterpret_cast<sockaddr_in*>(ai->ai_addr)->sin_addr, buf, sizeof buf);
+        else if (ai->ai_family == AF_INET6)
+            ::inet_ntop(AF_INET6, &reinterpret_cast<sockaddr_in6*>(ai->ai_addr)->sin6_addr, buf, sizeof buf);
+        close();
+        fd_ = static_cast<intptr_t>(s);
+        peer_ = format("%s:%u", buf, port);
+        error.clear();
+        break;
+    }
+    ::freeaddrinfo(res);
+    return valid();
 }
 
 int TcpSocket::recv(void* buf, size_t len, int timeout_ms) {
