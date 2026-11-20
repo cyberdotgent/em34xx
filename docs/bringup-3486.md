@@ -29,13 +29,41 @@ suffixes (hypothesis: a 3477-compatibility identity).
   The code is generated for an 8086 (repeated single-bit shifts instead of
   shift-by-immediate), and there is no port I/O. All hardware is memory
   mapped, as on the 3477.
-- Clock unknown. 8 MHz is a pacing placeholder (hypothesis).
+- **The CPU is an NEC V20** (D70108L-8, 8 MHz part), U12, PLCC-44 (observed,
+  board photo). It runs 8088 code, but differs from an Intel 8088 in some
+  undocumented opcodes, AAM/AAD, its `0F` extended-instruction prefix and
+  timing. None of that is modelled yet; the firmware doesn't need it so far.
+- Clock: the only oscillator is a **30.000 MHz** module (Y1, IBM 0666269;
+  observed). A CPU clock of 7.5 MHz (30/4) is a hypothesis that fits the
+  delay-loop estimate of about 7 MHz; the model uses it for pacing.
+
+## Logic board (observed, photo of a 3486 board, IBM 9325)
+
+| Ref | Part | Notes |
+| --- | --- | --- |
+| U11 | IBM 0666317 / Toshiba TC140G54AF, large QFP | Custom gate array. Almost certainly the system logic, display controller and Twinax engine in one chip (hypothesis); the Toshiba TC-family lineage matches the 3477 and IBM's 5250 adapters. |
+| U12 | NEC D70108L-8 (V20) | CPU, 8-bit bus. |
+| Y1 | 30.000 MHz oscillator, IBM 0666269 | Only clock source. |
+| U15 | Mitsubishi M5M51008BFP-10LL, 128K x 8 SRAM | Low-power part next to the battery position BT1: the battery-backed RAM (hypothesis). |
+| U14 | Sony CXK58257AM-70L, 32K x 8 SRAM | Fast SRAM, possibly display or character-generator memory (hypothesis). |
+| U4, U5 | Vertical ZIP packages, markings not legible | Probably 256K x 4 DRAMs = 256 KiB (hypothesis); with U15 this matches the 384 KiB RAM map. |
+| U2 | Unpopulated 40-pin DIP footprint | Fits the optional ROM at `60000-7FFFF` (hypothesis). |
+| U8, U9 | 74ALS273, 74LS373 | Address/data latches for the multiplexed CPU bus. |
+| U6, U7, U13, U16 | 74F38/74LS38-type, 74LS14, 7406 | Open-collector drivers and Schmitt-trigger receivers for the external ports. |
+| U10 | National, IBM 33G2729 | Unknown; possibly the serial EEPROM or a line interface (hypothesis). |
+| J1 | DE-15 with varistors RV1-RV4 and Q1 | Twinax port with surge protection (hypothesis). |
+| J2 | DB-25 | Parallel printer port. |
+| J6, J4 | Modular jacks with TDK filters | Keyboard, and a second serial device port (matches the second keyboard-style port at `20144-20146`; hypothesis). |
+| J5, J7 | Card-edge and pin headers | CRT/power board connections. |
+
+The board's ROM label reads `54G0015`; the analysed dump is `54G0011`, so
+several firmware levels exist.
 
 ## Memory map
 
 | Range | Contents | Status |
 | --- | --- | --- |
-| `00000-5FFFF` | RAM | Observed in use up to about `52000`: stack and data at `38000-3C07F` (tested by the POST pre-test), Twinax data buffers in segment `5000`, a checksummed block at `469E0`, buffers cleared at `3F080` and `41082`. 384 KiB is a **hypothesis**. |
+| `00000-5FFFF` | RAM | Observed in use up to about `52000`: stack and data at `38000-3C07F` (tested by the POST pre-test), Twinax data buffers in segment `5000`, a checksummed block at `469E0`, buffers cleared at `3F080` and `41082`. 384 KiB is a **hypothesis**, consistent with the board: 256 KiB DRAM (U4/U5) + 128 KiB SRAM (U15). |
 | `20000-200FF` | System gate array | Observed (same base as the 3477). |
 | `20100-201FF` | Display controller, now with registers up to `2014F` | Observed. |
 | `60000-7FFFF` | Optional 128 KiB ROM | Observed: POST checksums segments `6000-7000` (word sum `619A`) only when strap `2000A` bit 6 is 0, and copies 7 bytes from `60050` into the setup block. Absent (open bus) in the model. |

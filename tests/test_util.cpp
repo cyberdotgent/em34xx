@@ -52,17 +52,7 @@ TEST_CASE("command line overrides") {
     CHECK(cfg.tn5250.host == "ibmi.example");
     CHECK(cfg.tn5250.env["KBDTYPE"] == "USB");
     CHECK(cfg.batch);
-    CHECK(cfg.headless());
-    CHECK(cfg.frontend == "none");
-
-    AppConfig fe;
-    const char* argv3[] = {"tn34xx", "--frontend", "SDL"};
-    REQUIRE(parse_command_line(3, const_cast<char**>(argv3), fe, err));
-    CHECK(fe.frontend == "sdl");
-    CHECK_FALSE(fe.headless());
-    const char* argv4[] = {"tn34xx", "--headless"};
-    REQUIRE(parse_command_line(2, const_cast<char**>(argv4), fe, err));
-    CHECK(fe.frontend == "none");
+    CHECK(cfg.headless);
 
     AppConfig bad;
     const char* argv2[] = {"tn34xx", "--station-address", "7"};

@@ -85,7 +85,9 @@ public:
         info_.status = ModelStatus::RomIncomplete;
         info_.cpu = CpuLevel::I8088;
         info_.address_bits = 20;
-        info_.clock_hz = 8000000;
+        // 30.000 MHz master oscillator on the logic board (observed); the
+        // CPU clock is assumed to be a quarter of it (hypothesis).
+        info_.clock_hz = 7500000;
         info_.max_sessions = 2;
         info_.max_printer_sessions = 1;
         info_.roms = {
@@ -104,8 +106,10 @@ public:
             "display page stores 20145, so bit 7 reads 0 and the keyboard handshake runs into an "
             "empty vector 0Eh (observed); which value the 3486 board gives is unknown",
             "one ROM, 54G0011, for 3486/3487/3488: the straps select the model in the VPD (observed)",
-            "CPU 8088-class: no 80186-only opcode in the reachable code, no port I/O (observed); "
-            "clock unknown, 8 MHz for pacing only",
+            "CPU: NEC V20 (D70108L-8) on the logic board (observed); the firmware uses no 80186-only "
+            "opcode and no port I/O (observed), so it is emulated as an 8088 for now; V20-specific "
+            "behaviour (undocumented opcodes, timing) is not modelled",
+            "clock: single 30.000 MHz oscillator (observed); CPU at 7.5 MHz = 30/4 (hypothesis)",
             "system gate array at 20000 and display controller at 20100, 3477-compatible register use "
             "(observed); new registers 2000D/2000F/20017/2001A/2001B and 20140-2014F are plain storage",
             "RAM 384 KiB at 00000-5FFFF (hypothesis; the firmware uses up to about 52000, observed); "
