@@ -1,3 +1,4 @@
+#include "devices/ibm3477/keyboard_if.hpp"
 #include "input/keyboard_ids.hpp"
 #include "input/set3_keyboard.hpp"
 
@@ -347,4 +348,72 @@ TEST_CASE("Shifted upper-row key repeats as itself") {
     for (uint8_t b : rep) CHECK(b == 0x08);
     press(k, 0x3A, false);
     CHECK(drain(k) == Bytes{0x12});
+}
+
+TEST_CASE("cursor keys per key mode: make-only, make/break, typematic") {
+    // The 3477 firmware programs the 122-key keyboard with F6, FD (make
+    // only) 5A 58 11 7C, FB (typematic) <editing and keypad keys> and
+    // FA 61 6A (horizontal cursor keys typematic; FA = FB on this keyboard).
+    Set3Keyboard k;
+    k.set_bat_sends_id(false);
+    k.power_on();
+    k.host_write(0xF9);   // everything make-only
+    k.host_write(0xFA);
+    k.host_write(0x61);
+    k.host_write(0x6A);
+    k.host_write(0xFC);   // up arrow make/break
+    k.host_write(0x63);
+    k.host_write(0xF3);
+    k.host_write(0x20);   // 30 cps (33.36 ms), 500 ms delay
+    k.host_write(0xF4);
+    drain(k);
+    constexpr uint32_t kRight = 0x4F, kDown = 0x51, kUp = 0x52;
+
+    // Make-only: one make, no repeat, no break however long it is held.
+    press(k, kDown, true);
+    k.advance_us(2000000);
+    press(k, kDown, false);
+    CHECK(drain(k) == Bytes{0x60});
+
+    // Make/break: make and break, no repeat.
+    press(k, kUp, true);
+    k.advance_us(2000000);
+    press(k, kUp, false);
+    CHECK(drain(k) == Bytes{0x63, 0xF0, 0x63});
+
+    // Typematic (no break): a short tap is one make...
+    press(k, kRight, true);
+    k.advance_us(150000);
+    press(k, kRight, false);
+    CHECK(drain(k) == Bytes{0x6A});
+    // ...a hold repeats after the delay, at the rate, and stops at release.
+    press(k, kRight, true);
+    k.advance_us(499000);
+    CHECK(drain(k) == Bytes{0x6A});
+    k.advance_us(1000 + 2 * 33360);
+    CHECK(drain(k) == Bytes{0x6A, 0x6A, 0x6A});
+    press(k, kRight, false);
+    k.advance_us(1000000);
+    CHECK_FALSE(k.has_output());
+}
+
+TEST_CASE("typematic runs in emulated time (3477 keyboard interface)") {
+    // Repeats follow the machine's cycles, not the wall clock: a machine
+    // running slower or faster than real time keeps the terminal's timing.
+    const uint64_t hz = 7477312;
+    Ibm3477KeyboardInterface kif(hz, KeyboardType::Terminal122, 0xBF, 0xBF);
+    kif.reset();
+    Set3Keyboard& k = kif.keyboard();
+    drain(k);
+    k.host_write(0xF3);
+    k.host_write(0x00);   // 30 cps, 250 ms delay
+    drain(k);
+    press(k, 0x04, true);   // a: typematic by default
+    CHECK(drain(k) == Bytes{0x1C});
+    // 249 ms of machine time in small steps (the keyboard line stays held,
+    // so nothing is delivered to the interface's receive register).
+    for (int i = 0; i < 249; ++i) kif.tick(hz / 1000);
+    CHECK_FALSE(k.has_output());
+    for (int i = 0; i < 2; ++i) kif.tick(hz / 1000);
+    CHECK(k.output_size() == 1);
 }

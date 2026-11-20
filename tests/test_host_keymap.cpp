@@ -223,6 +223,40 @@ TEST_CASE("keymap: tap keys act as Ctrl when combined") {
     CHECK(r.take() == Ev{"+19", "+11", "-11", "-19"});
 }
 
+TEST_CASE("keymap: a tap survives host repeats and stray events") {
+    Rig r(KeyboardType::Terminal122);
+    // Host auto-repeat of the tap key itself (a second down without an up,
+    // as some hosts send even when the front end filters repeat events).
+    r.key(kRCtrl, true);
+    r.key(kRCtrl, true);
+    r.key(kRCtrl, true);
+    // A release of a key that was never pressed (focus changes can do this).
+    r.key(kA, false);
+    r.key(kRCtrl, false);
+    CHECK(r.take() == Ev{"+58", "-58"});
+    // A key held from before (fast typing rolls into Enter) and released
+    // while the tap key is down does not cancel the tap.
+    r.key(kA, true);
+    r.key(kRCtrl, true);
+    r.key(kA, false);
+    r.key(kRCtrl, false);
+    CHECK(r.take() == Ev{"+1C", "-1C", "+58", "-58"});
+    // A release without a press of the tap key sends nothing.
+    r.key(kRCtrl, false);
+    CHECK(r.take().empty());
+    // Another key pressed while it is held: Ctrl, not Enter.
+    r.key(kRCtrl, true);
+    r.tap(kA);
+    r.key(kRCtrl, false);
+    CHECK(r.take() == Ev{"+1C", "-1C"});
+    // Shift held across the tap: Enter is sent with the terminal Shift
+    // released around it, then pressed again.
+    r.key(kLShift, true);
+    r.tap(kRCtrl);
+    r.key(kLShift, false);
+    CHECK(r.take() == Ev{"+12", "-12", "+58", "-58", "+12", "-12"});
+}
+
 TEST_CASE("keymap: Alt held through a rule that releases it") {
     Rig r(KeyboardType::Terminal122);
     r.key(kLAlt, true);
