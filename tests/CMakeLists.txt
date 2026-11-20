@@ -13,6 +13,8 @@ add_executable(tn34xx_unit_tests
   test_display.cpp
   test_display3477.cpp
   test_3477.cpp
+  test_wsc.cpp
+  fake_station.cpp
 )
 target_link_libraries(tn34xx_unit_tests PRIVATE tn34xx_core doctest::doctest)
 add_test(NAME unit COMMAND tn34xx_unit_tests)

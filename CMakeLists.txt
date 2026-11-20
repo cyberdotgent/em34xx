@@ -56,6 +56,12 @@ add_library(tn34xx_core STATIC
   src/devices/ibm3477/system.cpp
   src/host/host_config.cpp
   src/host/twinax_link.cpp
+  src/host/wsc/device_commands.cpp
+  src/host/wsc/keyboard_map.cpp
+  src/host/wsc/link_scheduler.cpp
+  src/host/wsc/screen_writer.cpp
+  src/host/wsc/station.cpp
+  src/host/wsc/tn5250_adapter.cpp
   src/config/config.cpp
   src/monitor/expr.cpp
   src/monitor/monitor.cpp
