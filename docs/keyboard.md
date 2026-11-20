@@ -224,6 +224,35 @@ Engine behaviour:
 - **Typematic.** The keyboard model repeats the last key made from the `F3`
   setting; host auto-repeat (a second press without a release) is ignored.
 
+- **Timing.** Host key events reach the keyboard model when the front end
+  receives them (wall-clock order); tap detection depends only on the
+  order of events, not on their timing, and ignores host repeats and stray
+  releases. Typematic delay and rate run in **emulated** time (machine
+  cycles), as on the real keyboard. While the emulator holds its nominal
+  clock a held key therefore repeats as on the terminal; if the machine
+  falls behind real time (a slow build), a hold looks shorter to the
+  terminal and repeats less, never more.
+
+### Diagnosing input
+
+`--log input=debug,time` logs, with seconds since start-up: every SDL key
+event as delivered (scancode, key code, modifier state, the repeat flag,
+SDL's timestamp) and window focus changes; the keymap rule chosen for each
+host key and whether a tap key fired or was cancelled; each terminal key
+make/break with the key mode the firmware set for it; typematic repeats;
+each key byte the keyboard sends to the terminal; and the key-to-screen
+latency. Add `perf=debug` for the achieved clock and redraw cost.
+
+On the PCOMM map, PC Enter is the terminal's **Field Exit** and Right Ctrl
+is **Enter**. In a terminal-local menu such as Offline Setup ("Move cursor
+to desired selection and press ENTER") the firmware rejects Field Exit
+with "Invalid key is pressed." (observed on the emulated firmware; this is
+the firmware's own answer to that key position, so a real terminal answers
+the same): select with Right Ctrl. Keypad Enter is Field Exit too, and
+PC Enter is Field Exit on the `positional` map as well (the key at that
+position). A keymap file with `host = "enter"`, `to = "enter"` makes PC
+Enter the terminal's Enter.
+
 ### Default (`pcomm`) assignments
 
 PCOMM's IBM-default 5250 layout (documented: *Personal Communications AS/400

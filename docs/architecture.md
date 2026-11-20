@@ -12,7 +12,7 @@
               |  run control, pacing, stop events, machine lock, |
               |  display generation                              |
               +--------------------------+----------------------+
-                                         | emulation thread, 20k-instruction slices
+                                         | emulation thread, 2000-instruction slices
                                          v
             Machine: I86 CPU  <->  Bus  <->  devices (model-specific)
                                     |             |
@@ -97,9 +97,13 @@ What it uses:
   `InvalidateRect` on Win32, `dispatch_async` + `setNeedsDisplay:` on Cocoa,
   a user event on SDL). Then, under `Emulator::with_machine`,
   `render_presented()` (`present/display_profile.hpp`) gives the raw frame
-  with the display subtype applied; `crt_fit()`/`crt_render()`
-  (`present/crt_render.hpp`) turn it into the tube image at the window's
-  pixel size. Redraw also on resize/expose.
+  with the display subtype applied; `crt_fit()` and a `CrtRenderer`
+  (`present/crt_render.hpp`; it recomputes only the rows a changed raster
+  line reaches) turn it into the tube image at the window's pixel size.
+  Redraw also on resize/expose. The generation moves after almost every
+  slice (display register writes count), so fetch the raster at most once
+  per refresh (the SDL front end: every 15 ms) and present only when the
+  tube image changed.
 - **Keyboard.** `Machine::key_event(HostKeyEvent)` under `with_machine`,
   with the key's **USB HID usage** (Keyboard/Keypad page 0x07; SDL
   scancodes are these values), `pressed` true/false, no host auto-repeat
@@ -190,6 +194,17 @@ generator and display registers), and the display device reports an
 `with_machine` call the Emulator asks `Machine::take_display_change()` and,
 if anything changed, bumps `display_generation()`, wakes
 `wait_display_change()` and calls the display callback.
+
+Pacing: after each slice the emulation thread compares the CPU cycles run
+since the start of the run with the wall clock (`steady_clock`) and sleeps
+until the machine is back on its nominal clock, in steps of at most 20 ms,
+skipping sleeps under 1 ms (sleep granularity, coarse under WSL; the
+absolute target absorbs oversleep). More than 250 ms behind (a debugger
+pause, a slow build) it resynchronises instead of racing. Device time
+(timers, keyboard typematic, display frames) is derived from CPU cycles, so
+the terminal's own timing holds whatever the host speed. `--log perf=debug`
+reports the achieved clock, the sleeps, and in the SDL front end the
+display changes, raster fetches and CRT render cost.
 
 ## Twinax / TN5250
 
