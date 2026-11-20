@@ -6,6 +6,10 @@
   overlay patches. Emulate hardware instead. ROM images live in `roms/`, are
   git-ignored by name, and are documented in `roms/ROMS.md`. Analysis notes
   go in `docs/`; do not commit disassembly listings or byte dumps.
+- Other emulators and clients (Solstice, tn5250/lib5250, etc.) are
+  behavioural references only, whatever their licence: describe their
+  behaviour in analysis notes/specs and reimplement it; never lift or port
+  their code.
 - Model facts must be labelled observed, documented or hypothesis
   (`ModelInfo::notes`, `docs/bringup-*.md`).
 - Commit after every change; push when a remote exists.
