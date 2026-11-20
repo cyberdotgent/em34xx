@@ -195,7 +195,10 @@ void TwinaxEngine::tick(uint64_t cycles) {
     case LineState::Idle: {
         if (now_ < next_host_check_) return;
         next_host_check_ = now_ + bit_cycles_ * 20;
-        if (!running_ || wrap_) return;
+        // The controller is an independent device on the cable: its clock
+        // runs and it transmits whether or not this terminal's receiver is
+        // enabled. A held receiver (or one switched to internal loopback)
+        // simply does not answer; see the Receiving state.
         TwinaxHost* h = host();
         if (!h) return;
         const uint64_t ns = (now_ / clock_hz_) * 1000000000ull + (now_ % clock_hz_) * 1000000000ull / clock_hz_;
@@ -214,7 +217,7 @@ void TwinaxEngine::tick(uint64_t cycles) {
     }
     case LineState::Receiving: {
         if (now_ < line_until_) return;
-        response_ = receive(in_flight_, false);
+        response_ = (running_ && !wrap_) ? receive(in_flight_, false) : TwinaxMessage{};
         LOG_DEBUG("twinax", "line: %s -> %s", format_twinax_message(in_flight_).c_str(),
                   response_.empty() ? "no response" : format_twinax_message(response_).c_str());
         if (response_.empty()) {

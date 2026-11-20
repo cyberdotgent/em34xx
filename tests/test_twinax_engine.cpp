@@ -356,11 +356,33 @@ TEST_CASE("twinax engine: host line timing follows the CPU clock") {
     CHECK(host.take_received().size() == 1);
     for (int i = 0; i < 2000; ++i) r.eng->tick(8);
     CHECK(host.describe().find("1 without response") != std::string::npos);
-    // A held engine takes nothing from the line.
+    // A held receiver: the controller still transmits on the cable, but
+    // the terminal does not answer.
     r.eng->set_running(false);
     host.queue(poll(2));
     for (int i = 0; i < 2000; ++i) r.eng->tick(8);
     CHECK(host.take_received().empty());
+    CHECK(host.describe().find("2 without response") != std::string::npos);
+}
+
+TEST_CASE("twinax engine: the controller's clock runs while the terminal's receiver is held") {
+    // A controller that only starts polling once it has been advanced must
+    // not depend on the terminal arming its receiver (e.g. firmware halted
+    // in a self-test): it keeps polling and sees no response.
+    struct ClockHost : ScriptTwinaxHost {
+        uint64_t last_ns = 0;
+        void advance(uint64_t ns) override { last_ns = ns; }
+    };
+    Rig r;
+    ClockHost host;
+    r.eng->set_running(false);
+    r.eng->set_host([&host]() -> TwinaxHost* { return &host; });
+    for (int i = 0; i < 20000; ++i) r.eng->tick(8);
+    CHECK(host.last_ns > 0);
+    host.queue(poll(2));
+    for (int i = 0; i < 4000; ++i) r.eng->tick(8);
+    CHECK(host.take_received().empty());
+    CHECK(host.describe().find("1 without response") != std::string::npos);
 }
 
 TEST_CASE("twinax engine: 3477 loopback test registers") {
