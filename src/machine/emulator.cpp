@@ -143,8 +143,11 @@ void Emulator::thread_main() {
             }
             first_slice = false;
             if (ev.reason != StopEvent::Reason::None) break;
-            const uint64_t done = after - before;
-            budget -= std::min(budget, std::max<uint64_t>(done, 1));
+            // A full slice ran: count every step, including steps spent
+            // halted (HLT does not complete instructions), so that a budget
+            // always runs out.
+            const uint64_t done = std::max<uint64_t>(after - before, slice);
+            budget -= std::min(budget, done);
             if (budget == 0) {
                 ev.reason = StopEvent::Reason::StepDone;
                 break;
