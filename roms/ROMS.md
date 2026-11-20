@@ -7,8 +7,27 @@ them by SHA-256 and contains no code or data taken from them.
 | Model | File | Size | SHA-256 | Status |
 | --- | --- | ---: | --- | --- |
 | 3486 | `54g0011.bin` | 524288 | `f5d968694fdb3b6991b219460eb0ce5eec131797a9c0ea928ec61a6a5b9291ef` | **Incomplete — half missing.** Read as a 27C040. See analysis below. Needs re-dump. |
-| 3477 | `95f4171.bin` | 131072 | `3f7fb58aec7505315ff94206c8dc05102e319944bd0bde55092274777fb39fde` | Plausible. Contains the reset vector (top 16 bytes). No invariant address bit. |
-| 3477 | `95f4172.bin` | 131072 | `290a58cd5db6543957bdcb2c9e92efefd62a54e37bcd239d41d9bd9cdd6be1d0` | Plausible. No reset vector; no invariant address bit. |
+| 3477 | `95f4171.bin` | 131072 | `3f7fb58aec7505315ff94206c8dc05102e319944bd0bde55092274777fb39fde` | **Good (primary bring-up target).** Maps at physical `0xE0000..0xFFFFF`; holds the reset vector. No invariant address bit. |
+| 3477 | `95f4172.bin` | 131072 | `290a58cd5db6543957bdcb2c9e92efefd62a54e37bcd239d41d9bd9cdd6be1d0` | **Good.** Maps at physical `0xC0000..0xDFFFF`. No invariant address bit. |
+
+## Known-bad dumps
+
+These hashes identify dumps that must not be used for bring-up. The emulator
+refuses them unless explicitly overridden.
+
+| Model | File | SHA-256 | Problem |
+| --- | --- | --- | --- |
+| 3486 | `54g0011.bin` | `f5d968694fdb3b6991b219460eb0ce5eec131797a9c0ea928ec61a6a5b9291ef` | Chip A17 stuck high during the read; segments `8000`, `9000`, `C000` and `D000` are missing (see below). Re-dump requested. |
+
+## 3477 placement
+
+Each chip is a byte-wide, linearly ordered image (not an even/odd pair).
+Self-referencing far-pointer tables place `95f4172` in segments `C000`/`D000`
+and the second half of `95f4171` in `F000`; the reset vector at the top of
+`95f4171` jumps to `F000:0000`. Two byte-wide ROMs with contiguous code suggest
+an 8-bit CPU bus (8088-class) — a hypothesis to confirm from the board. Neither
+image contains any `IN`/`OUT DX` sequences, so the hardware is most likely
+memory-mapped.
 
 Verify with:
 
