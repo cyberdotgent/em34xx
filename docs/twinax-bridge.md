@@ -179,7 +179,15 @@ or 5219, as set up [obs].
 In tn34xx, printer stations are discovered, identified, and polled for
 status. Their data path is the extension point `PrinterSessionPort`
 (`next_print_data` -> Write Data + Activate Write). The size of one transfer
-is a [hyp] (256 bytes) until a printer session engine exists.
+is a [hyp] (256 bytes) until a printer session engine exists. The bridge
+gives each printer station a placeholder `tn5250::PrinterSession`
+(`wsc::NullPrinterSession`) through `wsc::PrinterStationPort`: it accepts
+no data, opens no connection, and logs once, when the printer first comes
+online, that printer sessions are not implemented. A TN5250 printer
+session (RFC 4777 sections 8-10) replaces it behind the same interface.
+A model's `ModelInfo::max_printer_sessions` limits printer stations: one on
+the 3477 (display + printer on its two addresses) and the 3489, none on the
+3486.
 
 ## Painting a screen
 
@@ -221,11 +229,89 @@ The table for the **IBM Enhanced keyboard** is typed in from PAI fig. 147
 national layouts are not typed in yet: their keys reach the engine as
 "unmapped" with the raw scan code.
 
+## Running the bridge
+
+```
+build/debug/tn34xx --model 3477 --twinax-host tn5250 --tn5250-host HOST
+build/debug/tn34xx --model 3477 --twinax-host tn5250 --tn5250-host HOST \
+    --station 0:display:TN34XXA --station 1:printer:TN34XXP
+```
+
+or in a configuration file:
+
+```toml
+[twinax]
+host = "tn5250"
+
+[[twinax.station]]
+address = 0
+type = "display"
+tn5250_device_name = "TN34XXA"
+
+[tn5250]
+host = "pub400.com"
+port = 23
+```
+
+The station's address must match the address the terminal is set up for
+(3477 setup; address 0 by default). `twinax status` in the monitor shows each
+station's state and counters and each session's state, host, terminal type
+and device name.
+
+### How it is wired
+
+`wsc::Tn5250Bridge` (src/host/wsc/tn5250_bridge.hpp, library
+`tn34xx_bridge`) is the `TwinaxHost`. `make_twinax_host()` validates the
+configuration and calls the factory `main()` hands it, so the core library
+does not depend on the TN5250 client. The bridge holds the
+`LinkScheduler`, a `Station` per configured address, and:
+
+- per **display** station, a `DisplayStationPort` that owns a
+  `tn5250::Client` and its `Tn5250DisplayAdapter`. Each session has its own
+  device name (the station's `tn5250_device_name`; the first display falls
+  back to `tn5250.device_name`) and terminal type (`station_terminal_type`:
+  the station's `profile`, else `--tn5250-type`, else derived from model and
+  display: IBM-3477-FC / -FG). Host, port, code page, environment and all
+  TLS settings are copied unchanged from `[tn5250]` into every session.
+- per **printer** station, the placeholder printer session above.
+
+Threads: each client runs its socket and telnet negotiation on its own I/O
+thread and queues whole records. All controller and engine work runs on
+the emulation thread: the link device calls `advance(emu_ns)`, which
+pumps every session (records are applied to the engine there) and runs the
+session lifecycle; `to_station`, `from_station` and `no_response` drive
+the stations. Polling follows emulated time.
+
+### Session lifecycle
+
+| Event | Bridge |
+| --- | --- |
+| station first Online | the session starts (connect, negotiate); before that the host sees nothing |
+| device lost (no response, power-on status, reset) | the session stays connected; the engine is told the device is gone. The host is not told: TN5250 has no device power-off signal |
+| device back Online | the engine marks its whole screen dirty; the controller repaints from the shadow |
+| device absent for 10 min of emulated time (`BridgeOptions::lost_disconnect_ns`) | the session is closed so the host can end the job; the next Online starts a new one |
+| host closes the connection or it fails | while the device is online, a fresh session after a wall-clock back-off of 2 s, doubling to 60 s; the new session's screen replaces the old one through the normal diff |
+
+### Tests
+
+- `tests/test_bridge.cpp` (in `tn34xx_tn5250_tests`): a scripted
+  in-process TN5250 server -> client (I/O thread) -> engine -> controller ->
+  `FakeStation`. It checks that no session starts before the station is
+  online, that the sign-on panel lands in the station's buffer with the
+  cursor in the user field, that the station's keystrokes (`a`, Enter)
+  reach the server as the right Put/Get reply (`06 36 F1 11 06 35 C1`), the
+  printer stub, the repaint after device lost, and the reconnect after the
+  host hangs up.
+- Live, with a `FakeStation` in place of the terminal (a private harness):
+  pub400.com shows its sign-on panel; a local OS/400 V4 system signs on,
+  shows the Main Menu and signs off, typed through the Enhanced-keyboard scan
+  codes.
+
 ## Status and next steps
 
 - Done: configuration, the `TwinaxHost` contract, layers (c) and (d), the
-  Enhanced keyboard map, the `tn5250::DisplaySession` adapter, and a fake
-  station for unit tests.
+  Enhanced keyboard map, the `tn5250::DisplaySession` adapter, a fake
+  station for unit tests, and the bridge wired into `--twinax-host tn5250`.
 - Next: the 122-key keyboard table; extended attributes (colour, ECB) on
-  the 3477; a printer session engine; wiring the controller into
-  `make_twinax_host` once the terminal's link device is emulated.
+  the 3477; a printer session engine; the emulated 3477 going on line so the
+  bridge drives the real firmware.

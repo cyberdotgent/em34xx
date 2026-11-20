@@ -296,6 +296,9 @@ TEST_CASE("tn5250 bridge: per-station session settings") {
     tn.host = "h";
     tn.device_name = "SHARED";
     tn.codepage = "273";
+    tn.port = 992;
+    tn.tls = true;
+    tn.ca_file = "ca.pem";
     StationConfig a{0, StationType::Display, "", ""};
     StationConfig b{1, StationType::Display, "SECOND", "IBM-3179-2"};
     StationConfig c{2, StationType::Display, "", ""};
@@ -303,6 +306,10 @@ TEST_CASE("tn5250 bridge: per-station session settings") {
     CHECK(ca.device_name == "SHARED");
     CHECK(ca.terminal_type == "IBM-3477-FC");
     CHECK(ca.codepage == "273");
+    // TLS settings reach every station's session unchanged.
+    CHECK(ca.port == 992);
+    CHECK(ca.tls);
+    CHECK(ca.ca_file == "ca.pem");
     const Tn5250Config cb = station_session_config(tn, b, false, "3477", DisplaySubtype::Color);
     CHECK(cb.device_name == "SECOND");
     CHECK(cb.terminal_type == "IBM-3179-2");
