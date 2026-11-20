@@ -40,7 +40,10 @@ public:
             "CPU 8088 is inferred from byte-wide linear ROM images (hypothesis)",
             "RAM size unknown; 64 KiB at 00000 mapped as a starting point",
             "clock frequency unknown; 8 MHz used for pacing only",
-            "display, keyboard and Twinax hardware not yet modelled",
+            "one ROM serves monochrome (green/amber/paper-white) and colour units; how the "
+            "firmware senses the display type is not yet known",
+            "the keyboard ID selects the terminal language; keyboard interface not yet modelled",
+            "display and Twinax hardware not yet modelled",
         };
     }
 

@@ -5,6 +5,7 @@
 #include "bus/bus.hpp"
 #include "cpu/i86.hpp"
 #include "host/twinax_link.hpp"
+#include "machine/display_profile.hpp"
 #include "machine/peripherals.hpp"
 
 #include <atomic>
@@ -37,6 +38,17 @@ struct StopEvent {
 };
 
 const char* stop_reason_name(StopEvent::Reason r);
+
+// Per-unit options that do not change the firmware: the same ROM serves
+// several display subtypes and keyboard languages. Models present these to
+// the firmware through hardware (monitor sense lines, keyboard ID) once that
+// hardware is understood.
+struct TerminalOptions {
+    DisplaySubtype display = DisplaySubtype::Green;
+    std::string keyboard_type = "122";   // see src/input/keyboard_ids.hpp
+    std::string keyboard_layout = "us";
+    int keyboard_id = -1;                // explicit ID byte override, -1 = from layout
+};
 
 struct Breakpoint {
     int id = 0;
@@ -83,6 +95,9 @@ public:
     const std::vector<Breakpoint>& breakpoints() const { return breakpoints_; }
 
     // --- peripherals ---------------------------------------------------
+    void set_options(const TerminalOptions& o) { options_ = o; }
+    const TerminalOptions& options() const { return options_; }
+
     void set_display(DisplaySource* d) { display_ = d; }
     void set_keyboard(KeyboardSink* k) { keyboard_ = k; }
     void set_twinax_host(std::unique_ptr<TwinaxHost> host) { twinax_ = std::move(host); }
@@ -102,6 +117,7 @@ private:
     std::vector<uint8_t> bp_bitmap_;   // one bit per linear address
     int next_bp_id_ = 1;
 
+    TerminalOptions options_;
     DisplaySource* display_ = nullptr;
     KeyboardSink* keyboard_ = nullptr;
     std::unique_ptr<TwinaxHost> twinax_;

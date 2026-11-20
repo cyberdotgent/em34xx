@@ -11,6 +11,15 @@ headless = false
 scale = 2
 start_stopped = false
 
+# The same ROM serves every display subtype and language.
+[display]
+subtype = "green"        # green | amber | paperwhite | color
+
+[keyboard]
+type = "122"             # 122 (terminal) | enhanced
+layout = "us"            # selects the terminal language; see docs/keyboard.md
+# id = 0xBF              # explicit keyboard ID byte override
+
 [monitor]
 rc = ""                  # monitor script run at start-up
 history = ""             # e.g. "~/.tn34xx_history"

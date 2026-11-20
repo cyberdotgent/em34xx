@@ -4,6 +4,7 @@
 
 #include "bus/bus.hpp"
 #include "host/host_config.hpp"
+#include "machine/machine.hpp"
 
 #include <cstdint>
 #include <string>
@@ -17,6 +18,9 @@ struct AppConfig {
     bool allow_bad_rom = false;
     UnmappedPolicy unmapped = UnmappedPolicy::Stop;
     unsigned speed_percent = 100;   // 0 = unthrottled
+
+    // Unit options: display subtype and keyboard (same ROM for all of them)
+    TerminalOptions terminal;
 
     // Front end
     bool headless = false;

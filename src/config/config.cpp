@@ -65,6 +65,20 @@ bool load_config_file(const std::string& path, AppConfig& cfg, std::string& erro
         if (get(*t, "scale", i)) cfg.scale = int(i);
         if (get(*t, "start_stopped", b)) cfg.start_stopped = b;
     }
+    if (auto* t = root["display"].as_table()) {
+        if (get(*t, "subtype", s) && !parse_display_subtype(s, cfg.terminal.display)) {
+            error = path + ": display.subtype must be green, amber, paperwhite or color";
+            return false;
+        }
+    }
+    if (auto* t = root["keyboard"].as_table()) {
+        get(*t, "type", cfg.terminal.keyboard_type);
+        get(*t, "layout", cfg.terminal.keyboard_layout);
+        if (get(*t, "id", i)) {
+            if (i < 0 || i > 0xFF) { error = path + ": keyboard.id must be 0..255"; return false; }
+            cfg.terminal.keyboard_id = int(i);
+        }
+    }
     if (auto* t = root["monitor"].as_table()) {
         get(*t, "rc", cfg.rc_file);
         get(*t, "history", cfg.history_file);
@@ -119,6 +133,14 @@ Machine:
       --unmapped POLICY     unexpected accesses: stop (default), log, ignore
       --speed PCT           percent of nominal clock; 0 = unthrottled
   -c, --config FILE         TOML configuration file
+
+Unit options (one ROM serves all of these):
+      --display SUBTYPE     green (default), amber, paperwhite (white), color
+      --green, --amber, --paperwhite, --color   shorthands for --display
+      --keyboard TYPE       122 (terminal, default) or enhanced
+      --keyboard-layout L   keyboard country/layout, selects the terminal's
+                            language (default us; see docs/keyboard.md)
+      --keyboard-id ID      override the keyboard ID byte (hex)
 
 Front end and monitor:
       --headless            no window; the monitor runs on stdin/stdout
@@ -205,6 +227,23 @@ bool parse_command_line(int argc, char** argv, AppConfig& cfg, std::string& erro
             if (v == "max") n = 0;
             else if (!parse_uint(v, n)) { error = "--speed needs a percentage"; return false; }
             cfg.speed_percent = unsigned(n);
+        } else if (a == "--display" || a == "--subtype") {
+            if (!need(v)) return false;
+            if (!parse_display_subtype(v, cfg.terminal.display)) {
+                error = "--display must be green, amber, paperwhite or color";
+                return false;
+            }
+        } else if (a == "--green") cfg.terminal.display = DisplaySubtype::Green;
+        else if (a == "--amber") cfg.terminal.display = DisplaySubtype::Amber;
+        else if (a == "--paperwhite" || a == "--white") cfg.terminal.display = DisplaySubtype::PaperWhite;
+        else if (a == "--color" || a == "--colour") cfg.terminal.display = DisplaySubtype::Color;
+        else if (a == "--keyboard") { if (!need(cfg.terminal.keyboard_type)) return false; }
+        else if (a == "--keyboard-layout") { if (!need(cfg.terminal.keyboard_layout)) return false; }
+        else if (a == "--keyboard-id") {
+            if (!need(v)) return false;
+            uint64_t n;
+            if (!parse_uint(v, n, 16) || n > 0xFF) { error = "--keyboard-id must be a hex byte"; return false; }
+            cfg.terminal.keyboard_id = int(n);
         } else if (a == "--headless") cfg.headless = true;
         else if (a == "--scale") {
             if (!need(v)) return false;
@@ -264,6 +303,11 @@ std::string config_to_toml(const AppConfig& cfg) {
             {"scale", int64_t(cfg.scale)},
             {"start_stopped", cfg.start_stopped},
         }},
+        {"display", toml::table{{"subtype", display_subtype_name(cfg.terminal.display)}}},
+        {"keyboard", toml::table{
+            {"type", cfg.terminal.keyboard_type},
+            {"layout", cfg.terminal.keyboard_layout},
+        }},
         {"monitor", toml::table{{"rc", cfg.rc_file}, {"history", cfg.history_file}}},
         {"gdb", toml::table{{"enabled", cfg.gdb}, {"port", int64_t(cfg.gdb_port)}, {"wait", cfg.gdb_wait}}},
         {"log", toml::table{{"levels", cfg.log_spec}, {"file", cfg.log_file}}},
@@ -285,6 +329,8 @@ std::string config_to_toml(const AppConfig& cfg) {
         {"codepage", cfg.tn5250.codepage},
         {"env", env},
     });
+    if (cfg.terminal.keyboard_id >= 0)
+        root["keyboard"].as_table()->insert("id", int64_t(cfg.terminal.keyboard_id));
     std::ostringstream os;
     os << root << "\n";
     return os.str();

@@ -127,6 +127,7 @@ int main(int argc, char** argv) {
     auto machine = std::make_unique<Machine>(model->info());
     model->build(*machine, roms);
     machine->bus().set_policy(cfg.unmapped);
+    machine->set_options(cfg.terminal);
     std::unique_ptr<TwinaxHost> host = make_twinax_host(cfg.twinax, cfg.tn5250, error);
     if (!host) {
         std::fprintf(stderr, "tn34xx: %s\n", error.c_str());
@@ -136,6 +137,9 @@ int main(int argc, char** argv) {
     machine->reset();
     LOG_INFO("machine", "%s ready, CPU %s, reset vector at %06X", model->info().description.c_str(),
              cpu_level_name(model->info().cpu), machine->cpu().pc_linear());
+    LOG_INFO("machine", "display %s, keyboard %s/%s%s", display_subtype_name(cfg.terminal.display),
+             cfg.terminal.keyboard_type.c_str(), cfg.terminal.keyboard_layout.c_str(),
+             cfg.terminal.keyboard_id >= 0 ? format(" (ID override %02X)", cfg.terminal.keyboard_id).c_str() : "");
 
     Emulator emu(std::move(machine));
     emu.set_speed_percent(cfg.speed_percent);
@@ -185,7 +189,7 @@ int main(int argc, char** argv) {
         if (tty) monitor_thread = std::thread([&] { monitor.interactive(cfg.history_file); });
         FrontendOptions fo;
         fo.scale = cfg.scale;
-        fo.title = "tn34xx: IBM " + model->info().name;
+        fo.title = "tn34xx: IBM " + model->info().name + " (" + display_subtype_name(cfg.terminal.display) + ")";
         if (!run_sdl_frontend(emu, fo, error)) {
             LOG_ERROR("video", "%s; use --headless", error.c_str());
             emu.request_quit(2);

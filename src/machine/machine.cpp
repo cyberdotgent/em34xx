@@ -143,6 +143,7 @@ void Machine::clear_breakpoints() {
 
 void Machine::render(Framebuffer& fb) {
     (display_ ? display_ : &fallback_display_)->render(fb);
+    apply_display_subtype(options_.display, fb);
 }
 
 void Machine::key_event(const HostKeyEvent& ev) {
@@ -158,7 +159,7 @@ void PlaceholderDisplay::render(Framebuffer& fb) {
         uint32_t* row = fb.row(y);
         for (int x = 0; x < width_; ++x) {
             const bool check = ((x / 16) + (y / 16)) & 1;
-            row[x] = check ? 0xFF102010u : 0xFF081008u;
+            row[x] = check ? 0xFF203040u : 0xFF101820u;
         }
     }
 }

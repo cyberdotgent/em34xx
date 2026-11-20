@@ -40,6 +40,7 @@ add_library(tn34xx_core STATIC
   src/cpu/i86.cpp
   src/cpu/i86_disasm.cpp
   src/rom/romset.cpp
+  src/machine/display_profile.cpp
   src/machine/machine.cpp
   src/machine/emulator.cpp
   src/models/registry.cpp

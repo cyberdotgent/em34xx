@@ -53,6 +53,13 @@ build/release/tn34xx --batch --rc script.rc    # automated run; exit code from t
 build/release/tn34xx --gdb -S                  # GDB stub on 127.0.0.1:1234
 ```
 
+One ROM serves every display subtype and language of a model. Choose the
+tube with `--display green|amber|paperwhite|color` (or the shorthands
+`--green`, `--amber`, `--paperwhite`, `--color`). The keyboard decides the
+terminal's language through its ID, so it is configured too:
+`--keyboard 122|enhanced --keyboard-layout us` (see
+[docs/keyboard.md](docs/keyboard.md)).
+
 Configuration can also come from a TOML file (`--config`); see
 [tn34xx.example.toml](tn34xx.example.toml). `--dump-config` prints the
 effective configuration.
