@@ -409,10 +409,30 @@ The terminal keeps some keys for **local functions** and never sends them
 
 ### 122-key typewriter table (`src/host/wsc/keyboard_map.cpp`)
 
-US functions and US graphics (EBCDIC CCSID 37). Legends are from the 3489
-User's Guide key tables (§4.2.2–4.2.8, which show the same 122-key
-keyboard), placed by the left-block positions in its diagrams and by the
-local-function keys above. Front legends are entered with Alt.
+US functions and US graphics (EBCDIC CCSID 37). Sources, in order of weight:
+the 3489 User's Guide key tables (§4.2.2–4.2.8, which show this 122-key
+keyboard next to the Enhanced one, with the keys of each group marked in a
+layout diagram); a top-down photo of a genuine IBM 1394324 "5250 converged
+typewriter" keyboard (UK legends; Sharktastica, see Sources), which gives
+every legend at its position; and the TMK converter's set-3 map, which gives
+the set-3 code at each position. Where the guide's diagrams show a key, they
+agree with the photo. Front legends (lower edge of the keytop) are entered
+with Alt; the upper legend of a two-legend keytop with Shift.
+
+Set-3 positions (TMK) with the 1394324 legends:
+
+| Block | Row 1 | Row 2 | Row 3 | Row 4 | Row 5 |
+| --- | --- | --- | --- | --- | --- |
+| left, left column | `05` SysRq/Attn | `04` blank | `03` Print | `83`→`02` blank | `01` SetUp |
+| left, right column | `06` blank, front Clear | `0C` ErInp | `0B` Help, front Hex | `0A` Play, front Test | `09` Recrd, front Pause |
+| edit block | `67` Field Backspace (⇤), front screen format | `6E` Dup | `6F` blank, front Jump | | |
+| edit block | `64` New Line (↵) | `65` Insert | `6D` Delete | | |
+| cursor | `63` ↑, upper Roll↑ | `61` ←, `62` Rule/front Home, `6A` → | `60` ↓, upper Roll↓ | | |
+| keypad | `76 77 7E 84`→`7F` blank | `6C 75 7D` 7 8 9, `7C` Field− | `6B 73 74` 4 5 6, `7B` blank | `69 72 7A` 1 2 3, `79` Field+ (tall) | `70` 0, `71` . |
+| bottom row | `11` Reset, front Quit | `19` Alt | `29` space | `39` Alt | `58` Enter |
+
+`5A` is Field Exit (tall key right of the typing block), `0D` Field Advance
+(⇥), `14` Shift Lock, `66` Backspace (←).
 
 | Codes | Key | Action |
 | --- | --- | --- |
@@ -421,27 +441,41 @@ local-function keys above. Front legends are entered with Alt.
 | typing block | as the Enhanced keyboard; `53` is `\ \|` (left of Enter) | characters |
 | `66` | Backspace | character backspace |
 | `0D` | Field Advance / Field Backspace | tab / backtab |
-| `5A` | Field Exit | Field Exit; Shift: New Line (hypothesis) |
+| `5A` | Field Exit | Field Exit |
+| `64` | New Line | New Line |
+| `67` | Field Backspace (⇤) | backtab (Alt: change screen format, local) |
+| `6E` | Dup | Dup |
 | `58` | Enter (right of the space bar) | AID F1 |
 | `11` | Reset / Quit | Reset |
 | `14` | Shift Lock | locks upper shift for every key; a Shift key releases it |
 | `05` | Attn / SysRq | Attn; Shift: SysRq |
-| `06` | Clear | AID BD (the guide shows Clear as an Alt legend; unshifted is a hypothesis) |
+| `06` | blank, front Clear | Alt: AID BD; unshifted unmapped |
 | `0C` | ErInp | Erase Input |
 | `0B` | Help / Hex | AID F3; Alt: Hex |
 | `03` | Print | AID F6 |
 | `09`, `0A` | Recrd / Pause, Play / Test | Record, Play (local); Alt+`0A`: Test Request |
-| `67`, `64` | Insert, Delete | Insert (Shift: Dup, hypothesis), Delete |
+| `65`, `6D` | Insert, Delete | Insert, Delete |
 | `63 60 61 6A` | cursor keys | Shift+up Roll Up (AID F5), Shift+down Roll Down (AID F4) |
 | `62` | Rule / Home | Alt: Home |
-| keypad | digits, `71` `.`, `7B` `,` | characters; `7F` Field−, `7C` Field+ (hypothesis), `79` Enter |
+| keypad | digits, `71` `.` | characters; `7C` Field−, `79` Field+ |
 
-Unmapped (no source places a legend): left block `02` and `04`, the cursor
-block `6E 6F 65 6D` (one of them carries Dup or Field Mark on real
-keyboards), keypad `76 77 7E`. They reach the session as `Unmapped` with the
-raw code. National graphic layouts for the 122-key keyboard (ID `0Ah`) are
-not documented in the sources at hand; the table uses the US graphics for
-every country (hypothesis to replace when a national 122-key table is found).
+Unmapped: the blank keytops `02 04 06 6F 7B 76 77 7E 7F` and the keys the
+terminal keeps (`01` SetUp, `62` Rule). They reach the session as
+`Unmapped` with the raw code. There is no Field Mark key on the typewriter
+layout (the 3489 guide lists none).
+
+**National layouts.** The cable gives no way to tell countries apart: the
+3477 reports `02h` for the US keyboard and `0Ah` for every other country
+(observed), so a controller must be told the country by configuration, as
+the AS/400 device description does. The table therefore uses US graphics for
+every ID (hypothesis for non-US keyboards). The UK 1394324 photo shows how
+far national 5250 legends depart from PC layouts, so they cannot be borrowed
+from PC tables: `0E` \ (shift ¦), `26` 3 (shift £), `45` 0 (shift #),
+`4E` - (shift =), `55` ¬ (shift −), `54` @ (shift \`), `5B` {, `53` },
+`4C` ; (shift +), `52` : (shift \*), `13` an extra key left of Z. Adding UK
+and other tables needs a country setting and the CCSID 285 (etc.) code
+points; the 3489 User's Guide appendix I has the national layouts as figures
+(not yet transcribed).
 
 ## Sources
 
@@ -454,6 +488,11 @@ every country (hypothesis to replace when a national 122-key table is found).
 - IBM, *5494 Remote Control Unit Functions Reference*, SC30-3533-04, topic 16
   keyboard functions (AID keys, signal keys, special control keys).
 - 3477 firmware (keystroke path, local-function keys), behaviour only.
+- Sharktastica, IBM 1394324 directory entry and photo (5250 converged
+  typewriter keyboard, UK):
+  <https://sharktastica.co.uk/keyboard-directory/4kCIWLEW>,
+  <https://sharktastica.co.uk/kb?id=1395660> (1395660, US variant, same
+  terminals). Private copy: `analysis_notes/reference/keyboards/`.
 - IBM, *InfoWindow II 3489 Modular Display Station Maintenance Information*,
   SY18-2345-0 (1994), §1.2.1.1 Keyboard IDs (BOO shelf copy).
 - IBM, *InfoWindow II 3489 Modular Display Station User's Guide*,

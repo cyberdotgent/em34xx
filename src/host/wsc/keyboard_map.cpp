@@ -111,7 +111,6 @@ constexpr CharKey kTypewriterUs[] = {
     {0x69, 0xF1, 0xF1, false}, {0x72, 0xF2, 0xF2, false}, {0x7A, 0xF3, 0xF3, false},
     {0x70, 0xF0, 0xF0, false},
     {0x71, 0x4B, 0x4B, false},   // . (pad)
-    {0x7B, 0x6B, 0x6B, false},   // , (pad, row 3 right)
 };
 
 struct FnKey {
@@ -181,29 +180,32 @@ bool alt_action(uint8_t scan, OperatorAction& out) {
 
 // 122-key typewriter functions. Positions use the set-3 codes; legends are
 // from the 3489 User's Guide (GA18-7492) key tables, which share this
-// keyboard, and from the 3477 firmware's own handling of the left-hand
-// block (which keys it keeps for local functions). [hyp] marks a legend that
-// no source pins to a position.
+// keyboard, placed with a photo of the 1394324 keyboard and the TMK set-3
+// position map (docs/keyboard.md), and from the 3477 firmware's own
+// handling of the local-function keys.
 constexpr FnKey kTypewriterFunctions[] = {
     {0x66, K::Function, F::Backspace, 0, K::Function, F::Backspace, 0},
     {0x0D, K::Function, F::Tab, 0, K::Function, F::Backtab, 0},         // Field Advance / Field Backspace
-    {0x5A, K::Function, F::FieldExit, 0, K::Function, F::NewLine, 0},   // shifted New Line [hyp]
+    {0x5A, K::Function, F::FieldExit, 0, K::Function, F::FieldExit, 0},
     {0x58, K::Aid, F::None, 0xF1, K::Aid, F::None, 0xF1},             // Enter (right of the space bar)
     {0x11, K::Function, F::Reset, 0, K::Function, F::Reset, 0},         // Reset (Alt: Quit, local)
-    {0x67, K::Function, F::Insert, 0, K::Function, F::Dup, 0},          // shifted Dup [hyp]
-    {0x64, K::Function, F::Delete, 0, K::Function, F::Delete, 0},
+    // Editing block above the cursor keys: Field Backspace, Dup, (blank;
+    // Alt: Jump) / New Line, Insert, Delete.
+    {0x67, K::Function, F::Backtab, 0, K::Function, F::Backtab, 0},
+    {0x6E, K::Function, F::Dup, 0, K::Function, F::Dup, 0},
+    {0x64, K::Function, F::NewLine, 0, K::Function, F::NewLine, 0},
+    {0x65, K::Function, F::Insert, 0, K::Function, F::Insert, 0},
+    {0x6D, K::Function, F::Delete, 0, K::Function, F::Delete, 0},
     {0x61, K::Function, F::CursorLeft, 0, K::Function, F::CursorLeft, 0},
     {0x6A, K::Function, F::CursorRight, 0, K::Function, F::CursorRight, 0},
     {0x63, K::Function, F::CursorUp, 0, K::Aid, F::None, 0xF5},         // shift: Roll Up
     {0x60, K::Function, F::CursorDown, 0, K::Aid, F::None, 0xF4},       // shift: Roll Down
-    // Keypad right column. Set-3 84h (top right) arrives as 7Fh: the 3477
-    // folds the two set-3 codes above 7Fh (83h, 84h) to 02h and 7Fh.
-    {0x7F, K::Function, F::FieldMinus, 0, K::Function, F::FieldMinus, 0},  // as Enhanced 7Fh [hyp]
-    {0x7C, K::Function, F::FieldPlus, 0, K::Function, F::FieldPlus, 0},    // [hyp]
-    {0x79, K::Aid, F::None, 0xF1, K::Aid, F::None, 0xF1},             // Enter (pad), as Enhanced
+    // Keypad right column: Field- (row 2), blank (row 3), Field+ (rows 4-5).
+    // The top row (76 77 7E, and set-3 84h, which arrives as 7Fh) is blank.
+    {0x7C, K::Function, F::FieldMinus, 0, K::Function, F::FieldMinus, 0},
+    {0x79, K::Function, F::FieldPlus, 0, K::Function, F::FieldPlus, 0},
     // Left-hand block.
     {0x05, K::Attn, F::None, 0, K::SysReq, F::None, 0},               // Attn / SysRq
-    {0x06, K::Aid, F::None, 0xBD, K::Aid, F::None, 0xBD},             // Clear [hyp: unshifted]
     {0x0C, K::Function, F::EraseInput, 0, K::Function, F::EraseInput, 0},
     {0x0B, K::Aid, F::None, 0xF3, K::Aid, F::None, 0xF3},             // Help (Alt: Hex)
     {0x03, K::Aid, F::None, 0xF6, K::Aid, F::None, 0xF6},             // Print
@@ -242,7 +244,7 @@ bool typewriter_alt_action(uint8_t scan, OperatorAction& out) {
     case 0x0B: out.kind = K::Function; out.function = F::Hex; return true;   // Help / Hex
     case 0x0A: out.kind = K::Function; out.function = F::Test; return true;  // Play / Test
     case 0x62: out.kind = K::Function; out.function = F::Home; return true;  // Rule / Home
-    case 0x06: out.kind = K::Aid; out.aid = 0xBD; return true;                // Clear
+    case 0x06: out.kind = K::Aid; out.aid = 0xBD; return true;                // (blank) / Clear
     default: return false;
     }
 }
@@ -347,7 +349,7 @@ bool KeyboardMap::translate(uint8_t scan, OperatorAction& out) {
         out.ebcdic = upper ? c.upper : c.lower;
         return true;
     }
-    return true;   // Unmapped (left block 01/02/04, Rule 62, 6E/6F/65/6D, 76/77/7E)
+    return true;   // Unmapped: blank keytops (02 04 06 6F 7B 76 77 7E 7F) and local keys
 }
 
 } // namespace wsc

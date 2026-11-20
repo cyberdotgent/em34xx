@@ -276,25 +276,25 @@ TEST_CASE("keyboard map: 122-key typewriter, every position unshifted") {
         {0x6C, AK::Character, 0xF7, N}, {0x75, AK::Character, 0xF8, N}, {0x7D, AK::Character, 0xF9, N},
         {0x6B, AK::Character, 0xF4, N}, {0x73, AK::Character, 0xF5, N}, {0x74, AK::Character, 0xF6, N},
         {0x69, AK::Character, 0xF1, N}, {0x72, AK::Character, 0xF2, N}, {0x7A, AK::Character, 0xF3, N},
-        {0x70, AK::Character, 0xF0, N}, {0x71, AK::Character, 0x4B, N}, {0x7B, AK::Character, 0x6B, N},
-        {0x7F, AK::Function, 0, KeyFunction::FieldMinus}, {0x7C, AK::Function, 0, KeyFunction::FieldPlus},
-        {0x79, AK::Aid, 0xF1, N},
+        {0x70, AK::Character, 0xF0, N}, {0x71, AK::Character, 0x4B, N},
+        {0x7C, AK::Function, 0, KeyFunction::FieldMinus}, {0x79, AK::Function, 0, KeyFunction::FieldPlus},
         // Editing and cursor keys.
         {0x66, AK::Function, 0, KeyFunction::Backspace}, {0x0D, AK::Function, 0, KeyFunction::Tab},
         {0x5A, AK::Function, 0, KeyFunction::FieldExit}, {0x58, AK::Aid, 0xF1, N},
-        {0x11, AK::Function, 0, KeyFunction::Reset}, {0x67, AK::Function, 0, KeyFunction::Insert},
-        {0x64, AK::Function, 0, KeyFunction::Delete}, {0x61, AK::Function, 0, KeyFunction::CursorLeft},
+        {0x11, AK::Function, 0, KeyFunction::Reset}, {0x67, AK::Function, 0, KeyFunction::Backtab},
+        {0x6E, AK::Function, 0, KeyFunction::Dup}, {0x64, AK::Function, 0, KeyFunction::NewLine},
+        {0x65, AK::Function, 0, KeyFunction::Insert}, {0x6D, AK::Function, 0, KeyFunction::Delete}, {0x61, AK::Function, 0, KeyFunction::CursorLeft},
         {0x6A, AK::Function, 0, KeyFunction::CursorRight}, {0x63, AK::Function, 0, KeyFunction::CursorUp},
         {0x60, AK::Function, 0, KeyFunction::CursorDown},
         // Left-hand block.
-        {0x05, AK::Attn, 0, N}, {0x06, AK::Aid, 0xBD, N}, {0x0C, AK::Function, 0, KeyFunction::EraseInput},
+        {0x05, AK::Attn, 0, N}, {0x0C, AK::Function, 0, KeyFunction::EraseInput},
         {0x0B, AK::Aid, 0xF3, N}, {0x03, AK::Aid, 0xF6, N}, {0x09, AK::Function, 0, KeyFunction::Record},
         {0x0A, AK::Function, 0, KeyFunction::Play},
-        // Positions without a pinned legend stay unmapped.
-        {0x04, AK::Unmapped, 0, N}, {0x02, AK::Unmapped, 0, N}, {0x01, AK::Unmapped, 0, N},
-        {0x62, AK::Unmapped, 0, N}, {0x6E, AK::Unmapped, 0, N}, {0x6F, AK::Unmapped, 0, N},
-        {0x65, AK::Unmapped, 0, N}, {0x6D, AK::Unmapped, 0, N}, {0x76, AK::Unmapped, 0, N},
-        {0x77, AK::Unmapped, 0, N}, {0x7E, AK::Unmapped, 0, N},
+        // Blank keytops and terminal-local keys (Setup 01, Rule 62) stay unmapped.
+        {0x04, AK::Unmapped, 0, N}, {0x02, AK::Unmapped, 0, N}, {0x06, AK::Unmapped, 0, N},
+        {0x01, AK::Unmapped, 0, N}, {0x62, AK::Unmapped, 0, N}, {0x6F, AK::Unmapped, 0, N},
+        {0x76, AK::Unmapped, 0, N}, {0x77, AK::Unmapped, 0, N}, {0x7E, AK::Unmapped, 0, N},
+        {0x7F, AK::Unmapped, 0, N}, {0x7B, AK::Unmapped, 0, N},
     };
     check_layer(km, rows);
     // F1..F12 in the lower row and F13..F24 in the upper row.
@@ -320,8 +320,8 @@ TEST_CASE("keyboard map: 122-key typewriter, shift, shift lock and alt layers") 
         {0x16, AK::Character, 0x5A, N}, {0x1E, AK::Character, 0x7C, N}, {0x36, AK::Character, 0x5F, N},
         {0x1C, AK::Character, 0xC1, N}, {0x53, AK::Character, 0x4F, N}, {0x4A, AK::Character, 0x6F, N},
         {0x6C, AK::Character, 0xF7, N},
-        {0x0D, AK::Function, 0, KeyFunction::Backtab}, {0x5A, AK::Function, 0, KeyFunction::NewLine},
-        {0x67, AK::Function, 0, KeyFunction::Dup}, {0x63, AK::Aid, 0xF5, N}, {0x60, AK::Aid, 0xF4, N},
+        {0x0D, AK::Function, 0, KeyFunction::Backtab}, {0x5A, AK::Function, 0, KeyFunction::FieldExit},
+        {0x65, AK::Function, 0, KeyFunction::Insert}, {0x63, AK::Aid, 0xF5, N}, {0x60, AK::Aid, 0xF4, N},
         {0x05, AK::SysReq, 0, N}, {0x07, AK::Aid, 0xB1, N}, {0x5E, AK::Aid, 0xBC, N},
     };
     check_layer(km, shifted);
