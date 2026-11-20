@@ -22,7 +22,7 @@ target_link_libraries(tn34xx_unit_tests PRIVATE tn34xx_machines tn34xx_host tn34
 target_compile_definitions(tn34xx_unit_tests PRIVATE TN34XX_SOURCE_DIR="${PROJECT_SOURCE_DIR}")
 add_test(NAME unit COMMAND tn34xx_unit_tests)
 
-# Application layer: configuration, monitor, presentation.
+# Runtime and developer tooling: configuration, monitor, probes, presentation.
 add_executable(tn34xx_app_tests
   unit_main.cpp
   test_monitor_expr.cpp
@@ -30,8 +30,14 @@ add_executable(tn34xx_app_tests
   test_util.cpp
   test_display.cpp
   test_connect.cpp
+  test_probe.cpp
 )
-target_link_libraries(tn34xx_app_tests PRIVATE tn34xx_app tn34xx_warnings doctest::doctest)
+target_link_libraries(tn34xx_app_tests PRIVATE tn34xx_devtools tn34xx_warnings doctest::doctest)
+
+# GUI link check: a minimal application linked against the runtime only.
+add_executable(tn34xx_runtime_only runtime_only_main.cpp)
+target_link_libraries(tn34xx_runtime_only PRIVATE tn34xx_runtime tn34xx_warnings)
+add_test(NAME runtime_only COMMAND tn34xx_runtime_only)
 add_test(NAME app COMMAND tn34xx_app_tests)
 
 # SingleStepTests runner. Fetch the vectors with tools/fetch-test-vectors.sh.
@@ -49,7 +55,7 @@ endif()
 # ROM smoke tests run only when the (never committed) ROM images are present.
 if(EXISTS "${PROJECT_SOURCE_DIR}/roms/95f4171.bin" AND EXISTS "${PROJECT_SOURCE_DIR}/roms/95f4172.bin")
   add_test(NAME rom_3477_smoke
-           COMMAND tn34xx --model 3477 --rom-dir "${PROJECT_SOURCE_DIR}/roms" --batch
+           COMMAND tn34xx-headless --model 3477 --rom-dir "${PROJECT_SOURCE_DIR}/roms" --batch
                    --rc "${CMAKE_CURRENT_SOURCE_DIR}/rc/3477-smoke.rc")
   set_tests_properties(rom_3477_smoke PROPERTIES LABELS "rom")
 endif()
@@ -64,7 +70,7 @@ add_executable(tn34xx_tn5250_tests
   test_bridge.cpp
   fake_station.cpp
 )
-target_link_libraries(tn34xx_tn5250_tests PRIVATE tn34xx_bridge tn34xx_app tn34xx_warnings doctest::doctest)
+target_link_libraries(tn34xx_tn5250_tests PRIVATE tn34xx_bridge tn34xx_runtime tn34xx_warnings doctest::doctest)
 if(TN34XX_TLS_BACKEND STREQUAL "openssl")
   # The TLS test runs its own in-process OpenSSL server.
   target_compile_definitions(tn34xx_tn5250_tests PRIVATE TN34XX_TLS_OPENSSL=1)

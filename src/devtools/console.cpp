@@ -1,4 +1,4 @@
-#include "app/console.hpp"
+#include "devtools/console.hpp"
 
 #include "machine/emulator.hpp"
 #include "monitor/monitor.hpp"

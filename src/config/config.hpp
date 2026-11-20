@@ -24,15 +24,10 @@ struct AppConfig {
     TerminalOptions terminal;
 
     // Front end
-    // Which front end owns the main thread: "sdl" (default) or "none"
-    // (headless: the monitor runs on stdin/stdout). The application checks
-    // the name against the front-end registry (src/frontend/registry.hpp).
-    std::string frontend = "sdl";
     bool crt = true;              // CRT scan-line presentation
     double crt_beam = 0.30;       // beam sigma in line pitches
+    bool headless = false;        // no window even when the executable has one
     int scale = 1;
-
-    bool headless() const { return frontend == "none"; }
 
     // Monitor
     std::string rc_file;

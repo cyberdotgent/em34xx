@@ -1,10 +1,9 @@
 #include "app/application.hpp"
 
-#include "gdb/gdb_stub.hpp"
+#include "app/host_link.hpp"
 #include "host/wsc/tn5250_bridge.hpp"
 #include "machine/emulator.hpp"
 #include "models/model.hpp"
-#include "monitor/monitor.hpp"
 #include "util/log.hpp"
 #include "util/strings.hpp"
 
@@ -12,23 +11,11 @@
 #include <cstring>
 #include <exception>
 
-#ifdef _WIN32
-#include <io.h>
-#define tn_isatty _isatty
-#define tn_fileno _fileno
-#else
-#include <unistd.h>
-#define tn_isatty isatty
-#define tn_fileno fileno
-#endif
-
 namespace tn34xx {
 
 namespace {
 
 const char* kVersion = "0.0.0";
-
-bool stdin_is_tty() { return tn_isatty(tn_fileno(stdin)) != 0; }
 
 void list_models() {
     std::printf("%-6s %-16s %-6s %s\n", "model", "status", "cpu", "description");
@@ -61,8 +48,13 @@ int check_roms(const Model& model, const AppConfig& cfg) {
 
 } // namespace
 
-Application::Application(FrontendRegistry frontends, ConsoleFactory console)
-    : frontends_(std::move(frontends)), console_factory_(std::move(console)) {}
+bool AppTooling::requested(const AppConfig& cfg) {
+    return !cfg.rc_file.empty() || cfg.batch || cfg.start_stopped || cfg.gdb || cfg.gdb_wait || cfg.headless ||
+           !cfg.history_file.empty();
+}
+
+Application::Application(std::unique_ptr<Frontend> frontend, std::unique_ptr<AppTooling> tooling)
+    : frontend_(std::move(frontend)), tooling_(std::move(tooling)) {}
 
 Application::~Application() { finish(); }
 
@@ -86,7 +78,9 @@ bool Application::start(int argc, char** argv) {
     exit_code_ = 0;
     if (!configure(argc, argv)) return false;
     if (!build_machine()) return false;
-    return start_debuggers();
+    if (tooling_) return tooling_->start(*this, exit_code_);
+    emu_->resume();
+    return true;
 }
 
 // Configuration and one-shot actions. Returns false to end the program.
@@ -115,12 +109,10 @@ bool Application::configure(int argc, char** argv) {
         std::fputs(keyboard_layout_list().c_str(), stdout);
         return false;
     }
-    frontend_entry_ = find_frontend(frontends_, cfg_.frontend);
-    if (!frontend_entry_) {
-        std::string names;
-        for (const FrontendEntry& e : frontends_) names += (names.empty() ? "" : ", ") + e.name;
-        return fail(format("unknown front end '%s' (available: %s)", cfg_.frontend.c_str(), names.c_str()));
-    }
+    if (!tooling_ && AppTooling::requested(cfg_))
+        return fail("the monitor, scripts and the GDB stub are not part of this build; use tn34xx or tn34xx-headless");
+    if (!frontend_ && !tooling_) return fail("this build has neither a window nor a monitor");
+    if (!frontend_) cfg_.headless = true;
     uint8_t kbd_id1 = 0, kbd_id2 = 0;
     if (!resolve_keyboard_id(cfg_.terminal, kbd_id1, kbd_id2, error)) return fail(error);
 
@@ -140,7 +132,7 @@ bool Application::configure(int argc, char** argv) {
     return true;
 }
 
-// ROMs, machine, Twinax host, emulator and monitor.
+// ROMs, machine, Twinax host and emulator.
 bool Application::build_machine() {
     const ModelInfo& info = model_->info();
     std::string error;
@@ -166,13 +158,14 @@ bool Application::build_machine() {
     // session per display station (src/host/wsc/tn5250_bridge.hpp).
     const std::string model_name = info.name;
     const DisplaySubtype display = cfg_.terminal.display;
-    bridge_ = [model_name, display](const TwinaxConfig& tw, const Tn5250Config& tn, std::string& err) {
+    Tn5250HostFactory bridge = [model_name, display](const TwinaxConfig& tw, const Tn5250Config& tn,
+                                                     std::string& err) {
         wsc::BridgeOptions bo;
         bo.model = model_name;
         bo.display = display;
         return wsc::make_tn5250_bridge(tw, tn, std::move(bo), err);
     };
-    std::unique_ptr<TwinaxHost> host = make_twinax_host(cfg_.twinax, cfg_.tn5250, error, bridge_);
+    std::unique_ptr<TwinaxHost> host = make_twinax_host(cfg_.twinax, cfg_.tn5250, error, bridge);
     if (!host) return fail(error);
     if (cfg_.twinax.host == TwinaxHostKind::Tn5250)
         for (const StationConfig& st : cfg_.twinax.effective_stations())
@@ -191,49 +184,11 @@ bool Application::build_machine() {
 
     emu_ = std::make_unique<Emulator>(std::move(machine));
     emu_->set_speed_percent(cfg_.speed_percent);
-    monitor_ = std::make_unique<Monitor>(*emu_);
-    {
-        Monitor::ConnectContext cc;
-        cc.base = cfg_;
-        cc.max_sessions = info.max_sessions;
-        cc.max_printers = int(info.max_printer_sessions);
-        cc.factory = bridge_;
-        monitor_->set_connect_context(std::move(cc));
-    }
-    {
-        CrtParams cp;
-        cp.enabled = cfg_.crt;
-        cp.beam_sigma = cfg_.crt_beam;
-        monitor_->set_crt_params(cp);
-    }
-    Monitor* monitor = monitor_.get();
-    emu_->set_stop_callback([monitor](const StopEvent& ev) { monitor->notify_stop(ev); });
+    host_link_ = std::make_unique<HostLink>(*emu_, cfg_, info.max_sessions, int(info.max_printer_sessions),
+                                            std::move(bridge));
+    AppTooling* tooling = tooling_.get();
+    if (tooling) emu_->set_stop_callback([tooling](const StopEvent& ev) { tooling->on_stop(ev); });
     emu_->start();
-    return true;
-}
-
-// GDB stub and the start-up script; then let the machine run.
-bool Application::start_debuggers() {
-    std::string error;
-    if (cfg_.gdb) {
-        gdb_ = std::make_unique<GdbStub>(*emu_, monitor_.get());
-        if (!gdb_->start(cfg_.gdb_port, error)) return fail("gdb: " + error);
-    }
-
-    if (!cfg_.rc_file.empty()) {
-        const bool ok = monitor_->run_script(cfg_.rc_file);
-        if (!ok && cfg_.batch) {
-            exit_code_ = 2;
-            return false;
-        }
-    }
-    if (cfg_.batch || monitor_->quit_requested() || emu_->quit_requested()) {
-        exit_code_ = emu_->quit_requested() ? emu_->exit_code() : (monitor_->failures() ? 1 : 0);
-        return false;
-    }
-
-    if (cfg_.gdb_wait) gdb_->wait_for_client();
-    else if (!cfg_.start_stopped && cfg_.rc_file.empty()) emu_->resume();
     return true;
 }
 
@@ -251,63 +206,79 @@ FrontendOptions Application::frontend_options() const {
 
 int Application::run() {
     if (!emu_) return finish();
-    return frontend_entry_->create ? run_frontend() : run_headless();
-}
-
-int Application::run_headless() {
-    if (stdin_is_tty() && console_factory_) {
-        console_ = console_factory_(*monitor_, *emu_, cfg_.history_file);
-        console_->run();
+    if (cfg_.headless || !frontend_) {
+        tooling_->run_headless(*this);
     } else {
-        // Commands from a pipe: execute line by line.
-        char buf[4096];
-        while (!monitor_->quit_requested() && !emu_->quit_requested() && std::fgets(buf, sizeof buf, stdin))
-            monitor_->execute(buf);
+        if (tooling_) {
+            tooling_->start_background(*this);
+            background_ = true;
+        }
+        std::string error;
+        if (!frontend_->run(*this, frontend_options(), error)) {
+            LOG_ERROR("video", "%s; use --headless", error.c_str());
+            emu_->request_quit(2);
+        }
+        emu_->request_quit(emu_->exit_code());
     }
-    exit_code_ = emu_->quit_requested() ? emu_->exit_code() : (monitor_->failures() ? 1 : 0);
+    exit_code_ = final_status();
     return finish();
 }
 
-int Application::run_frontend() {
-    start_console();
-    std::unique_ptr<Frontend> frontend = frontend_entry_->create();
-    std::string error;
-    if (!frontend->run(*emu_, frontend_options(), error)) {
-        LOG_ERROR("video", "%s; use --headless", error.c_str());
-        emu_->request_quit(2);
-    }
-    emu_->request_quit(emu_->exit_code());
-    stop_console();
-    exit_code_ = emu_->quit_requested() ? emu_->exit_code() : (monitor_->failures() ? 1 : 0);
-    return finish();
-}
-
-void Application::start_console() {
-    if (console_thread_.joinable() || !emu_ || !console_factory_ || !stdin_is_tty()) return;
-    console_ = console_factory_(*monitor_, *emu_, cfg_.history_file);
-    if (!console_) return;
-    Console* c = console_.get();
-    console_thread_ = std::thread([c] { c->run(); });
-}
-
-void Application::stop_console() {
-    if (!console_thread_.joinable()) return;
-    console_->interrupt();
-    console_thread_.join();
+int Application::final_status() const {
+    return emu_->quit_requested() ? emu_->exit_code() : (tooling_ ? tooling_->exit_status() : 0);
 }
 
 void Application::request_quit(int exit_code) {
     if (emu_) emu_->request_quit(exit_code);
+    if (frontend_) frontend_->request_quit();
 }
 
 int Application::finish() {
     if (finished_) return exit_code_;
     finished_ = true;
     if (emu_) emu_->request_quit(emu_->quit_requested() ? emu_->exit_code() : exit_code_);
-    stop_console();
-    if (gdb_) gdb_->stop();
+    if (tooling_) {
+        if (background_) tooling_->stop_background();
+        tooling_->shutdown();
+    }
     if (emu_) emu_->shutdown();
     return exit_code_;
+}
+
+// --- control API ----------------------------------------------------------------
+
+void Application::power_on() {
+    emu_->request_stop();
+    emu_->wait_stopped();
+    emu_->with_machine([](Machine& m) { m.reset(); });
+    emu_->resume();
+}
+
+void Application::power_off() {
+    emu_->request_stop();
+    emu_->wait_stopped();
+}
+
+void Application::reset() {
+    const bool was_running = emu_->running();
+    if (was_running) {
+        emu_->request_stop();
+        emu_->wait_stopped();
+    }
+    emu_->with_machine([](Machine& m) { m.reset(); });
+    if (was_running) emu_->resume();
+}
+
+bool Application::powered() const { return emu_ && emu_->running(); }
+
+void Application::set_speed_percent(unsigned pct) {
+    cfg_.speed_percent = pct;
+    emu_->set_speed_percent(pct);
+}
+
+void Application::set_crt(const CrtParams& crt) {
+    cfg_.crt = crt.enabled;
+    cfg_.crt_beam = crt.beam_sigma;
 }
 
 } // namespace tn34xx

@@ -48,7 +48,34 @@ else()
                  "files (libssl-dev / openssl-devel) and reconfigure to enable it")
 endif()
 
-find_package(SDL3 CONFIG REQUIRED)
+# Front ends: each is its own executable, configured only where it applies.
+#   TN34XX_FRONTEND_SDL  AUTO (default): build `tn34xx` when SDL3 is found
+#                        ON: fail configuration without SDL3;  OFF: skip it
+# (Future: a Win32 `tn34xxw` only on WIN32, a Cocoa `tn34xx.app` only on APPLE;
+# see docs/architecture.md and the stub at the end of this file.)
+set(TN34XX_FRONTEND_SDL AUTO CACHE STRING "SDL3 front end (tn34xx): AUTO, ON or OFF")
+set_property(CACHE TN34XX_FRONTEND_SDL PROPERTY STRINGS AUTO ON OFF)
+string(TOUPPER "${TN34XX_FRONTEND_SDL}" _tn34xx_sdl)
+if(NOT _tn34xx_sdl MATCHES "^(AUTO|ON|OFF)$")
+  message(FATAL_ERROR "TN34XX_FRONTEND_SDL must be AUTO, ON or OFF (got '${TN34XX_FRONTEND_SDL}')")
+endif()
+set(TN34XX_HAVE_SDL OFF)
+if(_tn34xx_sdl STREQUAL "ON")
+  find_package(SDL3 CONFIG REQUIRED)
+  set(TN34XX_HAVE_SDL ON)
+elseif(_tn34xx_sdl STREQUAL "AUTO")
+  find_package(SDL3 CONFIG QUIET)
+  if(SDL3_FOUND)
+    set(TN34XX_HAVE_SDL ON)
+  endif()
+endif()
+message(STATUS "SDL3 front end (tn34xx): ${TN34XX_HAVE_SDL}")
+
+# Executable names, one variable per target so they can change in one place.
+set(TN34XX_EXE_SDL tn34xx)                 # SDL3 window + developer tooling
+set(TN34XX_EXE_HEADLESS tn34xx-headless)   # no window, monitor on stdin/stdout
+set(TN34XX_EXE_WIN32 tn34xxw)              # future native Win32 GUI (end-user)
+set(TN34XX_EXE_COCOA tn34xx)               # future Cocoa GUI, bundled as tn34xx.app
 find_package(replxx CONFIG REQUIRED)
 find_package(tomlplusplus CONFIG REQUIRED)
 find_package(Threads REQUIRED)
@@ -73,10 +100,12 @@ endif()
 #   tn34xx_tn5250    TN5250 client (TLS)                       -> host, net
 #   tn34xx_bridge    TN5250 bridge (controller + sessions)     -> host, tn5250
 #   tn34xx_present   CRT rendering, display profiles           -> emu
-#   tn34xx_app       config, monitor, gdb, application         -> all of the above
-#   tn34xx_console   replxx monitor console                    -> app
-#   tn34xx_frontend_sdl  SDL3 front end                        -> present, emu
-#   tn34xx_frontends     front-end registry                    -> frontend_sdl
+#   tn34xx_runtime   config, Application, HostLink             -> machines, bridge, present
+#   tn34xx_devtools  monitor, console (replxx), GDB stub, probes -> runtime, net
+#   tn34xx_frontend_sdl  SDL3 front end                        -> runtime
+#
+# End-user GUI executables link tn34xx_runtime plus their front end only;
+# tn34xx (SDL) and tn34xx-headless also link tn34xx_devtools.
 function(tn34xx_library name)
   add_library(${name} STATIC ${ARGN})
   target_include_directories(${name} PUBLIC src)
@@ -89,7 +118,6 @@ tn34xx_library(tn34xx_emu
   src/util/fingerprint.cpp
   src/util/strings.cpp
   src/bus/bus.cpp
-  src/bus/probe_device.cpp
   src/cpu/cpu.cpp
   src/cpu/i86.cpp
   src/cpu/i86_disasm.cpp
@@ -174,34 +202,59 @@ tn34xx_library(tn34xx_present
 )
 target_link_libraries(tn34xx_present PUBLIC tn34xx_emu)
 
-tn34xx_library(tn34xx_app
+# --- Application runtime: what every executable links, GUIs included ------
+tn34xx_library(tn34xx_runtime
   src/config/config.cpp
   src/config/connect_args.cpp
+  src/app/application.cpp
+  src/app/host_link.cpp
+)
+target_link_libraries(tn34xx_runtime
+  PUBLIC tn34xx_machines tn34xx_host tn34xx_bridge tn34xx_present tomlplusplus::tomlplusplus)
+
+# --- Developer tooling: SDL and headless executables only ------------------
+tn34xx_library(tn34xx_devtools
+  src/devtools/console.cpp
+  src/devtools/dev_tools.cpp
+  src/devtools/probe_device.cpp
   src/monitor/expr.cpp
   src/monitor/monitor.cpp
   src/gdb/gdb_stub.cpp
-  src/app/application.cpp
 )
-target_link_libraries(tn34xx_app
-  PUBLIC tn34xx_machines tn34xx_host tn34xx_bridge tn34xx_present tn34xx_net tomlplusplus::tomlplusplus)
-
-tn34xx_library(tn34xx_console src/app/console.cpp)
-target_link_libraries(tn34xx_console PUBLIC tn34xx_app PRIVATE replxx::replxx)
-
-# --- SDL3 front end -------------------------------------------------------
-tn34xx_library(tn34xx_frontend_sdl src/frontend/sdl/sdl_frontend.cpp)
-target_link_libraries(tn34xx_frontend_sdl PUBLIC tn34xx_present PRIVATE SDL3::SDL3)
-
-# --- Front-end registry: the front ends linked into the executable -------
-tn34xx_library(tn34xx_frontends src/frontend/registry.cpp)
-target_link_libraries(tn34xx_frontends PUBLIC tn34xx_frontend_sdl)
+target_link_libraries(tn34xx_devtools PUBLIC tn34xx_runtime tn34xx_net PRIVATE replxx::replxx)
 
 add_executable(tn5250-probe src/tools/tn5250_probe.cpp)
 target_link_libraries(tn5250-probe PRIVATE tn34xx_tn5250 tn34xx_warnings)
 
-# --- Executable -----------------------------------------------------------
-add_executable(tn34xx src/main.cpp)
-target_link_libraries(tn34xx PRIVATE tn34xx_app tn34xx_console tn34xx_frontends tn34xx_warnings)
+# --- Executables: one per front end ----------------------------------------
+add_executable(${TN34XX_EXE_HEADLESS} src/main_headless.cpp)
+target_link_libraries(${TN34XX_EXE_HEADLESS} PRIVATE tn34xx_devtools tn34xx_warnings)
+
+if(TN34XX_HAVE_SDL)
+  tn34xx_library(tn34xx_frontend_sdl src/frontend/sdl/sdl_frontend.cpp)
+  target_link_libraries(tn34xx_frontend_sdl PUBLIC tn34xx_runtime PRIVATE SDL3::SDL3)
+
+  add_executable(${TN34XX_EXE_SDL} src/main_sdl.cpp)
+  target_link_libraries(${TN34XX_EXE_SDL} PRIVATE tn34xx_frontend_sdl tn34xx_devtools tn34xx_warnings)
+endif()
+
+# Native end-user front ends link tn34xx_runtime and their own front-end
+# library only, never tn34xx_devtools (docs/architecture.md). Not written
+# yet; the targets will look like this:
+#
+# if(WIN32)
+#   tn34xx_library(tn34xx_frontend_win32 src/frontend/win32/win32_frontend.cpp)
+#   target_link_libraries(tn34xx_frontend_win32 PUBLIC tn34xx_runtime PRIVATE user32 gdi32)
+#   add_executable(${TN34XX_EXE_WIN32} WIN32 src/main_win32.cpp)
+#   target_link_libraries(${TN34XX_EXE_WIN32} PRIVATE tn34xx_frontend_win32)
+# endif()
+# if(APPLE)
+#   enable_language(OBJCXX)
+#   tn34xx_library(tn34xx_frontend_cocoa src/frontend/cocoa/cocoa_frontend.mm)
+#   target_link_libraries(tn34xx_frontend_cocoa PUBLIC tn34xx_runtime PRIVATE "-framework Cocoa")
+#   add_executable(${TN34XX_EXE_COCOA} MACOSX_BUNDLE src/main_cocoa.mm)
+#   target_link_libraries(${TN34XX_EXE_COCOA} PRIVATE tn34xx_frontend_cocoa)
+# endif()
 
 if(TN34XX_BUILD_TESTS)
   enable_testing()

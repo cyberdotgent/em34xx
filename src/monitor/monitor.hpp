@@ -1,12 +1,11 @@
 // Interactive and scripted debug monitor.
 //
-// Commands can come from an interactive console (src/app/console.hpp), from
+// Commands can come from an interactive console (src/devtools/console.hpp), from
 // an rc file (--rc), from stdin, or from GDB's "monitor" command. The
 // monitor itself has no UI: it executes lines and writes their output. Scripts stop at the first command
 // error; failed assertions are counted and turn into a non-zero exit code.
 #pragma once
 
-#include "config/config.hpp"
 #include "present/crt_render.hpp"
 #include "host/twinax_link.hpp"
 
@@ -21,6 +20,7 @@
 namespace tn34xx {
 
 class Emulator;
+class HostLink;
 class Machine;
 struct StopEvent;
 
@@ -48,16 +48,9 @@ public:
     // Command names, for completion in an interactive console.
     std::vector<std::string> command_names() const;
 
-    // What `connect` needs: the start-up configuration (defaults for every
-    // setting the command does not give), the model's session limits, and
-    // the factory that builds the TN5250 bridge (main() owns the link to it).
-    struct ConnectContext {
-        AppConfig base;
-        unsigned max_sessions = 0;
-        int max_printers = -1;
-        Tn5250HostFactory factory;
-    };
-    void set_connect_context(ConnectContext c) { connect_ = std::move(c); }
+    // `connect` and `disconnect` drive the application's host link; without
+    // one they report that the bridge is not available.
+    void set_host_link(HostLink* link) { host_link_ = link; }
 
     // CRT presentation used by "screenshot" so it matches the window.
     void set_crt_params(const CrtParams& p) { crt_params_ = p; }
@@ -132,7 +125,7 @@ private:
     bool cmd_quit(const std::vector<std::string>& a);
 
     Emulator& emu_;
-    ConnectContext connect_;
+    HostLink* host_link_ = nullptr;
     std::recursive_mutex exec_mutex_;  // monitor prompt vs. gdb "monitor"
     std::vector<Command> commands_;
     const OutputSink* sink_ = nullptr;

@@ -1,5 +1,6 @@
 #include "frontend/sdl/sdl_frontend.hpp"
 
+#include "app/application.hpp"
 #include "machine/emulator.hpp"
 #include "present/display_profile.hpp"
 #include "util/log.hpp"
@@ -39,7 +40,7 @@ struct SdlSession {
 class SdlFrontend : public Frontend {
 public:
     const char* name() const override { return "sdl"; }
-    bool run(Emulator& emu, const FrontendOptions& opts, std::string& error) override;
+    bool run(Application& app, const FrontendOptions& opts, std::string& error) override;
     void request_quit() override { quit_.store(true); }
     void set_title(const std::string& title) override {
         std::lock_guard<std::mutex> lock(text_mutex_);
@@ -74,7 +75,8 @@ std::string SdlFrontend::window_title(const Emulator& emu, const FrontendOptions
 
 std::unique_ptr<Frontend> make_sdl_frontend() { return std::make_unique<SdlFrontend>(); }
 
-bool SdlFrontend::run(Emulator& emu, const FrontendOptions& opts, std::string& error) {
+bool SdlFrontend::run(Application& app, const FrontendOptions& opts, std::string& error) {
+    Emulator& emu = app.emulator();
     if (!SDL_Init(SDL_INIT_VIDEO)) {
         error = std::string("SDL_Init failed: ") + SDL_GetError();
         return false;

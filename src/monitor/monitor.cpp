@@ -1,7 +1,7 @@
 #include "monitor/monitor.hpp"
 
-#include "bus/probe_device.hpp"
-#include "config/connect_args.hpp"
+#include "devtools/probe_device.hpp"
+#include "app/host_link.hpp"
 #include "cpu/i86_disasm.hpp"
 #include "present/crt_render.hpp"
 #include "present/display_profile.hpp"
@@ -912,49 +912,25 @@ bool Monitor::cmd_screenshot(const std::vector<std::string>& a) {
 }
 
 bool Monitor::cmd_connect(const std::vector<std::string>& a) {
-    if (!connect_.factory) return fail("connect: the TN5250 bridge is not available in this build");
-    AppConfig cfg;
-    std::string error;
-    if (!parse_connect_args(a, connect_.base, cfg, error)) return fail(error);
-    error = cfg.twinax.validate(connect_.max_sessions, connect_.max_printers);
-    if (error.empty()) error = cfg.tn5250.validate();
-    if (!error.empty()) return fail("connect: " + error);
-    std::unique_ptr<TwinaxHost> host = connect_.factory(cfg.twinax, cfg.tn5250, error);
-    if (!host) return fail("connect: " + error);
-    // Swap under the machine lock; the link device looks the host up on
-    // every use, so the next poll comes from the new controller. The old
-    // one (and its sessions' threads) goes away outside the lock.
-    std::unique_ptr<TwinaxHost> old =
-        emu_.with_machine([&](Machine& m) { return m.swap_twinax_host(std::move(host)); });
-    const bool replaced = old && std::string(old->kind()) == "tn5250";
-    old.reset();
-    std::string stations;
-    for (const StationConfig& st : cfg.twinax.effective_stations())
-        stations += format(" %u (%s)", st.address, station_type_name(st.type));
-    out(format("%sconnecting to %s:%u%s, station(s)%s; the controller goes on the line when the session is up\n",
-               replaced ? "previous session closed; " : "", cfg.tn5250.host.c_str(), cfg.tn5250.port,
-               cfg.tn5250.tls ? " (TLS)" : "", stations.c_str()));
+    if (!host_link_) return fail("connect: the TN5250 bridge is not available in this build");
+    std::string message, error;
+    if (!host_link_->connect(a, message, error)) return fail(error);
+    out(message);
     return true;
 }
 
 bool Monitor::cmd_disconnect(const std::vector<std::string>& a) {
     if (a.size() > 2) return fail("usage: disconnect [station]");
+    std::string error;
     if (a.size() == 2) {
         uint64_t n;
         if (!parse_uint(a[1], n) || n > 6) return fail("disconnect: station must be 0..6");
-        const bool ok = emu_.with_machine([&](Machine& m) {
-            return m.twinax_host() && m.twinax_host()->disconnect_station(unsigned(n));
-        });
-        if (!ok) return fail(format("disconnect: no TN5250 session on station %u", unsigned(n)));
+        if (!host_link_ || !host_link_->disconnect_station(unsigned(n), error))
+            return fail(format("disconnect: no TN5250 session on station %u", unsigned(n)));
         out(format("station %u: session closed, cable unplugged\n", unsigned(n)));
         return true;
     }
-    std::unique_ptr<TwinaxHost> old = emu_.with_machine([](Machine& m) {
-        if (!m.twinax_host() || std::string(m.twinax_host()->kind()) != "tn5250") return std::unique_ptr<TwinaxHost>();
-        return m.swap_twinax_host(std::make_unique<NullTwinaxHost>());
-    });
-    if (!old) return fail("disconnect: not connected");
-    old.reset();
+    if (!host_link_ || !host_link_->disconnect(error)) return fail("disconnect: not connected");
     out("disconnected; no controller on the line\n");
     return true;
 }

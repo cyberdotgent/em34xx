@@ -1,13 +1,10 @@
-// tn34xx: hardware emulator for IBM 34xx-family 5250 terminals.
-//
-// The entry point only picks the parts linked into this executable (the
-// front ends and the terminal console); src/app/application.hpp does the
-// rest.
+// tn34xx: the SDL3 executable, with the developer tooling (monitor, console,
+// GDB stub). --headless runs it without a window.
 #include "app/application.hpp"
-#include "app/console.hpp"
-#include "frontend/registry.hpp"
+#include "devtools/dev_tools.hpp"
+#include "frontend/sdl/sdl_frontend.hpp"
 
 int main(int argc, char** argv) {
-    tn34xx::Application app(tn34xx::builtin_frontends(), tn34xx::make_terminal_console);
+    tn34xx::Application app(tn34xx::make_sdl_frontend(), tn34xx::make_dev_tools());
     return app.main(argc, argv);
 }

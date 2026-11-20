@@ -1,4 +1,4 @@
-#include "bus/probe_device.hpp"
+#include "devtools/probe_device.hpp"
 
 #include "util/log.hpp"
 #include "util/strings.hpp"

@@ -1,4 +1,4 @@
-// Interactive monitor console: a line editor (replxx) in front of
+// Interactive monitor console (developer tooling): a line editor (replxx) in front of
 // Monitor::execute. Lives outside the monitor library so that the emulator
 // core, the monitor and the tests never link a line-editing library; native
 // front ends may provide their own console window instead.
