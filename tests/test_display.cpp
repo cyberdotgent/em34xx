@@ -83,4 +83,8 @@ TEST_CASE("framebuffer presentation follows the tube's aspect ratio") {
     CHECK(fb.presented_height() == 960);
     fb.resize(960, 525);
     CHECK(fb.presented_height() == 720);
+    fb.resize(1280, 525);
+    fb.border = 0.025;                      // 2.5% black margin on each side
+    CHECK(fb.presented_width() == 1347);
+    CHECK(fb.presented_height() == 1010);
 }

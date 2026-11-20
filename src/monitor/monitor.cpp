@@ -916,13 +916,17 @@ bool Monitor::cmd_screenshot(const std::vector<std::string>& a) {
     Framebuffer fb;
     emu_.with_machine([&](Machine& m) { m.render(fb); });
     const bool raw = a.size() > 2 && to_lower(a[2]) == "raw";
-    if (!raw && fb.presented_height() != fb.height) {
-        // Resample rows so the image has the tube's proportions.
+    if (!raw && (fb.presented_width() != fb.width || fb.presented_height() != fb.height)) {
+        // Draw the raster at the tube's proportions inside its black border
+        // (nearest-neighbour resampling).
         Framebuffer out;
-        out.resize(fb.width, fb.presented_height());
-        for (int y = 0; y < out.height; ++y) {
-            const int src = std::min(fb.height - 1, int((y + 0.5) * fb.height / out.height));
-            std::copy(fb.row(src), fb.row(src) + fb.width, out.row(y));
+        out.resize(fb.presented_width(), fb.presented_height());
+        const int x0 = int(fb.border * out.width + 0.5), y0 = int(fb.border * out.height + 0.5);
+        const int rw = out.width - 2 * x0, rh = out.height - 2 * y0;
+        for (int y = 0; y < rh; ++y) {
+            const uint32_t* src = fb.row(std::min(fb.height - 1, int((y + 0.5) * fb.height / rh)));
+            uint32_t* dst = out.row(y0 + y) + x0;
+            for (int x = 0; x < rw; ++x) dst[x] = src[std::min(fb.width - 1, int((x + 0.5) * fb.width / rw))];
         }
         fb = std::move(out);
     }

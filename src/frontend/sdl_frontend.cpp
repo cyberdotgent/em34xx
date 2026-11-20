@@ -16,7 +16,7 @@ struct SdlSession {
     SDL_Window* window = nullptr;
     SDL_Renderer* renderer = nullptr;
     SDL_Texture* texture = nullptr;
-    int tex_w = 0, tex_h = 0, pres_h = 0;
+    int tex_w = 0, tex_h = 0, pres_w = 0, pres_h = 0;
 
     ~SdlSession() {
         if (texture) SDL_DestroyTexture(texture);
@@ -40,7 +40,7 @@ bool run_sdl_frontend(Emulator& emu, const FrontendOptions& opts, std::string& e
 
     // Initial window: the aspect-corrected frame times the scale factor,
     // shrunk if needed to fit the usable desktop area.
-    int win_w = fb.width * opts.scale;
+    int win_w = fb.presented_width() * opts.scale;
     int win_h = fb.presented_height() * opts.scale;
     SDL_Rect usable;
     if (SDL_GetDisplayUsableBounds(SDL_GetPrimaryDisplay(), &usable) && usable.w > 0 && usable.h > 0) {
@@ -86,7 +86,8 @@ bool run_sdl_frontend(Emulator& emu, const FrontendOptions& opts, std::string& e
         }
 
         emu.with_machine([&](Machine& m) { m.render(fb); });
-        if (!s.texture || s.tex_w != fb.width || s.tex_h != fb.height || s.pres_h != fb.presented_height()) {
+        if (!s.texture || s.tex_w != fb.width || s.tex_h != fb.height || s.pres_w != fb.presented_width() ||
+            s.pres_h != fb.presented_height()) {
             if (s.texture) SDL_DestroyTexture(s.texture);
             s.texture = SDL_CreateTexture(s.renderer, SDL_PIXELFORMAT_ARGB8888, SDL_TEXTUREACCESS_STREAMING,
                                           fb.width, fb.height);
@@ -98,8 +99,9 @@ bool run_sdl_frontend(Emulator& emu, const FrontendOptions& opts, std::string& e
             // with a non-square pixel aspect are stretched by a non-integer
             // factor, where linear filtering avoids uneven scan lines.
             SDL_SetTextureScaleMode(s.texture, fb.display_aspect > 0.0 ? SDL_SCALEMODE_LINEAR : SDL_SCALEMODE_NEAREST);
-            SDL_SetRenderLogicalPresentation(s.renderer, fb.width, fb.presented_height(),
+            SDL_SetRenderLogicalPresentation(s.renderer, fb.presented_width(), fb.presented_height(),
                                              SDL_LOGICAL_PRESENTATION_LETTERBOX);
+            s.pres_w = fb.presented_width();
             s.tex_w = fb.width;
             s.tex_h = fb.height;
             s.pres_h = fb.presented_height();
@@ -107,7 +109,10 @@ bool run_sdl_frontend(Emulator& emu, const FrontendOptions& opts, std::string& e
         SDL_UpdateTexture(s.texture, nullptr, fb.pixels.data(), fb.width * 4);
         SDL_SetRenderDrawColor(s.renderer, 0, 0, 0, 255);
         SDL_RenderClear(s.renderer);
-        SDL_RenderTexture(s.renderer, s.texture, nullptr, nullptr);
+        // The raster sits inside the tube's black border.
+        const SDL_FRect raster{float(fb.border * s.pres_w), float(fb.border * s.pres_h),
+                               float((1.0 - 2.0 * fb.border) * s.pres_w), float((1.0 - 2.0 * fb.border) * s.pres_h)};
+        SDL_RenderTexture(s.renderer, s.texture, nullptr, &raster);
         SDL_RenderPresent(s.renderer);
 
         const std::string title = format("%s - %s", opts.title.c_str(), emu.running() ? "running" : "stopped");

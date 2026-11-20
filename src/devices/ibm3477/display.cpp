@@ -9,6 +9,10 @@ namespace tn34xx {
 
 namespace {
 constexpr double kDisplayAspect = 4.0 / 3.0;
+// Black margin around the raster on each side, as a fraction of the tube.
+// Hypothesis, matched to a reference recording (~2.5%); the exact value
+// should eventually come from the CRT timing registers.
+constexpr double kDisplayBorder = 0.025;
 }
 
 namespace {
@@ -262,10 +266,9 @@ void Ibm3477Display::draw_row(Framebuffer& fb, uint32_t addr, int y0, int cols, 
 }
 
 void Ibm3477Display::render(Framebuffer& fb) {
-    // The 3477 uses a 4:3 CRT; the active raster is assumed to fill that
-    // area (hypothesis: overscan/border not yet derived from the CRT timing
-    // registers).
+    // The 3477 uses a 4:3 CRT with a black border around the raster.
     fb.display_aspect = kDisplayAspect;
+    fb.border = kDisplayBorder;
     if (!enabled()) {
         const int w = last_w_ ? last_w_ : 80 * 12, h = last_h_ ? last_h_ : 25 * 21;
         if (fb.width != w || fb.height != h) fb.resize(w, h);
