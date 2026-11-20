@@ -259,3 +259,70 @@ TEST_CASE("buffer overrun") {
     REQUIRE(out.size() == Set3Keyboard::kBufferLimit + 1);
     CHECK(out.back() == 0x00);
 }
+
+TEST_CASE("Shift+F1..F12 enters F13..F24 on the 122-key keyboard") {
+    Set3Keyboard k(KeyboardType::Terminal122, 0xBF, 0xBF);
+    k.power_on();
+    drain(k);
+    // Make F13 (08) make/break so that its break code is visible.
+    k.host_write(0xFC);
+    k.host_write(0x08);
+    k.host_write(0xF4);
+    drain(k);
+
+    press(k, 0xE1, true);   // Left Shift
+    CHECK(drain(k) == Bytes{0x12});
+    press(k, 0x3A, true);   // F1
+    CHECK(drain(k) == Bytes{0xF0, 0x12, 0x08});
+    press(k, 0x3A, false);
+    CHECK(drain(k) == Bytes{0xF0, 0x08, 0x12});
+    press(k, 0xE1, false);
+    CHECK(drain(k) == Bytes{0xF0, 0x12});
+
+    // Shift+F12 -> F24 (5F, make-only by default); Shift released first.
+    press(k, 0xE5, true);   // Right Shift
+    press(k, 0x45, true);
+    CHECK(drain(k) == Bytes{0x59, 0xF0, 0x59, 0x5F});
+    press(k, 0xE5, false);  // invisible: the terminal already saw it released
+    press(k, 0x45, false);
+    CHECK(drain(k).empty());
+
+    // Unshifted F1 stays F1.
+    press(k, 0x3A, true);
+    press(k, 0x3A, false);
+    CHECK(drain(k) == Bytes{0x07});
+}
+
+TEST_CASE("Shift+F13 mapping can be disabled and does not apply to Enhanced keyboards") {
+    for (int variant = 0; variant < 2; ++variant) {
+        const bool enhanced = variant == 1;
+        Set3Keyboard k(enhanced ? KeyboardType::Enhanced : KeyboardType::Terminal122, 0xAB, 0x83);
+        if (!enhanced) k.set_shift_fkeys(false);
+        k.power_on();
+        drain(k);
+        press(k, 0xE1, true);
+        press(k, 0x3A, true);
+        press(k, 0x3A, false);
+        press(k, 0xE1, false);
+        CHECK(drain(k) == Bytes{0x12, 0x07, 0xF0, 0x12});
+    }
+}
+
+TEST_CASE("Shifted upper-row key repeats as itself") {
+    Set3Keyboard k(KeyboardType::Terminal122, 0xBF, 0xBF);
+    k.power_on();
+    drain(k);
+    k.host_write(0xFB);   // make F13 typematic
+    k.host_write(0x08);
+    k.host_write(0xF4);
+    drain(k);
+    press(k, 0xE1, true);
+    press(k, 0x3A, true);
+    CHECK(drain(k) == Bytes{0x12, 0xF0, 0x12, 0x08});
+    k.advance_us(600000);   // past the 500 ms delay
+    const Bytes rep = drain(k);
+    REQUIRE_FALSE(rep.empty());
+    for (uint8_t b : rep) CHECK(b == 0x08);
+    press(k, 0x3A, false);
+    CHECK(drain(k) == Bytes{0x12});
+}

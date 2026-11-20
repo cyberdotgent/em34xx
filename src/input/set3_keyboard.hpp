@@ -60,6 +60,13 @@ public:
 
     // Host key from the front end.
     void host_key(const HostKeyEvent& ev) override;
+
+    // Host convention for keys a PC lacks: Shift+F1..F12 enters F13..F24 on
+    // a 122-key keyboard (on by default). The terminal sees the upper-row key
+    // unshifted: the held Shift keys are released (break codes) before the
+    // F13+ make and pressed again (make codes) after its break.
+    void set_shift_fkeys(bool on) { shift_fkeys_ = on; }
+    bool shift_fkeys() const { return shift_fkeys_; }
     // A key at set-3 position `code` changed state.
     void key(uint8_t code, bool pressed);
 
@@ -111,6 +118,12 @@ private:
     bool scanning_ = true;
 
     int repeat_code_ = -1;      // key currently repeating, -1 none
+
+    void hide_shifts();
+    void restore_shifts();
+    bool shift_fkeys_ = true;
+    std::array<uint8_t, 12> shifted_fkey_{};   // set-3 code sent for host F1..F12, 0 = none
+    std::array<bool, 2> shift_hidden_{};       // Left/Right Shift released on the terminal's behalf
     uint64_t repeat_wait_us_ = 0;
 };
 
