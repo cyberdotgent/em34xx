@@ -21,6 +21,13 @@ Requirements: CMake ≥ 3.21, Ninja, a C++17 compiler, and
 [vcpkg](https://vcpkg.io) (dependencies: SDL3, replxx, toml++; tests add
 doctest, nlohmann-json and zlib).
 
+TLS for the TN5250 client uses the host's own TLS stack, not vcpkg: the
+system OpenSSL (libssl/libcrypto, Debian/Ubuntu `libssl-dev`) on Linux, and
+SChannel/CryptoAPI (system DLLs) on Windows. `-DTN34XX_TLS=AUTO` (the
+default; the presets leave it alone) uses it when found and otherwise builds
+without TLS, with a configure-time message; `ON` makes a missing TLS stack
+an error, `OFF` builds without TLS.
+
 ```sh
 export VCPKG_ROOT=~/vcpkg
 cmake --preset release
@@ -170,4 +177,7 @@ roms/ROMS.md   expected ROM files and hashes
 
 Not yet decided. It will be a free-software licence chosen to be compatible
 with the dependencies (all currently permissive: SDL3 zlib, replxx BSD,
-toml++ MIT, doctest MIT, nlohmann-json MIT, zlib).
+toml++ MIT, doctest MIT, nlohmann-json MIT, zlib). The optional TLS support
+links the system OpenSSL on Linux (OpenSSL 3: Apache-2.0, whose patent and
+NOTICE terms apply to binary distributions; 1.1.1: the OpenSSL/SSLeay
+licence) and Windows' own SChannel (part of the OS, nothing redistributed).
