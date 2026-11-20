@@ -127,6 +127,14 @@ constexpr uint16_t kKeyFlag = 0x100;
 Set3Keyboard::Set3Keyboard(KeyboardType type, uint8_t id1, uint8_t id2)
     : type_(type), id1_(id1), id2_(id2), bat_sends_id_(type == KeyboardType::Terminal122) {
     reset_defaults();
+    set_shift_fkeys(true);
+}
+
+void Set3Keyboard::set_shift_fkeys(bool on) {
+    shift_fkeys_ = on;
+    auto km = std::make_shared<Keymap>();
+    builtin_keymap("positional", on, *km);
+    keymap_.set_keymap(std::move(km));
 }
 
 uint8_t Set3Keyboard::hid_to_set3(KeyboardType type, uint32_t hid_usage) {
@@ -169,8 +177,7 @@ void Set3Keyboard::power_on() {
     key_bytes_ = 0;
     overrun_ = false;
     held_.fill(false);
-    shifted_fkey_.fill(0);
-    shift_hidden_.fill(false);
+    keymap_.reset();
     leds_ = 0;
     set_ = 3;
     reset_defaults();
@@ -310,78 +317,12 @@ void Set3Keyboard::command(uint8_t cmd) {
     }
 }
 
-namespace {
-constexpr uint8_t kShiftCodes[2] = {0x12, 0x59};   // Left, Right Shift
-constexpr uint8_t kUpperRow[12] = {0x08, 0x10, 0x18, 0x20, 0x28, 0x30, 0x38, 0x40, 0x48, 0x50, 0x57, 0x5F};
-constexpr uint32_t kHidF1 = 0x3A, kHidF12 = 0x45;
-constexpr uint32_t kHidLeftShift = 0xE1, kHidRightShift = 0xE5;
-} // namespace
-
-void Set3Keyboard::hide_shifts() {
-    for (int i = 0; i < 2; ++i) {
-        const uint8_t c = kShiftCodes[i];
-        if (!held_[c] || shift_hidden_[size_t(i)]) continue;
-        shift_hidden_[size_t(i)] = true;
-        if (repeat_code_ == c) repeat_code_ = -1;
-        if (scanning_ && (modes_[c] & MakeBreak)) {
-            key_byte(kBreakPrefix);
-            key_byte(c);
-        }
-    }
-}
-
-void Set3Keyboard::restore_shifts() {
-    for (int i = 0; i < 2; ++i) {
-        if (!shift_hidden_[size_t(i)]) continue;
-        shift_hidden_[size_t(i)] = false;
-        const uint8_t c = kShiftCodes[i];
-        if (!held_[c] || !scanning_) continue;
-        key_byte(c);
-        if (modes_[c] & Typematic) {
-            repeat_code_ = c;
-            repeat_wait_us_ = typematic_delay_us();
-        }
-    }
-}
-
 void Set3Keyboard::host_key(const HostKeyEvent& ev) {
-    if (shift_fkeys_ && type_ == KeyboardType::Terminal122) {
-        const uint32_t u = ev.hid_usage;
-        bool any_shifted = false;
-        for (uint8_t c : shifted_fkey_) any_shifted |= c != 0;
-        if (u >= kHidF1 && u <= kHidF12) {
-            const size_t i = size_t(u - kHidF1);
-            if (ev.pressed && !shifted_fkey_[i] && (held_[kShiftCodes[0]] || held_[kShiftCodes[1]])) {
-                hide_shifts();
-                shifted_fkey_[i] = kUpperRow[i];
-                key(kUpperRow[i], true);
-                return;
-            }
-            if (!ev.pressed && shifted_fkey_[i]) {
-                key(shifted_fkey_[i], false);
-                shifted_fkey_[i] = 0;
-                bool still = false;
-                for (uint8_t c : shifted_fkey_) still |= c != 0;
-                if (!still) restore_shifts();
-                return;
-            }
-        } else if ((u == kHidLeftShift || u == kHidRightShift) && any_shifted) {
-            // Shift changes while an upper-row key is down stay invisible to
-            // the terminal; restore_shifts() reports the final state.
-            const size_t i = u == kHidLeftShift ? 0 : 1;
-            const uint8_t c = kShiftCodes[i];
-            held_[c] = ev.pressed;
-            shift_hidden_[i] = ev.pressed;
-            return;
-        }
-    }
-    const uint8_t code = hid_to_set3(type_, ev.hid_usage);
-    if (!code) {
-        TN_LOG("kbd", Debug, "host key %s (HID %02X) has no %s mapping", ev.name.c_str(),
-               ev.hid_usage, keyboard_type_name(type_));
-        return;
-    }
-    key(code, ev.pressed);
+    const bool mapped = keymap_.host_key(type_, ev.hid_usage, ev.pressed,
+                                         [this](uint8_t code, bool pressed) { key(code, pressed); });
+    if (!mapped)
+        TN_LOG("kbd", Debug, "host key %s (HID %02X) has no %s mapping", ev.name.c_str(), ev.hid_usage,
+               keyboard_type_name(type_));
 }
 
 void Set3Keyboard::key(uint8_t code, bool pressed) {

@@ -47,6 +47,7 @@ add_library(tn34xx_core STATIC
   src/models/model_3477.cpp
   src/models/model_3486.cpp
   src/models/model_3489.cpp
+  src/input/host_keymap.cpp
   src/input/keyboard_ids.cpp
   src/input/set3_keyboard.cpp
   src/devices/i2c.cpp

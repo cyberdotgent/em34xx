@@ -1,0 +1,253 @@
+# tn34xx host keymap: the built-in "pcomm" map written out.
+#
+# Loading this file (--keymap keymaps/pcomm-like.toml) gives the same result
+# as --keymap pcomm (the default); a unit test keeps the two in step. Copy it
+# and edit, or write a short file with base = "pcomm" that only lists your
+# changes.
+#
+# The rules follow the default 5250 keyboard of IBM Personal Communications,
+# expressed as presses of the terminal's own keys: the emulated terminal has
+# an IBM 122-key or Enhanced keyboard, and its firmware decides what each key
+# does. See docs/keyboard.md for the syntax and the terminal key names.
+#
+#   host      PC key name (SDL/USB HID: "Escape", "F1", "PageUp", "KP_Enter",
+#             "RCtrl", "a", ...) or a HID usage number
+#   mods      host modifiers that must be held: shift, ctrl, alt (either
+#             side), lshift/rshift, lctrl/rctrl, lalt/ralt (= altgr);
+#             groups not listed must be up; "*" = do not care about the rest
+#   to        a terminal function (its key on the configured keyboard type,
+#             with the terminal's Shift/Alt as its legend needs), a set-3
+#             position ("0x5A"), "none" (swallow) or "positional"
+#   keyboard  "122", "enhanced" or "both" (default)
+#   tap       true: send the key when it is released, and only if no other
+#             key was pressed meanwhile (the PC key works as Ctrl otherwise)
+#   shift/alt keep, press or release: override the terminal Shift/Alt state
+#
+# Keys without a rule press the terminal key at the same physical position.
+
+# The positional base also holds Shift+F1..F12 -> F13..F24 on the 122-key
+# keyboard (unless --no-shift-fkeys / shift_fkeys = false).
+base = "positional"
+
+# Esc: Attention; Shift+Esc: System Request.
+[[map]]
+host = "Escape"
+to = "attn"
+
+[[map]]
+host = "Escape"
+mods = "shift"
+to = "sysrq"
+
+# Alt+F1: Help.
+[[map]]
+host = "F1"
+mods = "alt"
+to = "help"
+
+# Pause: Clear; Ctrl+Pause: Print (host print); Alt+Pause: Test.
+[[map]]
+host = "Pause"
+to = "clear"
+
+[[map]]
+host = "Pause"
+mods = "ctrl"
+to = "print"
+
+[[map]]
+host = "Pause"
+mods = "alt"
+to = "test"
+
+# Print Screen: Print. (PCOMM leaves this key to Windows; ours.)
+[[map]]
+host = "PrintScreen"
+to = "print"
+
+# Shift+Tab: Backtab (the 122-key keyboard's Field Backspace key).
+[[map]]
+host = "Tab"
+mods = "shift"
+to = "backtab"
+
+# Enter: Field Exit; Shift+Enter: New Line.
+[[map]]
+host = "Enter"
+to = "fieldexit"
+
+[[map]]
+host = "Enter"
+mods = "shift"
+to = "newline"
+
+# Left Ctrl: Reset (Alt+Left Ctrl: Quit), Right Ctrl: Enter, when tapped;
+# Ctrl otherwise.
+[[map]]
+host = "LCtrl"
+mods = "*"
+to = "reset"
+tap = true
+
+[[map]]
+host = "LCtrl"
+mods = "alt"
+to = "quit"
+tap = true
+
+[[map]]
+host = "RCtrl"
+mods = "*"
+to = "enter"
+tap = true
+
+# Insert: Insert; Shift+Insert: Dup.
+[[map]]
+host = "Insert"
+mods = "*"
+to = "insert"
+
+[[map]]
+host = "Insert"
+mods = "shift"
+to = "dup"
+
+# Home: Home; Ctrl+Home: Rule.
+[[map]]
+host = "Home"
+mods = "*"
+to = "home"
+
+[[map]]
+host = "Home"
+mods = "ctrl"
+to = "rule"
+
+# Page Up: Roll Down (previous page); Alt+Page Up: Jump.
+[[map]]
+host = "PageUp"
+mods = "*"
+to = "rolldown"
+
+[[map]]
+host = "PageUp"
+mods = "alt"
+to = "jump"
+
+[[map]]
+host = "Delete"
+mods = "*"
+to = "delete"
+
+# End is Erase EOF in PCOMM; 5250 terminals have no such key. The 122-key
+# map swallows End, the Enhanced map keeps the (blank) key at its position.
+[[map]]
+host = "End"
+mods = "*"
+to = "none"
+keyboard = "122"
+
+[[map]]
+host = "End"
+mods = "*"
+to = "positional"
+keyboard = "enhanced"
+
+# Alt+End, Ctrl+Alt+End, AltGr+End: Erase Input.
+[[map]]
+host = "End"
+mods = "alt"
+to = "erinp"
+
+[[map]]
+host = "End"
+mods = ["ctrl", "alt"]
+to = "erinp"
+
+[[map]]
+host = "End"
+mods = "altgr"
+to = "erinp"
+
+# Page Down: Roll Up (next page).
+[[map]]
+host = "PageDown"
+mods = "*"
+to = "rollup"
+
+# Keypad: - Field Minus, + Field Plus, Enter Field Exit.
+[[map]]
+host = "KP_Minus"
+mods = "*"
+to = "field-"
+
+[[map]]
+host = "KP_Plus"
+mods = "*"
+to = "field+"
+
+[[map]]
+host = "KP_Enter"
+mods = "*"
+to = "fieldexit"
+
+# Host F13..F24, where the PC has them.
+[[map]]
+host = "F13"
+mods = "*"
+to = "f13"
+
+[[map]]
+host = "F14"
+mods = "*"
+to = "f14"
+
+[[map]]
+host = "F15"
+mods = "*"
+to = "f15"
+
+[[map]]
+host = "F16"
+mods = "*"
+to = "f16"
+
+[[map]]
+host = "F17"
+mods = "*"
+to = "f17"
+
+[[map]]
+host = "F18"
+mods = "*"
+to = "f18"
+
+[[map]]
+host = "F19"
+mods = "*"
+to = "f19"
+
+[[map]]
+host = "F20"
+mods = "*"
+to = "f20"
+
+[[map]]
+host = "F21"
+mods = "*"
+to = "f21"
+
+[[map]]
+host = "F22"
+mods = "*"
+to = "f22"
+
+[[map]]
+host = "F23"
+mods = "*"
+to = "f23"
+
+[[map]]
+host = "F24"
+mods = "*"
+to = "f24"

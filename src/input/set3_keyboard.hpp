@@ -6,17 +6,20 @@
 // keyboard-to-host bytes with has_output()/read_output(). Framing, parity,
 // clock/data line timing and inhibit are the interface's business.
 //
-// Host keys arrive as HostKeyEvent (USB HID usage codes) and are mapped to the
-// set-3 code of the key at the same physical position on a 122-key or IBM
-// Enhanced keyboard; see docs/keyboard.md for the mapping.
+// Host keys arrive as HostKeyEvent (USB HID usage codes). A host keymap
+// (input/host_keymap.hpp) turns them into presses of terminal key positions;
+// keys without a rule go to the set-3 code of the key at the same physical
+// position on a 122-key or IBM Enhanced keyboard. See docs/keyboard.md.
 #pragma once
 
+#include "input/host_keymap.hpp"
 #include "input/keyboard_ids.hpp"
 #include "machine/peripherals.hpp"
 
 #include <array>
 #include <cstdint>
 #include <deque>
+#include <memory>
 
 namespace tn34xx {
 
@@ -61,11 +64,17 @@ public:
     // Host key from the front end.
     void host_key(const HostKeyEvent& ev) override;
 
+    // Host keymap applied to host_key(). The default is the built-in
+    // "positional" map.
+    void set_keymap(std::shared_ptr<const Keymap> km) { keymap_.set_keymap(std::move(km)); }
+    const Keymap* keymap() const { return keymap_.keymap(); }
+
     // Host convention for keys a PC lacks: Shift+F1..F12 enters F13..F24 on
     // a 122-key keyboard (on by default). The terminal sees the upper-row key
     // unshifted: the held Shift keys are released (break codes) before the
-    // F13+ make and pressed again (make codes) after its break.
-    void set_shift_fkeys(bool on) { shift_fkeys_ = on; }
+    // F13+ make and pressed again (make codes) after its break. Selects the
+    // built-in "positional" keymap with or without these rules.
+    void set_shift_fkeys(bool on);
     bool shift_fkeys() const { return shift_fkeys_; }
     // A key at set-3 position `code` changed state.
     void key(uint8_t code, bool pressed);
@@ -119,11 +128,8 @@ private:
 
     int repeat_code_ = -1;      // key currently repeating, -1 none
 
-    void hide_shifts();
-    void restore_shifts();
     bool shift_fkeys_ = true;
-    std::array<uint8_t, 12> shifted_fkey_{};   // set-3 code sent for host F1..F12, 0 = none
-    std::array<bool, 2> shift_hidden_{};       // Left/Right Shift released on the terminal's behalf
+    HostKeymapEngine keymap_{&Set3Keyboard::hid_to_set3};
     uint64_t repeat_wait_us_ = 0;
 };
 

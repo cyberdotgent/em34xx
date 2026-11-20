@@ -1,0 +1,108 @@
+# tn34xx host keymap: physical positions only.
+#
+# Every PC key presses the terminal key at the same place on the keyboard
+# (docs/keyboard.md, "Positional fallback"), so the PC's Enter is the
+# terminal's Field Exit key, Right Ctrl its Enter key, and so on. This file
+# equals --keymap positional; the one convention it adds is that a PC, which
+# has no F13..F24 keys, enters them as Shift+F1..F12 on the 122-key keyboard
+# (the terminal sees the upper-row key without Shift).
+#
+# Syntax: see keymaps/pcomm-like.toml and docs/keyboard.md.
+
+base = "none"
+
+[[map]]
+host = "F1"
+mods = "shift"
+to = "f13"
+shift = "release"
+alt = "keep"
+keyboard = "122"
+
+[[map]]
+host = "F2"
+mods = "shift"
+to = "f14"
+shift = "release"
+alt = "keep"
+keyboard = "122"
+
+[[map]]
+host = "F3"
+mods = "shift"
+to = "f15"
+shift = "release"
+alt = "keep"
+keyboard = "122"
+
+[[map]]
+host = "F4"
+mods = "shift"
+to = "f16"
+shift = "release"
+alt = "keep"
+keyboard = "122"
+
+[[map]]
+host = "F5"
+mods = "shift"
+to = "f17"
+shift = "release"
+alt = "keep"
+keyboard = "122"
+
+[[map]]
+host = "F6"
+mods = "shift"
+to = "f18"
+shift = "release"
+alt = "keep"
+keyboard = "122"
+
+[[map]]
+host = "F7"
+mods = "shift"
+to = "f19"
+shift = "release"
+alt = "keep"
+keyboard = "122"
+
+[[map]]
+host = "F8"
+mods = "shift"
+to = "f20"
+shift = "release"
+alt = "keep"
+keyboard = "122"
+
+[[map]]
+host = "F9"
+mods = "shift"
+to = "f21"
+shift = "release"
+alt = "keep"
+keyboard = "122"
+
+[[map]]
+host = "F10"
+mods = "shift"
+to = "f22"
+shift = "release"
+alt = "keep"
+keyboard = "122"
+
+[[map]]
+host = "F11"
+mods = "shift"
+to = "f23"
+shift = "release"
+alt = "keep"
+keyboard = "122"
+
+[[map]]
+host = "F12"
+mods = "shift"
+to = "f24"
+shift = "release"
+alt = "keep"
+keyboard = "122"

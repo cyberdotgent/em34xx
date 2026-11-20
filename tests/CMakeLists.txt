@@ -10,6 +10,7 @@ add_executable(tn34xx_unit_tests
   test_twinax.cpp
   test_util.cpp
   test_keyboard.cpp
+  test_host_keymap.cpp
   test_display.cpp
   test_display3477.cpp
   test_3477.cpp
@@ -18,6 +19,7 @@ add_executable(tn34xx_unit_tests
   fake_station.cpp
 )
 target_link_libraries(tn34xx_unit_tests PRIVATE tn34xx_core doctest::doctest)
+target_compile_definitions(tn34xx_unit_tests PRIVATE TN34XX_SOURCE_DIR="${PROJECT_SOURCE_DIR}")
 add_test(NAME unit COMMAND tn34xx_unit_tests)
 
 # SingleStepTests runner. Fetch the vectors with tools/fetch-test-vectors.sh.
