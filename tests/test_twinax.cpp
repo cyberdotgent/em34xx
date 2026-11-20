@@ -31,6 +31,14 @@ TEST_CASE("data byte is sent least significant bit first") {
     CHECK((g.encode() & 0x0080) != 0);   // data bit 7 is the last data cell
 }
 
+TEST_CASE("station address is sent least significant bit first") {
+    // IBM 5250 Product Attachment Information: the address follows the data
+    // in the same LSB-first order, so address bit 0 is frame bit 6.
+    CHECK((TwinaxFrame{0x00, 1}.encode() & 0x0070) == 0x0040);
+    CHECK((TwinaxFrame{0x00, 4}.encode() & 0x0070) == 0x0010);
+    CHECK((TwinaxFrame{0x00, 6}.encode() & 0x0070) == 0x0030);
+}
+
 TEST_CASE("parity errors and missing sync are reported") {
     TwinaxFrame f{0x5A, 3};
     TwinaxFrame g;

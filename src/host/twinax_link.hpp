@@ -24,7 +24,8 @@ namespace tn34xx {
 //
 //   bit 15     sync, always 1
 //   bits 14..7 data/command byte, least significant bit first
-//   bits 6..4  station address (7 = end of message)
+//   bits 6..4  station address, least significant bit first (7 = end of
+//              message); address bit 0 is frame bit 6
 //   bit 3      even parity over the active bits
 //   bits 2..0  fill, 000
 struct TwinaxFrame {

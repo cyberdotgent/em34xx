@@ -19,7 +19,8 @@ uint16_t TwinaxFrame::encode() const {
     uint16_t w = 0x8000;  // sync
     for (unsigned i = 0; i < 8; ++i)
         if (data & (1u << i)) w |= uint16_t(1u << (14 - i));   // LSB first
-    w |= uint16_t((address & 7u) << 4);
+    for (unsigned i = 0; i < 3; ++i)
+        if (address & (1u << i)) w |= uint16_t(1u << (6 - i));  // LSB first
     if (popcount16(w) & 1) w |= 0x0008;                       // even parity
     return w;
 }
@@ -30,7 +31,10 @@ bool TwinaxFrame::decode(uint16_t word, TwinaxFrame& out, bool& parity_ok) {
     for (unsigned i = 0; i < 8; ++i)
         if (word & (1u << (14 - i))) d = uint8_t(d | (1u << i));
     out.data = d;
-    out.address = uint8_t((word >> 4) & 7u);
+    uint8_t a = 0;
+    for (unsigned i = 0; i < 3; ++i)
+        if (word & (1u << (6 - i))) a = uint8_t(a | (1u << i));
+    out.address = a;
     parity_ok = (popcount16(uint16_t(word & 0xFFF8u)) & 1) == 0;
     return true;
 }
