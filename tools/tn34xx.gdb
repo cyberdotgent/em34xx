@@ -98,6 +98,21 @@ document wseg
 Set a write watchpoint on LEN (default 1) bytes at SEG:OFF.  Usage: wseg SEG OFF [LEN]
 end
 
+# tnsyms [FILE]: load firmware symbols (linear addresses) for names in
+# disassembly and breakpoints. The symbol file is generated privately from
+# ROM analysis and is never part of the repository; the default is the
+# location the private generator writes to.
+define tnsyms
+  if $argc == 0
+    add-symbol-file analysis_notes/listing/3477-syms.elf
+  else
+    add-symbol-file $arg0
+  end
+end
+document tnsyms
+Load a firmware symbol file (default analysis_notes/listing/3477-syms.elf).
+end
+
 define tnc
   if $argc == 0
     target remote :1234
