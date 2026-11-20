@@ -45,15 +45,18 @@ Executables, one per front end (names are CMake variables `TN34XX_EXE_*`):
 | --- | --- | --- |
 | `tn34xx` | frontend_sdl, devtools, runtime | only when SDL3 is found (`TN34XX_FRONTEND_SDL`) |
 | `tn34xx-headless` | devtools, runtime | always built; no SDL |
-| `tn34xxw` (future) | frontend_win32, runtime | WIN32 only, GUI subsystem, end-user build |
-| `tn34xx.app` (future) | frontend_cocoa, runtime | APPLE only, MACOSX_BUNDLE, end-user build |
+| `tn34xxw` (future) | frontend_win32, runtime (devtools optional) | WIN32 only, GUI subsystem, end-user build |
+| `tn34xx.app` (future) | frontend_cocoa, runtime (devtools optional) | APPLE only, MACOSX_BUNDLE, end-user build |
 
-End-user GUI builds link `tn34xx_runtime` and their front-end library,
-never `tn34xx_devtools`: no monitor console, no GDB stub, no probes, no
-memory tools or screenshots; only the emulator (display, keyboard, sound,
-settings) and connect/disconnect to a TN5250 host. The `runtime_only` test
-links a minimal application against `tn34xx_runtime` alone to keep that
-true. The core keeps its debug hooks generic and optional (breakpoints,
+End-user GUI builds expose only the emulator (display, keyboard, sound,
+settings) and connect/disconnect to a TN5250 host. Their user interface
+offers no monitor console, GDB stub, probes, memory tools or screenshots.
+They **may** still link `tn34xx_devtools` (for example to enable a GDB stub
+from the command line or a config file when diagnosing a problem); the
+requirement is only that the GUI does not surface it. The runtime libraries
+must not *need* the dev tooling: the `runtime_only` test links a minimal
+application against `tn34xx_runtime` alone to keep that true.
+The core keeps its debug hooks generic and optional (breakpoints,
 watchpoints, `Machine::trace_hook`, the unmapped-access log); nothing in
 `tn34xx_emu`..`tn34xx_runtime` refers to the monitor or the GDB stub.
 
