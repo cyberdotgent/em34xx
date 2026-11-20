@@ -91,6 +91,11 @@ A17 = 1, appearing at `A0000-BFFFF` and `E0000-FFFFF`.
 The firmware nevertheless calls into `D000`, keeps pointer tables into
 `9000`, and its POST checksum covers `8000-FFFF` (target `619A`; this chip
 sums to `DBE9`, so the rest must sum to `85B1`). Where those four segments
-come from is unknown: the dumper found no other ROM on the board, and J5
-(an extension slot) was empty. Hypotheses: host-uploaded code in
-battery-backed SRAM, or a second ROM on another board or card.
+come from is not settled. The firmware treats them as part of one linked
+512 KiB image: it has no loader, decompressor or download path into
+`80000-DFFFF` and no presence check, and the referenced data alone is larger
+than all the board's SRAM, so battery-backed RAM is ruled out. The leading
+hypothesis is a second 256 KiB ROM on a card in J5 (a 50-position
+expansion connector), decoded for CPU A17 = 0. That conflicts with the
+owner's understanding that J5 was never used and still needs confirming
+(see `docs/bringup-3486.md`, "Where the missing half comes from").

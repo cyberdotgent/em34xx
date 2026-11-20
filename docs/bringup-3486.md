@@ -56,7 +56,8 @@ suffixes (hypothesis: a 3477-compatibility identity).
 | J1 | DE-15 with varistors RV1-RV4 and Q1 | Twinax port with surge protection (hypothesis). |
 | J2 | DB-25 | Parallel printer port. |
 | J6, J4 | Modular jacks with TDK filters | Keyboard, and the **pointing-device port**: a PS/2 mouse or a light pen (observed by the owner). This is the second keyboard-style serial port at `20144-20146`. |
-| J5, J7 | Card-edge and pin headers | CRT/power board connections. |
+| J5 | 50-position card-edge receptacle (4 staggered pad rows of 13/12/13/12 on the solder side) | Expansion connector, empty on this board. Wide enough for the whole 8088 local bus (observed: pad count; use: hypothesis, see "Where the missing half comes from"). |
+| J7 | Pin header | Analog board / power supply. |
 
 The board's ROM label reads `54G0015`; the analysed dump is `54G0011`, so
 several firmware levels exist.
@@ -196,7 +197,71 @@ handshake (`FF` -> `FA`, `AA`, `BF BF`) (observed).
 - The IBM 3489 maintenance manual (SY18-2345, a later member of the
   family) documents a "ROS patch" utility that stores patch data in NVM
   (documented for the 3489). The checksummed block at `469E0` (length word,
-  data, sum `619A`) may be the 3486's patch area in RAM (hypothesis).
+  data, sum `619A`) is the 3486's patch area (observed: the patch code
+  validates it, refills it from the `60000` option ROM or a default record,
+  and applies it; see "Where the missing half comes from").
+
+## Where the missing half comes from
+
+The ROM chip `54G0011` is complete (256 KiB) and appears only where CPU
+A17 = 1. The firmware also needs `8000`, `9000`, `C000` and `D000`. Findings:
+
+- **One image, not a download** (observed). The data tables in `A000` hold
+  absolute far pointers into `8000`, `9000` and `C000` (18 tables in three
+  sets of the same sizes, reaching up to `8000:DB26`, `9000:F9ED`,
+  `C000:E56E`). POST sums `80000-FFFFF` as one image against one target.
+  No code in the chip writes, copies, decompresses or downloads anything into
+  `80000-DFFFF`, and no code in the chip reads the `A000` tables, so their
+  users are in the missing half too.
+- **No presence detection** (observed). The call into `D000` at the end of
+  early POST is unconditional; no code reads the missing range to look for a
+  signature or header; no strap or register bit gates it. In emulation, after
+  the checksum is skipped, nothing touches `80000-9FFFF`/`C0000-DFFFF` until
+  the CPU fetches the first `D000` instruction. The only optional region the
+  firmware detects is the `60000` ROM (strap `2000A` bit 6), which is the
+  source of ROS patches (below).
+- **Not battery-backed RAM** (observed by size and order). The referenced
+  ranges need about 200 KiB or more. The board has 160 KiB of SRAM, which
+  also holds the working RAM, and POST sums the region before any code could
+  have loaded it.
+- **Service table** (observed). Most calls between modules go through a table
+  of about 1030 far pointers in RAM (`3800:2F80`, entry *n* at `2F7C + 4n`).
+  Nothing in the chip fills it (checked with a write watchpoint up to the
+  `D000` call); the first `D000` routine (`D000:13B6`) is presumably the
+  system init that installs it (hypothesis, strong: POST calls through the
+  table right after it returns).
+- **ROS patches** (observed). Patch records come from the `60000` option
+  ROM, keyed by the firmware level, or from a checksummed RAM block at
+  `469E0` (at most 24 KiB). They copy code into RAM and replace individual
+  service-table entries. They cannot replace the missing half.
+- **Leading hypothesis: a 256 KiB ROM on a card in J5**, decoded for
+  A19 = 1, A17 = 0. J5 is the only part of the board that can carry it. This
+  conflicts with the owner's understanding that J5 was never used, so it must
+  be confirmed: whether the terminal ever ran with J5 empty, and by
+  continuity from the gate array's ROM select and the bus lines to J5.
+- **Without the half** (observed): POST sums the ROM, gets `DBE9` instead
+  of `619A`, writes alarm code `9B`, beeps twice and halts with interrupts
+  off. Only an NMI could resume it, and no interrupt vector has been set up
+  by then. The skip flag (`F000:0003` = `E13C`) is not set in this ROM, and
+  no boot mode avoids the check.
+
+What a 3486 needs (hypothesis, from the references): `D000:13B6`, a far
+routine entered with `SS = DS = 3800`, `SP = 2F7C`, that installs the
+service table and returns; `D000:143D`, the non-returning main-loop entry;
+the resource data behind the `A000` tables; the control program, keyboard and
+5250 handling; and the fonts (none are in the chip). The four segments
+must word-sum to `85B1`.
+
+An emulator-only stub of that shape would not boot the terminal: which
+service index maps to which routine is fixed by the missing install list. At
+most a temporary trap stub could log the services POST calls.
+
+The IBM 3489's dump (`3489emul`) has a similar gap (two of four quarters),
+but there the chip is marked 8 Mbit and the gap is best explained by the
+read. The same family conventions appear there (RAM service table, `619A`
+sums, a 50-pin expansion connector). The `E13C` word that the 3489 code
+compares is the same checksum-skip flag as on the 3486, not a required
+signature.
 
 ## Boot progress with the partial dump
 
