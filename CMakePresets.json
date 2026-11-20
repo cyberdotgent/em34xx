@@ -23,14 +23,73 @@
       "inherits": "base",
       "displayName": "Release (native)",
       "cacheVariables": { "CMAKE_BUILD_TYPE": "RelWithDebInfo" }
+    },
+    {
+      "name": "mingw-base",
+      "hidden": true,
+      "inherits": "base",
+      "cacheVariables": {
+        "VCPKG_OVERLAY_TRIPLETS": "${sourceDir}/cmake/triplets",
+        "VCPKG_HOST_TRIPLET": "x64-linux"
+      }
+    },
+    {
+      "name": "mingw-x86",
+      "hidden": true,
+      "inherits": "mingw-base",
+      "cacheVariables": {
+        "VCPKG_TARGET_TRIPLET": "x86-mingw-static-win7",
+        "VCPKG_CHAINLOAD_TOOLCHAIN_FILE": "${sourceDir}/cmake/toolchains/mingw-i686.cmake"
+      }
+    },
+    {
+      "name": "mingw-x64",
+      "hidden": true,
+      "inherits": "mingw-base",
+      "cacheVariables": {
+        "VCPKG_TARGET_TRIPLET": "x64-mingw-static-win7",
+        "VCPKG_CHAINLOAD_TOOLCHAIN_FILE": "${sourceDir}/cmake/toolchains/mingw-x86_64.cmake"
+      }
+    },
+    {
+      "name": "mingw-x86-debug",
+      "inherits": "mingw-x86",
+      "displayName": "Debug (Windows x86, MinGW-w64 cross)",
+      "cacheVariables": { "CMAKE_BUILD_TYPE": "Debug" }
+    },
+    {
+      "name": "mingw-x86-release",
+      "inherits": "mingw-x86",
+      "displayName": "Release (Windows x86, MinGW-w64 cross)",
+      "cacheVariables": { "CMAKE_BUILD_TYPE": "RelWithDebInfo" }
+    },
+    {
+      "name": "mingw-x64-debug",
+      "inherits": "mingw-x64",
+      "displayName": "Debug (Windows x64, MinGW-w64 cross)",
+      "cacheVariables": { "CMAKE_BUILD_TYPE": "Debug" }
+    },
+    {
+      "name": "mingw-x64-release",
+      "inherits": "mingw-x64",
+      "displayName": "Release (Windows x64, MinGW-w64 cross)",
+      "cacheVariables": { "CMAKE_BUILD_TYPE": "RelWithDebInfo" }
     }
   ],
   "buildPresets": [
     { "name": "debug", "configurePreset": "debug" },
-    { "name": "release", "configurePreset": "release" }
+    { "name": "release", "configurePreset": "release" },
+    { "name": "mingw-x86-debug", "configurePreset": "mingw-x86-debug" },
+    { "name": "mingw-x86-release", "configurePreset": "mingw-x86-release" },
+    { "name": "mingw-x64-debug", "configurePreset": "mingw-x64-debug" },
+    { "name": "mingw-x64-release", "configurePreset": "mingw-x64-release" }
   ],
   "testPresets": [
     { "name": "debug", "configurePreset": "debug", "output": { "outputOnFailure": true } },
-    { "name": "release", "configurePreset": "release", "output": { "outputOnFailure": true } }
+    { "name": "release", "configurePreset": "release", "output": { "outputOnFailure": true } },
+    { "name": "mingw-x86-debug", "configurePreset": "mingw-x86-debug", "output": { "outputOnFailure": true } },
+    { "name": "mingw-x86-release", "configurePreset": "mingw-x86-release", "output": { "outputOnFailure": true } },
+    { "name": "mingw-x64-debug", "configurePreset": "mingw-x64-debug", "output": { "outputOnFailure": true } },
+    { "name": "mingw-x64-release", "configurePreset": "mingw-x64-release", "output": { "outputOnFailure": true } }
   ]
 }
