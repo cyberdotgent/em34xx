@@ -559,6 +559,28 @@ from the monitor (bring-up exploration, not a product setting):
 
 ## Board
 
+From the annotated board drawing in MAME's `ibm3477` skeleton driver
+(documented; BSD-3-Clause, hardware notes only):
+
+| Part | Role |
+| --- | --- |
+| AMD N8088-2 | CPU (genuine 8088, 8 MHz grade; the 3486 uses an NEC V20) |
+| 59.8185 MHz crystal | Master clock |
+| IBM 38F5768 / Toshiba TC110G17AF | Gate array |
+| IBM 38F5769 / Toshiba TC110G26AF | Gate array; same Toshiba master slice as IBM's 1988 Enhanced 5250 adapter (TC110G26AF), differently programmed |
+| 2x Sony CXK58257M-10LL | 32K x 8 SRAM |
+| 2x EPROM | System ROMs (95F4171, 95F4172) |
+| SN75112, SN751xx | Twinax line drivers/receivers |
+| 10124 | TTL-to-ECL translator |
+| SN74LS74 | Glue logic |
+
+Derived timing (hypothesis): CPU = 59.8185 / 8 = 7.48 MHz. If the dot clock
+is the crystal and an 80-column cell is 16 dots, CRT register 00 = 67h
+(104 character times) gives 1664 dots per line = 35.95 kHz, with 1280 of
+1664 dots active (77%), matching the estimate from the display-test work.
+
+
+
 - **Observed (owner, 2026-11-20):** the link-side gate array is a Toshiba
   TC-family part, with SRAMs and line drivers similar to those on IBM's ISA
   5250 emulation adapters (whose Enhanced adapter uses a Toshiba TC110G26AF

@@ -70,7 +70,9 @@ public:
         info_.status = ModelStatus::Bringup;
         info_.cpu = CpuLevel::I8088;
         info_.address_bits = 20;
-        info_.clock_hz = 8000000;
+        // 59.8185 MHz crystal (documented, MAME board notes); CPU at
+        // crystal/8 (hypothesis).
+        info_.clock_hz = 7477312;
         info_.max_sessions = 2;
         info_.max_printer_sessions = 1;   // display + printer [doc PAI 14.0 via 3197; obs]
         info_.roms = {
@@ -81,10 +83,11 @@ public:
         };
         info_.notes = {
             "two twinax sessions: two displays, or display + printer (documented, PAI 1989 3197/3477)",
-            "CPU 8088 is inferred from byte-wide linear ROM images (hypothesis)",
+            "CPU: AMD N8088-2 on the logic board (documented, MAME ibm3477 board notes)",
             "RAM 128 KiB at 00000-1FFFF (observed); optional RAM 40000-7FFFF and feature ROM "
             "A0000-BFFFF absent (open bus)",
-            "clock frequency unknown; 8 MHz used for pacing only",
+            "clock: 59.8185 MHz crystal (documented); CPU at crystal/8 = 7.48 MHz (hypothesis); "
+            "dot clock = crystal with 16-dot cells gives 35.95 kHz lines (hypothesis)",
             "system gate array at 20000: interrupt request/mask registers and fixed vectors "
             "(observed use, bit map hypothesis), 50 Hz timer (hypothesis)",
             "display type straps at 2000A: 04/0C/0E = types 3/4/5, reported as model FD0/FE0/FW0 "
