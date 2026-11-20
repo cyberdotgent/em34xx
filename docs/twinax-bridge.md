@@ -380,17 +380,19 @@ the monitor:
   discovered (display, model 24, 122-key keyboard, 27x132 capable) and
   shows the full sign-on panel in colour. `disconnect` takes the
   controller away.
-- A local OS/400 V4 system: the sign-on panel, with the password field
-  non-display.
+- A local OS/400 V4 system: the sign-on panel; user and password typed on
+  the emulated 122-key keyboard (through the host keymap, the firmware and
+  the controller's 122-key cable-code table), the AS/400 Main Menu, then
+  `SIGNOFF` back to the sign-on panel, and `disconnect`.
 - The terminal stays busy after an Activate Write carrying display data
   (the Twinax engine's write data path is not modelled yet). The station
   notices (busy timeout right after an Activate Write) and from then on
   paints long runs with queue loads only (`FlushOptions::activate_write`);
   the first paint is lost once and repainted.
-- Keystrokes from the 122-key keyboard do not reach the host as the right
-  characters yet: the cable scan codes the firmware sends do not match the
-  122-key table (being fixed separately). Signing on through the real
-  keyboard path waits for that.
+- The emulated terminal showed the characters typed into a non-display
+  field (the password). The controller now writes nulls to the device for
+  every position of a non-display field (`Tn5250DisplayAdapter`), so field
+  contents the host hides never reach the cable or the screen.
 
 ## Status and next steps
 
