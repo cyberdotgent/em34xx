@@ -31,6 +31,7 @@ void Ibm3477KeyboardInterface::reset() {
     wrap_clocks_ = 0;
     rx_ = 0;
     rx_full_ = false;
+    tx_done_ = false;
     rx_parity_ = false;
     rx_left_ = 0;
     rx_active_ = false;
@@ -78,7 +79,7 @@ void Ibm3477KeyboardInterface::write(unsigned reg, uint8_t v) {
                 set_rx(tx_);
             }
         }
-        if ((old & kHold) && !(ctl_ & kHold) && tx_loaded_ && !tx_left_) {
+        if ((old & kHold) && !(ctl_ & kHold) && (ctl_ & kClock) && tx_loaded_ && !tx_left_) {
             // Line released with a byte waiting: the host sends first; a
             // keyboard transmission in progress is abandoned and retried.
             tx_loaded_ = false;
@@ -88,8 +89,9 @@ void Ibm3477KeyboardInterface::write(unsigned reg, uint8_t v) {
         break;
     }
     case 2:
-        if (rx_full_) {
+        if (rx_full_ || tx_done_) {
             rx_full_ = false;
+            tx_done_ = false;
             if (ic_) ic_->lower(Ibm3477Interrupts::Source::Keyboard);
         }
         break;
@@ -114,11 +116,16 @@ void Ibm3477KeyboardInterface::tick(uint64_t cycles) {
         ++sent_;
         LOG_DEBUG("kbd", "host -> keyboard %02X", tx_);
         kbd_.host_write(tx_);
+        // Transmission complete: the interface interrupts (observed: the
+        // firmware waits for an interrupt after each byte it sends and
+        // discards it before expecting the keyboard's answer).
+        tx_done_ = true;
+        if (ic_) ic_->raise(Ibm3477Interrupts::Source::Keyboard);
         return;
     }
-    // The keyboard may send while the line is released and the previous
-    // byte has been taken.
-    if ((ctl_ & kHold) || rx_full_ || !kbd_.has_output()) {
+    // The keyboard may send while the line is released (02) and the
+    // previous byte or transmit completion has been taken.
+    if ((ctl_ & 3) != kClock || rx_full_ || tx_done_ || !kbd_.has_output()) {
         rx_active_ = false;
         return;
     }
@@ -137,9 +144,9 @@ void Ibm3477KeyboardInterface::tick(uint64_t cycles) {
 }
 
 std::string Ibm3477KeyboardInterface::describe() const {
-    return format("  keyboard: control %02X status %02X, rx %02X, tx %02X%s, %llu sent, %llu received, "
+    return format("  keyboard: control %02X status %02X%s, rx %02X, tx %02X%s, %llu sent, %llu received, "
                   "%zu queued, ID %02X %02X\n",
-                  ctl_, status(), rx_, tx_, tx_loaded_ ? " (loaded)" : "", (unsigned long long)sent_,
+                  ctl_, status(), tx_done_ ? " (sent)" : "", rx_, tx_, tx_loaded_ ? " (loaded)" : "", (unsigned long long)sent_,
                   (unsigned long long)received_, kbd_.output_size(), kbd_.id1(), kbd_.id2());
 }
 

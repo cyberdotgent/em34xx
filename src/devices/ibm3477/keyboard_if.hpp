@@ -4,19 +4,21 @@
 // The interface is a byte-wide shift register on the keyboard's clock/data
 // pair:
 //   20012 W  byte to send; R  last byte received
-//   20013 W  line control: bit 0 = hold (inhibit) the line, bit 1 = clock.
-//            Writing 03 holds the line, 02 releases it: a byte written to
-//            20012 is then sent, and the keyboard may send to the host.
-//            While bit 0 is set, each 0->1 transition of bit 1 clocks the
-//            shift register by hand; after 11 clocks (start, 8 data,
-//            parity, stop) the byte written to 20012 has looped back into
-//            the receive side (wrap test) [observed from the firmware's
-//            self-test; loop-back path is a hypothesis].
+//   20013 W  line control: 03 = line held (idle; the keyboard cannot
+//            send), 02 = line released: a byte written to 20012 is sent,
+//            and the keyboard may send to the host. While bit 0 is set,
+//            each 0->1 transition of bit 1 clocks the shift register by
+//            hand; after 11 clocks (start, 8 data, parity, stop) the byte
+//            written to 20012 has looped back into the receive side (wrap
+//            test) [observed from the firmware's self-test; the loop-back
+//            path is a hypothesis].
 //   20013 R  status: bit 0 = received odd-parity bit, bit 1 = busy
 //            sending, bit 2 = byte received
 //   20014 W  clear the receive status and the interrupt
-// A received byte raises the keyboard interrupt; the line stays blocked for
-// further keyboard bytes until the status is cleared.
+// A received byte raises the keyboard interrupt, and so does the end of a
+// transmission to the keyboard [observed: the firmware waits for one
+// interrupt per byte sent and discards it]. Either is cleared by 20014; the
+// keyboard cannot send while one is pending.
 #pragma once
 
 #include "input/set3_keyboard.hpp"
@@ -49,7 +51,7 @@ public:
     void host_key(const HostKeyEvent& ev) override { kbd_.host_key(ev); }
 
     uint8_t status() const;
-    bool interrupt_pending() const { return rx_full_; }
+    bool interrupt_pending() const { return rx_full_ || tx_done_; }
     uint64_t bytes_sent() const { return sent_; }
     uint64_t bytes_received() const { return received_; }
     std::string describe() const;
@@ -71,6 +73,7 @@ private:
 
     uint8_t rx_ = 0;
     bool rx_full_ = false;
+    bool tx_done_ = false;     // transmit-complete interrupt pending
     bool rx_parity_ = false;
     uint64_t rx_left_ = 0;     // cycles until the next keyboard byte arrives
     bool rx_active_ = false;

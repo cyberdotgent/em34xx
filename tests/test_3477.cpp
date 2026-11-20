@@ -48,10 +48,20 @@ struct Sys {
         }
         return false;
     }
+    // Send a byte and take the transmit-complete interrupt.
     void send(uint8_t b) {
         w(0x20013, 0x03);
         w(0x20014, 0x00);
         w(0x20012, b);
+        w(0x20013, 0x02);
+        CHECK((r(0x20013) & 0x02) != 0);   // busy while sending
+        for (int i = 0; i < 5000 && (r(0x20013) & 0x02); ++i) sys->tick(8);
+        CHECK((r(0x20013) & 0x02) == 0);
+        CHECK((r(0x20013) & 0x04) == 0);   // nothing received yet
+        CHECK(kbd->interrupt_pending());
+        w(0x20013, 0x03);
+        w(0x20014, 0xFF);
+        CHECK_FALSE(kbd->interrupt_pending());
         w(0x20013, 0x02);
     }
 };
@@ -220,7 +230,8 @@ TEST_CASE("3477 straps follow the display subtype") {
 TEST_CASE("3477 keyboard interface: power-on, reset and ID handshake") {
     Sys s;
     s.w(0x20007, 0x01);
-    // Line held: nothing arrives.
+    // Clock held low (01): the keyboard is inhibited and nothing arrives.
+    s.w(0x20013, 0x01);
     s.run_us(3000);
     CHECK((s.r(0x20013) & 0x04) == 0);
 
@@ -236,7 +247,6 @@ TEST_CASE("3477 keyboard interface: power-on, reset and ID handshake") {
 
     // Reset command: FA, AA and the ID bytes; each byte raises vector 0E.
     s.send(0xFF);
-    CHECK((s.r(0x20013) & 0x02) != 0);   // busy while sending
     std::vector<uint8_t> got;
     for (int i = 0; i < 4; ++i) {
         for (int t = 0; t < 5000 && !(s.r(0x20013) & 0x04); ++t) s.sys->tick(8);
@@ -256,6 +266,7 @@ TEST_CASE("3477 keyboard interface: power-on, reset and ID handshake") {
     // Interrupt is gated by 20007 bit 0.
     s.w(0x20007, 0x00);
     s.send(0xEE);
+    CHECK_FALSE(s.sys->interrupts().intr_asserted());
     s.run_us(3000);
     CHECK((s.r(0x20013) & 0x04) != 0);
     CHECK_FALSE(s.sys->interrupts().intr_asserted());
