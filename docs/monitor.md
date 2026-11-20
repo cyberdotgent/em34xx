@@ -81,3 +81,12 @@ stdin (when it is not a terminal), and from GDB's `monitor` command.
 
 A script stops at the first command error. With `--batch`, a failed script
 exits with code 2.
+
+## From GDB
+
+`monitor <cmd>` in GDB runs a command on the stub's connection. Output is
+sent as GDB console-output packets (at most 1 KiB of text each) while the
+command runs, so long output such as `monitor trace #500` arrives complete.
+The reply is always `OK`; a failed command shows `error: ...` in its output.
+`tools/tn34xx.gdb` runs `monitor regs` at every stop. GDB addresses are
+linear: use `lin`, `bseg`, `useg` and `wseg` from that file for `seg:off`.

@@ -80,11 +80,28 @@ assert expr msg   for scripts; failures give exit code 1
 ### GDB
 
 ```sh
-gdb-multiarch -ex 'target remote :1234'
+gdb-multiarch -x tools/tn34xx.gdb -ex 'target remote :1234'
 ```
 
 The stub describes an i8086 target. `eip` is the linear address of CS:IP,
-and memory addresses are linear. `monitor <cmd>` runs any monitor command.
+and memory addresses are linear. `monitor <cmd>` runs any monitor command;
+its output streams to GDB while the command runs.
+
+[tools/tn34xx.gdb](tools/tn34xx.gdb) sets up 16-bit Intel-syntax
+disassembly, shows `monitor regs` and the next instructions at every stop,
+and adds segmented-address helpers (numbers are hex, as in the monitor;
+`SEG:OFF` and register names also work):
+
+```
+lin  SEG OFF          linear address of SEG:OFF
+bseg SEG OFF          breakpoint at SEG:OFF
+useg SEG OFF [N]      disassemble N instructions at SEG:OFF
+wseg SEG OFF [LEN]    write watchpoint on LEN bytes at SEG:OFF
+tnc  [PORT]           target remote :PORT (default 1234)
+```
+
+When GDB stops with SIGBUS, the machine hit an unexpected access (see
+`--unmapped`); `monitor policy log` keeps running past them.
 
 ## Host connection
 
