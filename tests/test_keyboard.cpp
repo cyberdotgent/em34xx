@@ -151,6 +151,16 @@ TEST_CASE("122-key host mapping") {
     CHECK(Set3Keyboard::hid_to_set3(KeyboardType::Enhanced, 0x1000) == 0x00);
 }
 
+TEST_CASE("FA on the Enhanced keyboard sets all keys") {
+    Set3Keyboard k(KeyboardType::Enhanced, 0x7F, 0x7F);
+    k.set_bat_sends_id(false);
+    k.power_on();
+    drain(k);
+    k.host_write(0xFA);
+    CHECK(drain(k) == Bytes{0xFA});
+    CHECK(k.key_mode(0x21) == Set3Keyboard::TypematicMakeBreak);
+}
+
 TEST_CASE("key mode commands") {
     Set3Keyboard k;
     k.set_bat_sends_id(false);
@@ -183,8 +193,12 @@ TEST_CASE("key mode commands") {
     press(k, 0x06, false);
     CHECK(drain(k) == Bytes{0x32, 0xF0, 0x32, 0x21});
 
+    // 122-key terminal keyboard: FA takes a key list.
     k.host_write(0xFA);
-    CHECK(k.key_mode(0x21) == Set3Keyboard::TypematicMakeBreak);
+    k.host_write(0x61);
+    CHECK(drain(k) == Bytes{0xFA, 0xFA});
+    CHECK(k.key_mode(0x61) == Set3Keyboard::TypematicMakeBreak);
+    CHECK(k.key_mode(0x21) != Set3Keyboard::TypematicMakeBreak);
     k.host_write(0xF7);
     CHECK(k.key_mode(0x21) == Set3Keyboard::Typematic);
     k.host_write(0xF6);  // defaults

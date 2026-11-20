@@ -300,7 +300,18 @@ void Set3Keyboard::command(uint8_t cmd) {
     case 0xF7: respond(kAck); set_all(Typematic); break;
     case 0xF8: respond(kAck); set_all(MakeBreak); break;
     case 0xF9: respond(kAck); set_all(MakeOnly); break;
-    case 0xFA: respond(kAck); set_all(TypematicMakeBreak); break;
+    case 0xFA:
+        respond(kAck);
+        if (type_ == KeyboardType::Terminal122) {
+            // The terminal keyboard takes a key list after FA, like FB/FC/FD
+            // (observed: 1390876 per seasip, and the 3477 firmware sends FA
+            // followed by key codes); the PC Enhanced keyboard sets all keys.
+            list_mode_ = TypematicMakeBreak;
+            pending_ = Pending::KeyList;
+        } else {
+            set_all(TypematicMakeBreak);
+        }
+        break;
     case 0xFB: respond(kAck); list_mode_ = Typematic; pending_ = Pending::KeyList; break;
     case 0xFC: respond(kAck); list_mode_ = MakeBreak; pending_ = Pending::KeyList; break;
     case 0xFD: respond(kAck); list_mode_ = MakeOnly; pending_ = Pending::KeyList; break;

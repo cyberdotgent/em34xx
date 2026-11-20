@@ -54,6 +54,7 @@ Host-to-keyboard commands implemented by `Set3Keyboard`:
 | `F9` | All keys make only | `FA` |
 | `FA` | All keys typematic/make/break | `FA` |
 | `FB` / `FC` / `FD` `xx...` | Set listed keys typematic / make/break / make only | `FA` for the command and for each code; the list ends at the next command byte (≥ `ED`) |
+| `FA` `xx...` (122-key) | Set listed keys typematic/make/break | as `FB` (terminal keyboard quirk, see below) |
 | `FE` | Resend | the last byte the host read |
 | `FF` | Reset | `FA`, then BAT `AA` (plus ID, see below) |
 
@@ -63,7 +64,11 @@ awaited starts a new command; parameters and key codes are all below `ED`.
 Observed on the 122-key 1390876 ([seasip][seasip-1390876]): `F2` returns
 `BF BF`; reset returns `AA` **followed by the two ID bytes**; `F0` is refused;
 `FA` behaves like `FB`; the keyboard has no LEDs but checks the `ED` parameter
-is 0–7. The model follows the IBM reference for `F0` and `FA` and, by default,
+is 0–7. The 3477 firmware relies on the `FA` quirk: it sends `FA` followed
+by a list of key codes (observed, Offline Setup serial-number screen), so the
+122-key model takes a key list after `FA` and sets those keys
+typematic/make/break; the Enhanced model follows the IBM reference (all keys).
+The model follows the IBM reference for `F0` and, by default,
 appends the ID after `AA` for the 122-key type only
 (`Set3Keyboard::set_bat_sends_id`). Whether the terminals rely on this is
 unknown.
