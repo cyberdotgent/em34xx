@@ -72,6 +72,7 @@ bool load_config_file(const std::string& path, AppConfig& cfg, std::string& erro
         }
         get(*t, "eeprom", cfg.terminal.eeprom_path);
         get(*t, "nvram", cfg.terminal.nvram_path);
+        get(*t, "vdo_shim", cfg.terminal.vdo_shim);
     }
     if (auto* t = root["display"].as_table()) {
         get(*t, "crt", cfg.crt);
@@ -204,6 +205,9 @@ Unit options (one ROM serves all of these):
       --nvram FILE          battery-backed RAM image (3477: holds the setup
                             configuration); loaded at power-on, saved at exit.
                             Without it the RAM starts cleared every time
+      --no-vdo-shim         3477: do not stand in for the unmodelled video
+                            signature of the power-on display test (POST then
+                            stops at VDO); see docs/bringup-3477.md
       --list-keyboards      list keyboard layouts and their IDs
 
 Front end and monitor:
@@ -336,6 +340,7 @@ bool parse_command_line(int argc, char** argv, AppConfig& cfg, std::string& erro
             cfg.terminal.straps = int(n);
         } else if (a == "--eeprom") { if (!need(cfg.terminal.eeprom_path)) return false; }
         else if (a == "--nvram") { if (!need(cfg.terminal.nvram_path)) return false; }
+        else if (a == "--no-vdo-shim") cfg.terminal.vdo_shim = false;
         else if (a == "--headless") cfg.headless = true;
         else if (a == "--scale") {
             if (!need(v)) return false;
@@ -426,6 +431,7 @@ std::string config_to_toml(const AppConfig& cfg) {
             {"start_stopped", cfg.start_stopped},
             {"eeprom", cfg.terminal.eeprom_path},
             {"nvram", cfg.terminal.nvram_path},
+            {"vdo_shim", cfg.terminal.vdo_shim},
         }},
         {"display", toml::table{{"subtype", display_subtype_name(cfg.terminal.display)},
                                 {"crt", cfg.crt},

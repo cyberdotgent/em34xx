@@ -349,3 +349,85 @@ TEST_CASE("3477 display: I2C pass-through on 2012F") {
     m.stop();
     CHECK((r.status() & 0x03) == 0);
 }
+
+// TEMPORARY video signature shim (docs/bringup-3477.md, "Display test").
+namespace {
+// Run the display-test protocol: at the start of vertical retrace write the
+// selector with bit 7 clear, then set, and return bits 7-4 at the start of
+// the next retrace.
+uint8_t measure(Rig& r, int selector) {
+    const uint64_t frame = r.disp.cycles_per_frame();
+    while (!r.disp.in_retrace()) r.disp.tick(16);
+    while (r.disp.in_retrace()) r.disp.tick(16);
+    while (!r.disp.in_retrace()) r.disp.tick(16);   // start of a retrace
+    const uint8_t sel = uint8_t(0x18 | selector << 5 | 0x01);
+    r.reg(0x2F, sel);
+    r.reg(0x2F, uint8_t(sel | 0x80));
+    CHECK((r.status() >> 4) == 0);                  // nothing latched yet
+    uint64_t spent = 0;
+    while (r.disp.in_retrace()) { r.disp.tick(16); spent += 16; }
+    while (!r.disp.in_retrace()) { r.disp.tick(16); spent += 16; }
+    CHECK(spent <= frame + 16);                     // one field (tick granularity)
+    return uint8_t(r.status() >> 4);
+}
+
+void test_screen(Rig& r) {
+    r.mode_80x24_12px();
+    r.blank_screen(0xC200, 80 * 24);
+    r.blank_screen(0xEE00, 80);
+    r.glyph(0x18000, 0xC1);
+    r.cell(0xC200, 3, 7, 0xC1, 0x20);
+}
+} // namespace
+
+TEST_CASE("3477 display: VDO shim latches a result at the next retrace") {
+    Rig r;
+    test_screen(r);
+    CHECK(r.disp.vdo_shim());
+    const uint8_t v = measure(r, 1);
+    CHECK(v == r.disp.vdo_shim_signature(1));
+    CHECK((r.status() >> 4) == v);                  // held until bit 7 is cleared
+    r.disp.tick(r.disp.cycles_per_frame() * 2);
+    CHECK((r.status() >> 4) == v);
+    r.reg(0x2F, 0x39);                              // bit 7 clear: result discarded
+    CHECK((r.status() >> 4) == 0);
+    // Selector 00 is only required to be non-zero [obs].
+    CHECK(measure(r, 0) != 0);
+}
+
+TEST_CASE("3477 display: VDO shim switched off reads the sense nibble") {
+    TerminalOptions o;
+    o.vdo_shim = false;
+    Bus bus{20};
+    Ibm3477Display disp(bus, o);
+    CHECK_FALSE(disp.vdo_shim());
+    Rig r;
+    r.disp.set_vdo_shim(false);
+    test_screen(r);
+    CHECK(measure(r, 1) == 0);
+    CHECK(measure(r, 0) == 0);
+}
+
+TEST_CASE("3477 display: VDO fingerprint follows what is displayed") {
+    Rig r;
+    test_screen(r);
+    const uint64_t a = r.disp.vdo_fingerprint();
+    // Not part of the picture: time (blink phase), other RAM, glyphs that
+    // no displayed cell uses.
+    r.disp.tick(r.disp.cycles_per_frame() * 40);
+    r.bus.poke8(0x00100, 0x55);
+    r.bus.poke8(0x18000 + 0x77 * 32u, 0xFF);        // glyph no cell uses
+    CHECK(r.disp.vdo_fingerprint() == a);
+    // A displayed cell, a glyph a cell uses, a raster register.
+    r.cell(0xC200, 0, 0, 0xC1, 0x21);
+    const uint64_t b = r.disp.vdo_fingerprint();
+    CHECK(b != a);
+    r.bus.poke8(0x18000 + 0xC1 * 32u + 5, 0x3C);
+    const uint64_t c = r.disp.vdo_fingerprint();
+    CHECK(c != b);
+    r.reg(0x29, 0x0F);
+    CHECK(r.disp.vdo_fingerprint() != c);
+    // Different selectors may give different placeholder results, but the
+    // same frame and selector always give the same one.
+    CHECK(r.disp.vdo_shim_signature(1) == r.disp.vdo_shim_signature(1));
+}

@@ -1,6 +1,7 @@
 # Smoke test for the 3477 ROM set with the modelled hardware (no forced
-# results). It checks hardware-visible progress only, and asserts the
-# furthest stage an unmodified boot reaches.
+# results, apart from the temporary display-test shim). It checks
+# hardware-visible progress only, and asserts the furthest stage an
+# unmodified boot reaches.
 assert pc==ffff0 "reset vector"
 step
 assert cs==f000 "far jump into the F000 segment"
@@ -11,13 +12,14 @@ run #3000000
 assert word[18]!=0||word[1a]!=0 "vector 06h (timer) installed"
 assert word[38]!=0||word[3a]!=0 "vector 0Eh (keyboard) installed"
 # The communications loop-back test passes with the Twinax engine. The
-# display test then measures a 4-bit video signature in 2012F bits 7-4; it
-# is not modelled (reads 0), so POST stops there with the alarm latch set.
-# This is the furthest stage of an unmodified boot; update it when the
-# signature is modelled.
-assert (byte[2012f]&f0)==0 "video signature not modelled"
-assert word[20130]==4200 "the display test programmed its test screen"
-assert byte[20010]==9b "POST stopped at the display test"
+# display test (VDO) measures a 4-bit video signature in 2012F bits 7-4;
+# its function is unknown and a TEMPORARY shim in the display controller
+# stands in for it (docs/bringup-3477.md). POST must pass it and, with no
+# saved setup (cleared battery RAM), end in Offline Setup.
+run #22000000
+assert byte[20010]!=9b "no alarm: POST passed the display test"
+assert word[20130]==4200 "main window at C200"
+assert byte[c257]==d6&&byte[c25a]==86&&byte[c25d]==86 "row 0 shows 'Off(line Setup)' in EBCDIC"
 unmapped
 info
 quit

@@ -1,6 +1,7 @@
 #include "devices/ibm3477/display.hpp"
 
 #include "devices/i2c.hpp"
+#include "util/log.hpp"
 #include "util/strings.hpp"
 
 #include <algorithm>
@@ -104,7 +105,7 @@ CellLook decode_attr(uint8_t attr, bool colour) {
 } // namespace
 
 Ibm3477Display::Ibm3477Display(Bus& bus, const TerminalOptions& opts)
-    : Device("display"), bus_(bus), opts_(opts) {
+    : Device("display"), bus_(bus), opts_(opts), vdo_shim_(opts.vdo_shim) {
     reset();
 }
 
@@ -122,6 +123,9 @@ void Ibm3477Display::reset() {
     frames_ = 0;
     in_retrace_ = false;
     block_pending_ = false;
+    sig_measuring_ = false;
+    sig_valid_ = false;
+    sig_result_ = 0;
     set_irq_line(false);
     recompute_timing();
 }
@@ -149,6 +153,13 @@ void Ibm3477Display::tick(uint64_t cycles) {
     }
     // Each frame begins with vertical retrace.
     const bool retrace = phase_ < retrace_cycles_;
+    if (frame_started && sig_measuring_) {
+        // A signature measurement covers the field up to the start of the
+        // next vertical retrace, where the result is latched [obs protocol].
+        sig_measuring_ = false;
+        sig_valid_ = true;
+        sig_result_ = vdo_shim_signature((regs_[kRegStatus] >> 5) & 3);
+    }
     if ((frame_started || (retrace && !in_retrace_)) && block_pending_) {
         // A block request completes at the next vertical retrace [hyp].
         block_pending_ = false;
@@ -159,7 +170,7 @@ void Ibm3477Display::tick(uint64_t cycles) {
 
 uint8_t Ibm3477Display::read_status() const {
     const uint8_t w = regs_[kRegStatus];
-    uint8_t v = uint8_t(sense_ << 4);
+    uint8_t v = uint8_t((sig_valid_ ? sig_result_ : sense_) << 4);
     if ((w & 0x01) || (i2c_ && !i2c_->sda_in())) v |= 0x01;
     if (w & 0x02) v |= 0x02;
     if (in_retrace_) v |= 0x08;
@@ -176,9 +187,19 @@ uint8_t Ibm3477Display::peek8(uint32_t offset) { return mmio_read8(offset); }
 
 void Ibm3477Display::mmio_write8(uint32_t offset, uint8_t value) {
     offset &= 0xFF;
+    const uint8_t old = regs_[offset];
     regs_[offset] = value;
     switch (offset) {
     case kRegStatus:
+        // Bit 7 starts a signature measurement on its rising edge; clearing
+        // it discards the result [obs protocol]. Only the shim measures.
+        if (!(value & 0x80)) {
+            sig_measuring_ = false;
+            sig_valid_ = false;
+        } else if (!(old & 0x80) && vdo_shim_) {
+            sig_measuring_ = true;
+            sig_valid_ = false;
+        }
         // Open-drain I2C master: a 1 bit pulls the line low.
         if (i2c_) i2c_->set_lines(!(value & 0x02), !(value & 0x01));
         break;
@@ -231,7 +252,11 @@ std::string Ibm3477Display::describe() const {
                   enabled() ? "enabled" : "blanked", g.cols, g.rows, g.status_rows, g.cell_w, g.cell_h,
                   g.main_start, g.status_start, regs_[kRegCursorRow], regs_[kRegCursorCol],
                   (regs_[kRegControl] & kCtlCursor) ? "on" : "off", (unsigned long long)frames_,
-                  in_retrace_ ? 1 : 0, irq_pending_ ? 1 : 0, block_pending_ ? 1 : 0);
+                  in_retrace_ ? 1 : 0, irq_pending_ ? 1 : 0, block_pending_ ? 1 : 0) +
+           format("  video signature: shim %s (temporary), %s\n", vdo_shim_ ? "on" : "off",
+                  sig_measuring_ ? "measuring"
+                  : sig_valid_   ? format("result %X", sig_result_).c_str()
+                                 : "idle");
 }
 
 uint8_t Ibm3477Display::mem(uint32_t addr) const {
@@ -319,5 +344,120 @@ void Ibm3477Display::render(Framebuffer& fb) {
 // are observed on the bus (model_3477.cpp); only the blink phase changes the
 // picture on its own.
 uint64_t Ibm3477Display::animation_phase() const { return frames_ / kBlinkFrames; }
+
+// ---------------------------------------------------------------------------
+// TEMPORARY: video signature shim for the power-on display test (VDO).
+//
+// The hardware behind 2012F bits 7-4 folds one field of video into a 4-bit
+// signature; the function is not known (docs/bringup-3477.md, "Display
+// test"). The firmware compares it with expected values for six test
+// screens and halts POST on a mismatch. Until the function is measured on a
+// real unit, this shim returns the measured result for those screens.
+//
+// It is keyed only on hardware-visible state: the selector written to
+// 2012F bits 6-5 and a fingerprint of the frame the controller displayed
+// (vdo_fingerprint(): registers that define the raster, plus every displayed
+// cell and the glyph scan lines it fetches). The display type enters through
+// the timing registers, which differ per tube. Nothing here looks at the
+// CPU, the firmware's code addresses or its stack, and the table holds no
+// ROM bytes: only fingerprints computed by this emulator and the 4-bit
+// results the hardware is expected to measure for them (the results the
+// display test requires, i.e. what a working unit reads).
+//
+// Replace this with the real signature function (and delete the table) once
+// single-dot signatures or the gate array documentation are available.
+// Switch: TerminalOptions::vdo_shim / --no-vdo-shim / [emulator] vdo_shim.
+// ---------------------------------------------------------------------------
+namespace {
+
+struct VdoShimEntry {
+    uint8_t selector;
+    uint64_t fingerprint;
+    uint8_t nibble;
+    const char* screen;   // what the frame shows, for the log
+};
+
+// Calibration table (temporary). Fingerprints of the display test's screens
+// as computed by vdo_fingerprint() with this emulator; nibbles are the
+// signatures a working unit measures for them. Display types 3 and 4 use
+// identical raster settings, so their entries coincide.
+constexpr VdoShimEntry kVdoShimTable[] = {
+    {1, 0xCB6EF411973D33EAULL, 0x2, "24x80 corner cells (types 3/4)"},
+    {1, 0xEFC13297CCF74DBCULL, 0x0, "nearly empty (types 3/4)"},
+    {1, 0x1FCA31D7A1B20935ULL, 0x6, "nearly empty + cursor (types 3/4)"},
+    {1, 0x409CB7A1EE91713EULL, 0xF, "27x132 corner cells (types 3/4)"},
+    {1, 0x5AD4EEB6A5C7463BULL, 0x9, "43x80 corner cells (types 3/4)"},
+    {2, 0xCB6EF411973D33EAULL, 0x2, "24x80 corner cells (types 3/4)"},
+    {1, 0xECA33D0B60D0E183ULL, 0xA, "24x80 corner cells (type 5)"},
+    {2, 0xECA33D0B60D0E183ULL, 0x5, "24x80 corner cells (type 5)"},
+    {1, 0x8BB1434A1854F05DULL, 0xF, "nearly empty (type 5)"},
+    {1, 0x6DBCB42E33A89264ULL, 0x1, "nearly empty + cursor (type 5)"},
+    {1, 0x16BE48B1B1006520ULL, 0xB, "27x132 corner cells (type 5)"},
+    {1, 0xCEADB1520B23E369ULL, 0x3, "43x80 corner cells (type 5)"},
+};
+
+constexpr uint64_t kFnvOffset = 0xCBF29CE484222325ull;
+constexpr uint64_t kFnvPrime = 0x100000001B3ull;
+
+inline void fnv(uint64_t& h, uint8_t b) {
+    h ^= b;
+    h *= kFnvPrime;
+}
+
+} // namespace
+
+uint64_t Ibm3477Display::vdo_fingerprint() const {
+    uint64_t h = kFnvOffset;
+    // Raster definition: CRT timing block and cursor position (00-18), mode
+    // block (25-2E: cell width, column mode, cursor, video control and
+    // inversion), window start addresses (30-35).
+    for (uint32_t r = 0x00; r <= 0x18; ++r) fnv(h, regs_[r]);
+    for (uint32_t r = 0x25; r <= 0x2E; ++r) fnv(h, regs_[r]);
+    for (uint32_t r = 0x30; r <= 0x35; ++r) fnv(h, regs_[r]);
+    if (!enabled()) return h;
+    // What the controller fetches for every displayed cell.
+    const Geometry g = geometry();
+    const uint32_t stride = uint32_t(g.cols) * 3;
+    for (int row = 0; row < g.rows + g.status_rows; ++row) {
+        const bool status = row >= g.rows;
+        const uint32_t base = status ? g.status_start + uint32_t(row - g.rows) * stride
+                                     : g.main_start + uint32_t(row) * stride;
+        for (int c = 0; c < g.cols; ++c) {
+            const uint32_t cell = base + uint32_t(c) * 3;
+            const uint8_t code = bus_.peek8(cell);
+            const uint8_t attr = bus_.peek8(cell + 1);
+            fnv(h, code);
+            fnv(h, attr);
+            fnv(h, bus_.peek8(cell + 2));
+            const uint32_t glyph = kCharGenBase + ((attr & 0x80) ? 0x4000u : 0u) + uint32_t(code) * 32;
+            for (int line = 0; line < g.cell_h && line < 32; ++line) {
+                fnv(h, bus_.peek8(glyph + uint32_t(line)));
+                if (g.cell_w > 8) fnv(h, bus_.peek8(glyph + 0x2000 + uint32_t(line)));
+            }
+        }
+    }
+    return h;
+}
+
+uint8_t Ibm3477Display::vdo_shim_signature(int selector) const {
+    selector &= 3;
+    const uint64_t fp = vdo_fingerprint();
+    for (const VdoShimEntry& e : kVdoShimTable) {
+        if (e.selector == selector && e.fingerprint == fp) {
+            LOG_DEBUG("display", "vdo shim: selector %d, frame %016llX (%s) -> %X", selector,
+                      (unsigned long long)fp, e.screen, e.nibble);
+            return e.nibble;
+        }
+    }
+    // Unknown frame: a placeholder that depends on the frame and selector.
+    // Selector 00 is only required to be non-zero [obs], so it never reads 0.
+    uint8_t v = 0;
+    for (int i = 0; i < 64; i += 4) v ^= uint8_t((fp >> i) & 0x0F);
+    v = uint8_t((v ^ selector) & 0x0F);
+    if (selector == 0 && v == 0) v = 1;
+    LOG_DEBUG("display", "vdo shim: selector %d, frame %016llX (not in table) -> %X", selector,
+              (unsigned long long)fp, v);
+    return v;
+}
 
 } // namespace tn34xx

@@ -103,8 +103,10 @@ public:
             "Twinax engine: two station channels, programs and descriptors in RAM; poll, activate and "
             "queue handling and the loopback test path follow docs/bringup-3477.md (hypothesis)",
             "display controller at 20100: character window from RAM, glyphs from character-generator "
-            "RAM; POST test VDO compares a 4-bit video signature (2012F bits 7-4) that is not "
-            "modelled, so POST stops there (see docs/bringup-3477.md)",
+            "RAM; POST test VDO compares a 4-bit video signature (2012F bits 7-4) whose function is "
+            "unknown; a TEMPORARY shim returns measured results for the test screens, keyed on the "
+            "selector and a fingerprint of the displayed frame (--no-vdo-shim turns it off; "
+            "see docs/bringup-3477.md)",
         };
     }
 

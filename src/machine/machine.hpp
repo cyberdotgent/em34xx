@@ -60,6 +60,9 @@ struct TerminalOptions {
     std::string eeprom_path;
     // Image of the battery-backed RAM; empty = volatile (cleared at power-on).
     std::string nvram_path;
+    // 3477: TEMPORARY stand-in for the unmodelled video signature of the
+    // power-on display test (see Ibm3477Display, docs/bringup-3477.md).
+    bool vdo_shim = true;
 };
 
 struct Breakpoint {

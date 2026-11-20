@@ -23,7 +23,10 @@
 //          above the status line, bit7 cursor on [hyp]
 //   2F     W: bit0 SDA pull low, bit1 SCL pull low (I2C master) [obs]
 //          R: bit0 SDA low, bit1 SCL low, bit3 vertical retrace [obs],
-//             bits 7..4 monitor sense nibble [obs, meaning unknown]
+//             bits 7..4 video signature of the last measured frame [obs
+//             protocol]; written bits 6-5 select the source, bit 7 starts a
+//             measurement [obs]. The signature function is unknown: see the
+//             TEMPORARY VDO shim below and docs/bringup-3477.md.
 //   30-31  start offset of the main window, relative to 8000 [obs]
 //   34-35  start offset of the status line, relative to 8000 [obs]
 //   36     W: acknowledge the display interrupt (vector 0Ch) [obs]
@@ -66,8 +69,28 @@ public:
     void set_i2c(I2cBus* bus);
     // CPU clock used to derive frame timing (default 8 MHz).
     void set_clock_hz(uint64_t hz);
-    // Monitor sense nibble presented in 2012F bits 7..4.
+    // Value of 2012F bits 7..4 when no signature result is latched.
     void set_sense(uint8_t nibble) { sense_ = uint8_t(nibble & 0x0F); }
+
+    // --- TEMPORARY: video signature shim (power-on display test, VDO) ---
+    // The real hardware folds one frame of video into a 4-bit signature
+    // whose function is unknown (docs/bringup-3477.md, "Display test").
+    // Until it is measured, the shim stands in for it: a measurement (2012F
+    // bit 7 set) ends at the next start of vertical retrace and latches a
+    // nibble looked up from the selector (bits 6-5) and a fingerprint of the
+    // frame the controller displayed (vdo_fingerprint()), in a small table of
+    // results measured for the test screens. Unknown frames get a
+    // placeholder nibble. It never looks at the CPU or firmware state.
+    // On by default; TerminalOptions::vdo_shim = false (--no-vdo-shim)
+    // turns it off, and bits 7..4 then read the sense nibble (0).
+    void set_vdo_shim(bool on) { vdo_shim_ = on; }
+    bool vdo_shim() const { return vdo_shim_; }
+    // Fingerprint (64-bit FNV-1a) of what the controller shows: its timing,
+    // mode, cursor and window registers and, for every displayed cell, the
+    // cell bytes and the glyph scan lines it fetches.
+    uint64_t vdo_fingerprint() const;
+    // The shim's result for a selector (0-3) and the current frame.
+    uint8_t vdo_shim_signature(int selector) const;
 
     // --- Device ------------------------------------------------------
     uint8_t mmio_read8(uint32_t offset) override;
@@ -121,6 +144,11 @@ private:
     bool in_retrace_ = false;
     bool irq_pending_ = false;
     bool block_pending_ = false;
+    // Signature measurement (see the TEMPORARY shim above).
+    bool vdo_shim_ = true;
+    bool sig_measuring_ = false;
+    bool sig_valid_ = false;
+    uint8_t sig_result_ = 0;
 };
 
 } // namespace tn34xx
