@@ -12,6 +12,15 @@ struct Framebuffer {
     int width = 0;
     int height = 0;
     std::vector<uint32_t> pixels;
+    // Physical width/height ratio of the visible raster on the real tube.
+    // Terminal pixels are generally not square (e.g. 1280x525 shown on a 4:3
+    // CRT), so presentation stretches the frame to this ratio. 0 = square.
+    double display_aspect = 0.0;
+
+    // Size at which the frame should be presented for a given width.
+    int presented_height() const {
+        return display_aspect > 0.0 ? int(double(width) / display_aspect + 0.5) : height;
+    }
 
     void resize(int w, int h) {
         width = w;

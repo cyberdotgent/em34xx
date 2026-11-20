@@ -76,7 +76,7 @@ stdin (when it is not a terminal), and from GDB's `monitor` command.
 | `assert expr [message]` | Count a failure if `expr` is zero. |
 | `echo text` | Print text. |
 | `source file` | Run another script. |
-| `screenshot file.bmp\|file.ppm` | Save the display. |
+| `screenshot file.bmp\|file.ppm [raw]` | Save the display, stretched to the tube's proportions (4:3 on the 3477) unless `raw`. |
 | `quit [code]` | Exit. The default code is 1 if any assertion failed, otherwise 0. |
 
 A script stops at the first command error. With `--batch`, a failed script

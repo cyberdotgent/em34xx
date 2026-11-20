@@ -24,7 +24,7 @@ struct AppConfig {
 
     // Front end
     bool headless = false;
-    int scale = 2;
+    int scale = 1;
 
     // Monitor
     std::string rc_file;

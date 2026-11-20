@@ -74,3 +74,13 @@ TEST_CASE("keyboard ID resolution") {
     t.keyboard_type = "qwerty";
     CHECK_FALSE(resolve_keyboard_id(t, a, b, err));
 }
+
+TEST_CASE("framebuffer presentation follows the tube's aspect ratio") {
+    Framebuffer fb;
+    fb.resize(1280, 525);
+    CHECK(fb.presented_height() == 525);   // square pixels by default
+    fb.display_aspect = 4.0 / 3.0;
+    CHECK(fb.presented_height() == 960);
+    fb.resize(960, 525);
+    CHECK(fb.presented_height() == 720);
+}

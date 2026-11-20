@@ -6,6 +6,8 @@
 
 #include <SDL3/SDL.h>
 
+#include <algorithm>
+
 namespace tn34xx {
 
 namespace {
@@ -14,7 +16,7 @@ struct SdlSession {
     SDL_Window* window = nullptr;
     SDL_Renderer* renderer = nullptr;
     SDL_Texture* texture = nullptr;
-    int tex_w = 0, tex_h = 0;
+    int tex_w = 0, tex_h = 0, pres_h = 0;
 
     ~SdlSession() {
         if (texture) SDL_DestroyTexture(texture);
@@ -36,7 +38,19 @@ bool run_sdl_frontend(Emulator& emu, const FrontendOptions& opts, std::string& e
     Framebuffer fb;
     emu.with_machine([&](Machine& m) { m.render(fb); });
 
-    s.window = SDL_CreateWindow(opts.title.c_str(), fb.width * opts.scale, fb.height * opts.scale, SDL_WINDOW_RESIZABLE);
+    // Initial window: the aspect-corrected frame times the scale factor,
+    // shrunk if needed to fit the usable desktop area.
+    int win_w = fb.width * opts.scale;
+    int win_h = fb.presented_height() * opts.scale;
+    SDL_Rect usable;
+    if (SDL_GetDisplayUsableBounds(SDL_GetPrimaryDisplay(), &usable) && usable.w > 0 && usable.h > 0) {
+        const double fit = std::min(0.9 * usable.w / win_w, 0.9 * usable.h / win_h);
+        if (fit < 1.0) {
+            win_w = int(win_w * fit);
+            win_h = int(win_h * fit);
+        }
+    }
+    s.window = SDL_CreateWindow(opts.title.c_str(), win_w, win_h, SDL_WINDOW_RESIZABLE);
     if (!s.window) {
         error = std::string("SDL_CreateWindow failed: ") + SDL_GetError();
         return false;
@@ -72,7 +86,7 @@ bool run_sdl_frontend(Emulator& emu, const FrontendOptions& opts, std::string& e
         }
 
         emu.with_machine([&](Machine& m) { m.render(fb); });
-        if (!s.texture || s.tex_w != fb.width || s.tex_h != fb.height) {
+        if (!s.texture || s.tex_w != fb.width || s.tex_h != fb.height || s.pres_h != fb.presented_height()) {
             if (s.texture) SDL_DestroyTexture(s.texture);
             s.texture = SDL_CreateTexture(s.renderer, SDL_PIXELFORMAT_ARGB8888, SDL_TEXTUREACCESS_STREAMING,
                                           fb.width, fb.height);
@@ -80,10 +94,15 @@ bool run_sdl_frontend(Emulator& emu, const FrontendOptions& opts, std::string& e
                 error = std::string("SDL_CreateTexture failed: ") + SDL_GetError();
                 return false;
             }
-            SDL_SetTextureScaleMode(s.texture, SDL_SCALEMODE_NEAREST);
-            SDL_SetRenderLogicalPresentation(s.renderer, fb.width, fb.height, SDL_LOGICAL_PRESENTATION_LETTERBOX);
+            // Square-pixel frames scale cleanly with nearest-neighbour. Frames
+            // with a non-square pixel aspect are stretched by a non-integer
+            // factor, where linear filtering avoids uneven scan lines.
+            SDL_SetTextureScaleMode(s.texture, fb.display_aspect > 0.0 ? SDL_SCALEMODE_LINEAR : SDL_SCALEMODE_NEAREST);
+            SDL_SetRenderLogicalPresentation(s.renderer, fb.width, fb.presented_height(),
+                                             SDL_LOGICAL_PRESENTATION_LETTERBOX);
             s.tex_w = fb.width;
             s.tex_h = fb.height;
+            s.pres_h = fb.presented_height();
         }
         SDL_UpdateTexture(s.texture, nullptr, fb.pixels.data(), fb.width * 4);
         SDL_SetRenderDrawColor(s.renderer, 0, 0, 0, 255);

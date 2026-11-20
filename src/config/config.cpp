@@ -191,7 +191,7 @@ Unit options (one ROM serves all of these):
 
 Front end and monitor:
       --headless            no window; the monitor runs on stdin/stdout
-      --scale N             window scale factor (default 2)
+      --scale N             window size factor (default 1, aspect-corrected)
       --rc FILE             run monitor commands from FILE at start-up
       --batch               exit after the rc file (implies --headless)
   -S, --stopped             start with the CPU stopped at the reset vector

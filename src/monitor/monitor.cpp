@@ -348,7 +348,7 @@ void Monitor::register_commands() {
     add("reset", {}, "", "reset the machine", [this](A a) { return cmd_reset(a); });
     add("info", {"i"}, "", "model, ROMs and execution counters", [this](A a) { return cmd_info(a); });
     add("speed", {}, "[percent|max]", "show or set emulation speed", [this](A a) { return cmd_speed(a); });
-    add("screenshot", {}, "file.bmp|file.ppm", "save the current display", [this](A a) { return cmd_screenshot(a); });
+    add("screenshot", {}, "file.bmp|file.ppm [raw]", "save the display (aspect-corrected unless raw)", [this](A a) { return cmd_screenshot(a); });
     add("twinax", {}, "status|send f/a ...|recv", "inspect or drive the Twinax line", [this](A a) { return cmd_twinax(a); });
     add("eeprom", {"nvram"}, "[dump|save [file]]", "show, dump or save the setup EEPROM", [this](A a) { return cmd_eeprom(a); });
     add("assert", {}, "expr [message]", "fail the script if expr is zero", [this](A a) { return cmd_assert(a); });
@@ -912,9 +912,20 @@ bool Monitor::cmd_speed(const std::vector<std::string>& a) {
 }
 
 bool Monitor::cmd_screenshot(const std::vector<std::string>& a) {
-    if (a.size() < 2) return fail("usage: screenshot file.bmp|file.ppm");
+    if (a.size() < 2) return fail("usage: screenshot file.bmp|file.ppm [raw]");
     Framebuffer fb;
     emu_.with_machine([&](Machine& m) { m.render(fb); });
+    const bool raw = a.size() > 2 && to_lower(a[2]) == "raw";
+    if (!raw && fb.presented_height() != fb.height) {
+        // Resample rows so the image has the tube's proportions.
+        Framebuffer out;
+        out.resize(fb.width, fb.presented_height());
+        for (int y = 0; y < out.height; ++y) {
+            const int src = std::min(fb.height - 1, int((y + 0.5) * fb.height / out.height));
+            std::copy(fb.row(src), fb.row(src) + fb.width, out.row(y));
+        }
+        fb = std::move(out);
+    }
     std::string err;
     if (!write_image(a[1], fb, err)) return fail(err);
     out(format("saved %dx%d screenshot to %s\n", fb.width, fb.height, a[1].c_str()));

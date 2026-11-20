@@ -8,6 +8,10 @@
 namespace tn34xx {
 
 namespace {
+constexpr double kDisplayAspect = 4.0 / 3.0;
+}
+
+namespace {
 
 // Register offsets within the 20100 page. See the header for the labels.
 constexpr uint32_t kRegCellLines = 0x0F;   // scan lines per row - 1
@@ -258,6 +262,10 @@ void Ibm3477Display::draw_row(Framebuffer& fb, uint32_t addr, int y0, int cols, 
 }
 
 void Ibm3477Display::render(Framebuffer& fb) {
+    // The 3477 uses a 4:3 CRT; the active raster is assumed to fill that
+    // area (hypothesis: overscan/border not yet derived from the CRT timing
+    // registers).
+    fb.display_aspect = kDisplayAspect;
     if (!enabled()) {
         const int w = last_w_ ? last_w_ : 80 * 12, h = last_h_ ? last_h_ : 25 * 21;
         if (fb.width != w || fb.height != h) fb.resize(w, h);
