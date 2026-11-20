@@ -6,7 +6,7 @@
 // hardware, never through ROM patches.
 #pragma once
 
-#include "machine/display_profile.hpp"
+#include "machine/display_subtype.hpp"
 
 #include <cstdint>
 #include <map>

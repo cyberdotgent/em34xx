@@ -4,9 +4,9 @@
 
 #include "bus/bus.hpp"
 #include "cpu/i86.hpp"
-#include "host/twinax_link.hpp"
-#include "machine/display_profile.hpp"
+#include "machine/display_subtype.hpp"
 #include "machine/peripherals.hpp"
+#include "machine/twinax_port.hpp"
 
 #include <atomic>
 #include <cstdint>
@@ -123,6 +123,8 @@ public:
     }
     TwinaxHost* twinax_host() const { return twinax_.get(); }
 
+    // The display device's raw frame; present/display_profile.hpp applies
+    // the display subtype (render_presented).
     void render(Framebuffer& fb);
     void key_event(const HostKeyEvent& ev);
 

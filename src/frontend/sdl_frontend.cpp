@@ -1,6 +1,7 @@
 #include "frontend/sdl_frontend.hpp"
 
 #include "machine/emulator.hpp"
+#include "present/display_profile.hpp"
 #include "util/log.hpp"
 #include "util/strings.hpp"
 
@@ -42,7 +43,7 @@ bool run_sdl_frontend(Emulator& emu, const FrontendOptions& opts, std::string& e
     SdlSession s;
 
     Framebuffer fb;
-    emu.with_machine([&](Machine& m) { m.render(fb); });
+    emu.with_machine([&](Machine& m) { render_presented(m, fb); });
 
     // Initial window: the aspect-corrected frame times the scale factor,
     // shrunk if needed to fit the usable desktop area.
@@ -91,7 +92,7 @@ bool run_sdl_frontend(Emulator& emu, const FrontendOptions& opts, std::string& e
             }
         }
 
-        emu.with_machine([&](Machine& m) { m.render(fb); });
+        emu.with_machine([&](Machine& m) { render_presented(m, fb); });
 
         // Draw the tube at the window's real pixel size so the scan-line
         // structure is computed at the output resolution.

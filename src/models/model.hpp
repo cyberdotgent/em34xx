@@ -1,12 +1,14 @@
 // Terminal model definitions. Each model states its CPU, address space,
-// ROM set and memory/device map, and builds a Machine from that.
+// ROM set and memory/device map, and builds a Machine from that. ModelInfo
+// itself lives in machine/model_info.hpp, so the machine core does not
+// depend on the model registry.
 //
 // Every hardware fact a model encodes should be traceable to an observation
 // (board, datasheet, documentation) or be explicitly marked as a hypothesis
 // in its notes; see docs/models.md.
 #pragma once
 
-#include "cpu/i86.hpp"
+#include "machine/model_info.hpp"
 #include "rom/romset.hpp"
 
 #include <cstdint>
@@ -16,29 +18,6 @@
 namespace tn34xx {
 
 class Machine;
-
-enum class ModelStatus {
-    Bringup,        // ROMs good, hardware being reverse engineered
-    RomIncomplete,  // only a defective ROM dump is available
-    Placeholder,    // registered so the CLI knows it; cannot run yet
-};
-
-const char* model_status_name(ModelStatus s);
-
-struct ModelInfo {
-    std::string name;            // "3477"
-    std::string description;
-    ModelStatus status = ModelStatus::Placeholder;
-    CpuLevel cpu = CpuLevel::I8088;
-    unsigned address_bits = 20;
-    uint64_t clock_hz = 0;       // nominal CPU clock, used for pacing
-    unsigned max_sessions = 1;   // twinax station addresses (sessions) the unit can answer on;
-                                 // never more than TwinaxConfig::kMaxStationsPerBus (7)
-    unsigned max_printer_sessions = 0;  // of those, how many may be printer sessions
-    std::vector<RomSpec> roms;
-    std::vector<KnownBadRom> known_bad_roms;
-    std::vector<std::string> notes;  // hypotheses and open questions
-};
 
 class Model {
 public:

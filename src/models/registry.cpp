@@ -4,15 +4,6 @@
 
 namespace tn34xx {
 
-const char* model_status_name(ModelStatus s) {
-    switch (s) {
-    case ModelStatus::Bringup: return "bring-up";
-    case ModelStatus::RomIncomplete: return "ROM incomplete";
-    case ModelStatus::Placeholder: return "placeholder";
-    }
-    return "?";
-}
-
 std::string Model::can_build() const {
     if (info().status == ModelStatus::Placeholder)
         return "model " + info().name + " is a placeholder and cannot run yet";

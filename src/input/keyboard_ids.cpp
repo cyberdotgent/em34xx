@@ -1,5 +1,6 @@
 #include "input/keyboard_ids.hpp"
 
+#include "machine/machine.hpp"
 #include "util/strings.hpp"
 
 namespace tn34xx {
@@ -100,6 +101,39 @@ bool keyboard_id_bytes(KeyboardType type, const std::string& layout, uint8_t& id
     id1 = keyboard_id_first_byte(type);
     id2 = id;
     return true;
+}
+
+bool resolve_keyboard_id(const TerminalOptions& t, uint8_t& id1, uint8_t& id2, std::string& error) {
+    KeyboardType type;
+    if (!parse_keyboard_type(t.keyboard_type, type)) {
+        error = "unknown keyboard type '" + t.keyboard_type + "' (use 122 or enhanced)";
+        return false;
+    }
+    id1 = keyboard_id_first_byte(type);
+    if (t.keyboard_id >= 0) {
+        id2 = uint8_t(t.keyboard_id);
+        return true;
+    }
+    if (!find_keyboard_layout(t.keyboard_layout)) {
+        error = "unknown keyboard layout '" + t.keyboard_layout + "' (see --list-keyboards)";
+        return false;
+    }
+    if (!keyboard_id_bytes(type, t.keyboard_layout, id1, id2)) {
+        error = "no " + std::string(keyboard_type_name(type)) + " keyboard exists for layout '" +
+                t.keyboard_layout + "'";
+        return false;
+    }
+    return true;
+}
+
+std::string keyboard_layout_list() {
+    std::string out = format("%-14s %-6s %-9s %s\n", "layout", "122", "enhanced", "description");
+    for (const KeyboardLayoutInfo& l : keyboard_layouts()) {
+        out += format("%-14s %-6s %-9s %s%s\n", l.name, l.id122 ? format("%02X", l.id122).c_str() : "-",
+                      l.id_enhanced ? format("%02X", l.id_enhanced).c_str() : "-", l.description,
+                      l.documented ? "" : " (inferred)");
+    }
+    return out;
 }
 
 } // namespace tn34xx

@@ -18,7 +18,6 @@
 //  - Clock frequency unknown; 8 MHz is a pacing placeholder only.
 #include "models/model.hpp"
 
-#include "config/config.hpp"
 #include "devices/battery_ram.hpp"
 #include "devices/i2c.hpp"
 #include "devices/ibm3477/display.hpp"

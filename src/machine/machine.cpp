@@ -1,6 +1,6 @@
 #include "machine/machine.hpp"
 
-#include "models/model.hpp"
+#include "machine/model_info.hpp"
 #include "util/log.hpp"
 #include "util/strings.hpp"
 
@@ -143,7 +143,6 @@ void Machine::clear_breakpoints() {
 
 void Machine::render(Framebuffer& fb) {
     (display_ ? display_ : &fallback_display_)->render(fb);
-    apply_display_subtype(options_.display, fb);
 }
 
 void Machine::key_event(const HostKeyEvent& ev) {

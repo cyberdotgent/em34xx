@@ -46,4 +46,11 @@ bool keyboard_layout_id(KeyboardType type, const std::string& layout, uint8_t& i
 // Full two-byte reply to Read ID (0xF2), after the ACK; false if unknown.
 bool keyboard_id_bytes(KeyboardType type, const std::string& layout, uint8_t& id1, uint8_t& id2);
 
+struct TerminalOptions;
+
+// Check the keyboard type/layout and work out the two Read ID bytes the
+// emulated keyboard reports (an explicit keyboard_id replaces the second).
+bool resolve_keyboard_id(const TerminalOptions& t, uint8_t& id1, uint8_t& id2, std::string& error);
+std::string keyboard_layout_list();
+
 } // namespace tn34xx

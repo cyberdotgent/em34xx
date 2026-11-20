@@ -1,6 +1,6 @@
 #include "config/config.hpp"
-#include "frontend/crt_render.hpp"
-#include "machine/display_profile.hpp"
+#include "present/crt_render.hpp"
+#include "present/display_profile.hpp"
 
 #include <doctest/doctest.h>
 

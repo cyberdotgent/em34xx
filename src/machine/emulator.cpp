@@ -1,6 +1,6 @@
 #include "machine/emulator.hpp"
 
-#include "models/model.hpp"
+#include "machine/model_info.hpp"
 #include "util/log.hpp"
 
 #include <algorithm>

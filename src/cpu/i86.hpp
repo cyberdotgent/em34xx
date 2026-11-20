@@ -6,23 +6,13 @@
 // bus-cycle-accurate model of the prefetch queue.
 #pragma once
 
+#include "cpu/cpu.hpp"
 #include "cpu/cpu_bus.hpp"
 
 #include <cstdint>
 #include <string>
 
 namespace tn34xx {
-
-enum class CpuLevel {
-    I8086,
-    I8088,
-    I80186,
-    I80188,
-    I80286,
-};
-
-const char* cpu_level_name(CpuLevel level);
-bool parse_cpu_level(const std::string& text, CpuLevel& out);
 
 // Register indices follow the x86 instruction encoding.
 enum Reg16 { AX = 0, CX, DX, BX, SP, BP, SI, DI };

@@ -3,7 +3,8 @@
 #include "bus/probe_device.hpp"
 #include "config/connect_args.hpp"
 #include "cpu/i86_disasm.hpp"
-#include "frontend/crt_render.hpp"
+#include "present/crt_render.hpp"
+#include "present/display_profile.hpp"
 #include "machine/emulator.hpp"
 #include "models/model.hpp"
 #include "monitor/expr.hpp"
@@ -921,7 +922,7 @@ bool Monitor::cmd_speed(const std::vector<std::string>& a) {
 bool Monitor::cmd_screenshot(const std::vector<std::string>& a) {
     if (a.size() < 2) return fail("usage: screenshot file.bmp|file.ppm [raw]");
     Framebuffer fb;
-    emu_.with_machine([&](Machine& m) { m.render(fb); });
+    emu_.with_machine([&](Machine& m) { render_presented(m, fb); });
     const bool raw = a.size() > 2 && to_lower(a[2]) == "raw";
     if (!raw && (fb.presented_width() != fb.width || fb.presented_height() != fb.height)) {
         // Render the whole tube as the window shows it (CRT scan lines,

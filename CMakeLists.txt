@@ -74,7 +74,9 @@ add_library(tn34xx_core STATIC
   src/cpu/i86.cpp
   src/cpu/i86_disasm.cpp
   src/rom/romset.cpp
-  src/machine/display_profile.cpp
+  src/machine/display_subtype.cpp
+  src/machine/model_info.cpp
+  src/machine/twinax_port.cpp
   src/machine/machine.cpp
   src/machine/emulator.cpp
   src/models/registry.cpp
@@ -106,7 +108,8 @@ add_library(tn34xx_core STATIC
   src/monitor/monitor.cpp
   src/gdb/gdb_stub.cpp
   src/net/socket.cpp
-  src/frontend/crt_render.cpp
+  src/present/crt_render.cpp
+  src/present/display_profile.cpp
 )
 target_include_directories(tn34xx_core PUBLIC src)
 target_link_libraries(tn34xx_core
