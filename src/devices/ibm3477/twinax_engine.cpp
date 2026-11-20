@@ -119,11 +119,17 @@ TwinaxMessage TwinaxEngine::run_program(unsigned ch, const TwinaxMessage& msg, u
                     set_ram(addr++, msg[i].data);
                     --count;
                 }
+                // The receiver reports the end of the message (the frame
+                // addressed 7, or the only frame) whatever the mover's mode:
+                // after an Activate Write it is this status, not activate
+                // complete, that has the firmware reset its queue and drop
+                // busy.
                 if (overrun) raise(ch, kOverrun);
                 if (queue_mode) {
                     raise(ch, kQueued | kEndOfMessage);
                     ++c.queued;
                 } else {
+                    raise(ch, kEndOfMessage);
                     ++c.activates;
                 }
             }

@@ -7,6 +7,7 @@
 
 #include <doctest/doctest.h>
 
+#include <algorithm>
 #include <initializer_list>
 #include <memory>
 
@@ -70,8 +71,10 @@ struct Rig {
         auto host = std::make_unique<ScriptTwinaxHost>();
         ScriptTwinaxHost* h = host.get();
         eng->set_host([h]() -> TwinaxHost* { return h; });
+        // 20 ms of line time, or more for a long message.
+        const uint64_t cycles = std::max<uint64_t>(160000, 2 * eng->message_cycles(msg.size()));
         h->queue(std::move(msg));
-        for (int i = 0; i < 2000; ++i) eng->tick(80);   // 20 ms of line time
+        for (uint64_t t = 0; t < cycles; t += 80) eng->tick(80);
         auto got = h->take_received();
         eng->set_host(nullptr);
         return got.empty() ? TwinaxMessage{} : got.front();
@@ -122,6 +125,8 @@ TEST_CASE("twinax engine: activate write and read move data by DMA") {
     CHECK(r.desc16(0, 2) == 4);        // the program writes back only the address
     CHECK(r.desc(0, 4) == 0);          // disarmed
     CHECK((r.req & 0x04) != 0);        // activate done
+    CHECK((r.req & 0x08) != 0);        // end of message
+    CHECK((r.req & 0x12) == 0);        // no overrun, nothing queued
     CHECK(r.eng->busy(0));
     CHECK(r.eng->read_control(0) == 0x80);
     r.eng->write_control(0, 0x80);
@@ -149,6 +154,108 @@ TEST_CASE("twinax engine: activate write and read move data by DMA") {
     CHECK(r.send({{0x01, 2}, {0x11, 7}}).empty());
     CHECK((r.req & 0x20) != 0);
     CHECK(r.bus.peek8(0x3103) == 0);
+}
+
+namespace {
+
+// An Activate Write message: the command, then `n` data bytes, the last
+// frame addressed 7 (a lone command frame keeps the station address).
+TwinaxMessage activate_write(uint8_t addr, size_t n, uint8_t first = 0x40) {
+    TwinaxMessage m{TwinaxFrame{0x01, addr}};
+    for (size_t i = 0; i < n; ++i) m.push_back(TwinaxFrame{uint8_t(first + i), addr});
+    if (n) m.back().address = 7;
+    return m;
+}
+
+void arm_write(Rig& r, uint16_t addr, uint16_t count) {
+    r.desc16(0, 0, addr);
+    r.desc16(0, 2, count);
+    r.desc(0, 4, 1);
+}
+
+// What the 3477 firmware does with the requests that follow an Activate
+// Write: activate done first, then end of message, which resets its queue
+// and drops busy.
+void firmware_after_write(Rig& r) {
+    REQUIRE((r.req & 0x04) != 0);
+    r.req = uint16_t(r.req & ~0x04);
+    REQUIRE((r.req & 0x08) != 0);
+    r.req = uint16_t(r.req & ~0x08);
+    r.eng->write_control(0, 0x80);
+}
+
+} // namespace
+
+TEST_CASE("twinax engine: large and odd-sized Activate Writes") {
+    for (size_t n : {size_t(0), size_t(1), size_t(2), size_t(15), size_t(255), size_t(256), size_t(257),
+                     size_t(1919), size_t(3564)}) {
+        CAPTURE(n);
+        Rig r;
+        const uint16_t base = 0x4011;   // odd address: no alignment
+        arm_write(r, base, uint16_t(n));
+        CHECK(r.send(activate_write(2, n)).empty());
+        for (size_t i = 0; i < n; ++i) REQUIRE(r.bus.peek8(uint32_t(base + i)) == uint8_t(0x40 + i));
+        CHECK(r.bus.peek8(uint32_t(base + n)) == 0);   // nothing past the data
+        CHECK(r.desc16(0, 0) == uint16_t(base + n));
+        CHECK((r.req & 0xFF) == 0x0C);   // activate done + end of message, nothing else
+        CHECK(r.eng->busy(0));
+        firmware_after_write(r);
+        CHECK_FALSE(r.eng->busy(0));
+    }
+}
+
+TEST_CASE("twinax engine: an Activate Write shorter or longer than the armed count") {
+    Rig r;
+    // Fewer bytes than armed (Write Data arms the rest of the screen).
+    arm_write(r, 0x5000, 3564);
+    r.send(activate_write(2, 100));
+    CHECK(r.desc16(0, 0) == 0x5064);
+    CHECK((r.req & 0xFF) == 0x0C);
+    firmware_after_write(r);
+
+    // More bytes than armed: the count is stored, the rest overruns, and the
+    // end of the message is still reported.
+    arm_write(r, 0x6000, 10);
+    r.send(activate_write(2, 12, 0x80));
+    CHECK(r.bus.peek8(0x6009) == 0x89);
+    CHECK(r.bus.peek8(0x600A) == 0x00);
+    CHECK(r.desc16(0, 0) == 0x600A);
+    CHECK((r.req & 0xFF) == 0x1C);
+}
+
+TEST_CASE("twinax engine: back-to-back Activate Writes, each followed by polls") {
+    Rig r;
+    r.desc(0, 0x0C, 0x00);
+    r.desc(0, 0x0A, 0x06);
+    uint16_t at = 0x2000;
+    for (int round = 0; round < 3; ++round) {
+        CAPTURE(round);
+        arm_write(r, at, 600);
+        r.send(activate_write(2, 600, uint8_t(round * 3)));
+        CHECK(r.desc16(0, 0) == uint16_t(at + 600));
+        // Polled at once, before the firmware has seen the requests: busy.
+        TwinaxMessage p = r.send(poll(2));
+        REQUIRE(p.size() == 2);
+        CHECK((p[0].data & 0x80) != 0);
+        r.req = uint16_t(r.req & ~0x01);
+        firmware_after_write(r);
+        p = r.send(poll(2));
+        CHECK((p[0].data & 0x80) == 0);
+        r.req = uint16_t(r.req & ~0x01);
+        at = uint16_t(at + 600);
+    }
+    CHECK(r.bus.peek8(0x2000) == 0x00);
+    CHECK(r.bus.peek8(0x2000 + 600) == 0x03);
+    CHECK(r.bus.peek8(0x2000 + 1200 + 599) == uint8_t(6 + 599));
+
+    // A second Activate Write without a new Write Data is invalid: nothing
+    // is stored and no end of message is reported.
+    arm_write(r, 0x3000, 4);
+    r.send(activate_write(2, 4));
+    firmware_after_write(r);
+    r.send(activate_write(2, 4, 0x90));
+    CHECK((r.req & 0xFF) == 0x20);
+    CHECK(r.bus.peek8(0x3000) == 0x40);
 }
 
 TEST_CASE("twinax engine: other commands are queued for the firmware") {

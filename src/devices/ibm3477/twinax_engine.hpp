@@ -53,7 +53,7 @@ public:
     static constexpr uint8_t kEvent = 0x01;          // poll response sent
     static constexpr uint8_t kQueued = 0x02;         // command(s) queued
     static constexpr uint8_t kActivateDone = 0x04;   // activate transfer ended
-    static constexpr uint8_t kEndOfMessage = 0x08;   // queued message ended
+    static constexpr uint8_t kEndOfMessage = 0x08;   // received message ended (queue or write)
     static constexpr uint8_t kOverrun = 0x10;        // more frames than room
     static constexpr uint8_t kInvalidActivate = 0x20;
     static constexpr uint8_t kLineError = 0x40;      // frame with bad parity
