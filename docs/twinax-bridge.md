@@ -1,0 +1,229 @@
+# Twinax bridge: the virtual workstation controller
+
+The emulated terminal talks 5250 Twinax. To reach an IBM i over the network,
+tn34xx plays the part a 5294, 5394, 5494 or a system workstation controller
+plays on a real cable: it polls the terminal's station addresses, writes
+their buffers with device commands, reads keystrokes, and does the 5250
+field editing itself. On the other side it is a TN5250 client.
+
+Sources are cited as:
+
+- **PAI**: *IBM 5250 Information Display System to S/36, S/38 and AS/400
+  System Units, Product Attachment Information*, October 1989.
+- **FR**: *IBM 5494 Remote Control Unit Functions Reference*, SC30-3533-04.
+- **3489 UG**: *IBM InfoWindow II 3489 Modular Display Station User's Guide*,
+  GA18-7492-00.
+- **RFC 1205 / 2877**: the 5250 Telnet interface and its enhancements.
+
+Facts are marked **[doc]** (from those documents), **[obs]** (observed in the
+emulated terminal's behaviour) or **[hyp]**.
+
+## Layers
+
+```
+ IBM i <--TCP/TLS--> (a) TN5250 session      telnet negotiation, records  src/tn5250/
+                      (b) 5250 data-stream engine
+                          shadow screen, format table, field editing, AIDs
+                              |  tn5250::DisplaySession (session_api.hpp)
+                              v
+                      (c) station controller    one per station address  src/host/wsc/
+                          identification, device mirror, screen diff,
+                          scan code -> operator action
+                      (d) link scheduler        one per cable
+                          poll cadence, half-duplex line, recovery
+                              |  TwinaxHost (src/host/twinax_link.hpp)
+                              v
+                      terminal link device      emulated Twinax hardware     src/devices/
+                              |
+                          terminal firmware (unmodified ROM)
+```
+
+- **(a)** owns the socket and the RFC 1205/2877 negotiation; it runs on its
+  own thread and hands whole records across a queue.
+- **(b)** applies 5250 commands (FR ch. 15) to a shadow presentation space
+  and implements the operator keyboard rules (FR ch. 16). It knows nothing
+  about Twinax.
+- **(c)** keeps a **mirror** of what each device's buffer holds and turns the
+  difference between shadow and mirror into device commands. It translates
+  scan codes into characters, editing functions and AID keys, because the
+  terminal sends key positions only [doc PAI 2.1].
+- **(d)** owns the cable. Everything below (a) runs on the emulation thread,
+  in **emulated time**: the terminal's own timers (System Available, its
+  automatic reset) run on emulated time too, so a scheduler on wall-clock
+  time would break them whenever the emulator runs faster or slower than
+  real time.
+
+### The TwinaxHost boundary
+
+`TwinaxHost` is the controller end of the cable:
+
+| Call | Direction | Meaning |
+| --- | --- | --- |
+| `advance(emu_ns)` | link device -> host | emulated time since power-on; drives the poll cadence |
+| `to_station(msg)` | host -> link device | the next message, if one is due; the first frame's address selects the station |
+| `from_station(msg)` | link device -> host | the response to the last message |
+| `no_response()` | link device -> host | the last message got no response (normal for queue loads and Activate Write) |
+
+The line is half duplex [doc PAI 2.4]: after each message the link device
+reports exactly one outcome before it asks for the next message. A response
+therefore always belongs to the station the last message addressed. Its
+frames carry address 7 on the last frame, not the station's address.
+
+## The station model
+
+A terminal can answer on **several station addresses**. Each address is a
+complete, independent 5250 station, with its own Set Mode and power-on state,
+command queue, exception latch, buffer, keyboard queue and TN5250 session.
+The controller drives each one separately.
+
+| Terminal | Sessions | Kinds | Source |
+| --- | --- | --- | --- |
+| 3197 (the 3477's documented base) | 2 addresses | address 1 display; address 2 display or printer (parallel port) | [doc PAI 14.0] |
+| 3477 | 2 | two displays, or display + printer | [doc PAI ch. 16 via 3197; obs] |
+| 3486 | 2 concurrent | displays | project requirement; no user's guide on hand [hyp] |
+| 3489 | 1-4 displays, each mode with or without a printer | up to 4 displays + 1 printer | [doc 3489 UG 1.1.5, 2.9] |
+
+Rules from the documentation:
+
+- Addresses are 0-6; 7 marks the end of a message [doc PAI 2.4]. Each
+  workstation on the cable needs its own address [doc 3489 UG 2.10].
+- Without shared addressing, every display session and the printer each
+  need their own address. With **shared addressing** (3489, OS/400 V3R1 or
+  5494 Release 3.0), all display sessions can share one address but the
+  printer session cannot [doc 3489 UG 1.1.3, 5.2.21, App. G]. Shared
+  addressing needs session multiplexing that tn34xx does not model;
+  tn34xx gives each session its own address.
+- Keys go only to the session on the screen; hidden sessions must still be
+  polled [obs]. The 3197 allows concurrent viewing only at 24x80 [doc PAI
+  14.0]. The 3489 allows a 27x132 vertical split [doc 3489 UG 5.5.1].
+
+### Configuration
+
+```toml
+[twinax]
+host = "tn5250"
+
+[[twinax.station]]
+address = 0
+type = "display"
+tn5250_device_name = "QPADEV0042"   # DEVNAME; empty = host assigned
+profile = "IBM-3477-FC"             # terminal type; empty = default for the type
+
+[[twinax.station]]
+address = 1
+type = "printer"
+tn5250_device_name = "PRT01"
+```
+
+On the command line: `--station 0:display --station 1:printer:PRT01`
+(`ADDR[:TYPE[:DEVNAME]]`, repeatable; it replaces the file's list). The old
+`--station-address N` still configures a single display. Addresses must be
+unique, 0-6. The number of stations may not exceed the model's
+`ModelInfo::max_sessions`: 3477 2, 3486 2, 3489 4. The 3489 documents four
+displays plus a printer, so its limit may grow to 5 once it is modelled.
+
+### Per-station state machine
+
+```
+Absent --any response--> PowerOn --Set Mode--> Identify --reads--> Init --> Online
+   ^                                                                         |
+   +--- 3 missed responses / busy timeout --+     Recover <-- exception, LPE -+
+                                            |        |
+                                            +--------+--> Online (repaint) or Identify
+```
+
+| State | What the controller sends |
+| --- | --- |
+| Absent | a poll every 500 ms |
+| PowerOn | Set Mode (fill 0). Before it, the station answers polls with one frame, status `0E` = power-on exception, and runs no other command [doc PAI 2.4.3, p.75] |
+| Identify | for each read: queue the read command, poll until not busy and no exception, then Activate Read [doc PAI p.76]. Read Device ID (base), then for displays: model ID (`8C`), keyboard ID (`2C`), extended ID (`88`), Read Info (`0B 80`). A read the station refuses (exception) is skipped after an exception-reset WCD |
+| Init | WCD (format), then Clear, input inhibited, cursor home; the session is told the device is ready |
+| Online | one step at a time: queue load, poll until not busy, Activate Write if needed, poll again. Otherwise an idle poll every 25 ms |
+| Recover | WCD with reset-exception, or a reset-LPE poll; then the mirror is marked unknown and repainted |
+
+Polls always carry ACK (`30`, or `70` to reset a line parity error). A
+second poll byte is a new keystroke only when the response-level bit has
+changed since the last response [doc PAI p.39-43]. The 25 ms cadence stays
+well inside the PAI limits (at least 40 polls in 2 s, no gap over 270 ms
+[doc PAI p.38]). It also meets the terminals' System Available timeout,
+which the 3477 checks every 200 ms [obs].
+
+### Identification results
+
+| Read | Answer | Used for |
+| --- | --- | --- |
+| Device ID, base (`0C`) | `C2` for every display [doc PAI 3.5.2.1]; a printer ID word otherwise | display vs printer |
+| Model ID (`8C`) | `24` monochrome, `50` colour on the 3477 (as on the 3197 D/C) [doc PAI 16.0] | colour |
+| Keyboard ID (`2C`) | `02` typewriter, `0A` World Trade; `+80` Enhanced keyboard [doc PAI p.55; obs] | scan-code table |
+| Read Info (`0B 80`) | 64 bytes of VPD starting `F3 F4 F7 F7` ("3477") [doc PAI 16.1.4] | 3477 features: 27x132 on every model [doc PAI 16.0], larger command queue |
+
+## Displays and printers at the device-command level
+
+| | Display station | Printer station |
+| --- | --- | --- |
+| Read Device ID | `C2` | printer ID word: model (2 bits), station type `10`, printer type (4 bits): `0000` 5256, `1100` 4214-2, `1101` 5219/3812 [doc PAI 3.5.2.1 fig. 74] |
+| Poll byte 2 | keystroke scan code, `FF` = keyboard overrun | printer status: invalid SCS code or parameter, receive buffers full, print complete, cancel, not ready, end of forms, graphic check [doc PAI 3.5.1.1.2] |
+| Buffer | a presentation space addressed by row x columns + column; written with Load Address Counter, Write Data and Load Cursor, Write Data, Clear, ... | no addressable buffer; Write Data to the printer address, then Activate Write with **SCS** data [doc PAI 3.5.3, 3.6] |
+| Commands | the full display set (PAI ch. 2; 3477 additions ch. 16) | Poll, Read Device ID, Write Data, WCD, Activate Write/Read, Set Mode, Read Status, Reset, Clear, Read Multiple, End of Queue [doc PAI 3.5] |
+| Host side | TN5250 display session | TN5250 printer session (RFC 2877 printer device) |
+
+On the 3489, the printer emulates one of three AS/400 printer types. The
+AS/400 device is configured as 4214 for the 4201/4202 family, 4226,
+2380/2381 and ThinkJet; as 5256 for the 5201; and as 5219 for the others,
+using 3812 SCS emulation [doc 3489 UG 2.10]. The 3197 attaches its printer
+as a 4214-2 or a 5256 [doc PAI 14.0, 3.12]. The 3477 reports 5256, 4214-2
+or 5219, as set up [obs].
+
+In tn34xx, printer stations are discovered, identified, and polled for
+status. Their data path is the extension point `PrinterSessionPort`
+(`next_print_data` -> Write Data + Activate Write). The size of one transfer
+is a [hyp] (256 bytes) until a printer session engine exists.
+
+## Painting a screen
+
+The controller keeps a per-cell mirror of the device buffer (value or
+unknown), plus the cursor, indicators and Write Control Data state. When the
+shadow's generation changes:
+
+1. **Format and control.** The screen size, cursor blink, clicker or an
+   alarm changed: Write Control Data. A format change marks the mirror
+   unknown.
+2. **Clear.** Everything unknown, or most cells must become null: Load
+   Address Counter 0, Load Reference Counter (last cell), Clear.
+3. **Runs.** Changed cells are grouped into runs, merging gaps under 6
+   cells. A short run goes as Load Address Counter + Write Data and Load
+   Cursor, with an explicit count frame (data bytes 01-0E would otherwise be
+   read as a count [doc PAI 2.4.16]). Several short runs share one queue
+   load while they fit. A long run goes as Load Address Counter + Write Data,
+   then Activate Write after a clean poll.
+4. **Cursor and indicators.** Load Cursor and Write Data and Load Cursor to
+   the indicators (80 message waiting, 08 insert, 02 input inhibited [doc PAI
+   2.4.16.1]).
+
+Every queue load fits the device's command queue (16 bytes [doc PAI];
+the 3477 can be switched to a larger one [obs]). The mirror is updated only
+after a step finished with a clean poll. An exception or parity error marks
+it unknown, and the next flush repaints from the shadow.
+
+## Keystrokes
+
+Poll byte 2 carries a scan code: bit 7 is break, set only for shift-type
+keys [doc PAI 2.1.1]. The controller tracks Shift, Alt and Caps Lock, and
+maps each key to a data character (EBCDIC), an editing function
+(Field Exit, Field +/-, Tab, cursor keys, Insert, Delete, Dup, Erase EOF,
+Erase Input, Reset), an AID (Enter, F1-F24, Roll, Print, Help, Clear) or a
+signal (Attn, Sys Req). The engine then applies FR ch. 16.
+
+The table for the **IBM Enhanced keyboard** is typed in from PAI fig. 147
+(US). The **122-key typewriter keyboard** (PAI fig. 105, 3180-2/3197) and
+national layouts are not typed in yet: their keys reach the engine as
+"unmapped" with the raw scan code.
+
+## Status and next steps
+
+- Done: configuration, the `TwinaxHost` contract, layers (c) and (d), the
+  Enhanced keyboard map, the `tn5250::DisplaySession` adapter, and a fake
+  station for unit tests.
+- Next: the 122-key keyboard table; extended attributes (colour, ECB) on
+  the 3477; a printer session engine; wiring the controller into
+  `make_twinax_host` once the terminal's link device is emulated.
