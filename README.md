@@ -30,6 +30,27 @@ cmake --build --preset release
 The language level is deliberately C++17: the project must stay buildable
 with toolchains that target Windows 7 (x86).
 
+### Windows (MinGW-w64 cross build)
+
+Windows 7 and later, 32-bit (x86, the primary Windows target) or 64-bit,
+cross-built on Linux with MinGW-w64 (Debian/Ubuntu: `g++-mingw-w64-i686`,
+`g++-mingw-w64-x86-64`; wine is optional and runs the tests):
+
+```sh
+export VCPKG_ROOT=~/vcpkg
+cmake --preset mingw-x86-release      # or mingw-x86-debug, mingw-x64-*
+cmake --build --preset mingw-x86-release
+ctest --preset mingw-x86-release -LE slow   # through wine, if installed
+```
+
+The output is `build/mingw-x86-release/tn34xx.exe`, a console program that
+needs only system DLLs: the MinGW runtime, SDL3 and the other ports are
+linked statically. The toolchain files in `cmake/toolchains/` use the
+compilers' posix thread model (`*-g++-posix`) and `_WIN32_WINNT=0x0601`;
+the overlay triplets in `cmake/triplets/` build the vcpkg ports with them.
+The monitor runs in the Windows console (replxx); `--headless` and
+`--batch` work as on Linux.
+
 ## ROMs
 
 ROM images are not distributed. Put them in `roms/` under the names listed in
