@@ -9,7 +9,10 @@
 namespace tn34xx {
 
 namespace {
-constexpr uint64_t kSliceInstructions = 20000;
+// Instructions per execution slice. Display changes are published and the
+// pacing is checked between slices, so this bounds input-to-screen latency
+// (2000 instructions are about 7 ms of 3477 time: ~26 cycles each, observed).
+constexpr uint64_t kSliceInstructions = 2000;
 }
 
 Emulator::Emulator(std::unique_ptr<Machine> machine) : machine_(std::move(machine)) {
@@ -216,13 +219,24 @@ void Emulator::thread_main() {
                 const auto target = wall_start + std::chrono::duration_cast<clock::duration>(
                                                      std::chrono::duration<double>(target_s));
                 const auto now = clock::now();
-                if (target > now) {
-                    const auto want = std::min<clock::duration>(target - now, std::chrono::milliseconds(50));
-                    std::this_thread::sleep_for(want);
-                    const auto got = clock::now() - now;
-                    ++sleeps;
-                    slept_ms += std::chrono::duration<double, std::milli>(got).count();
-                    oversleep_ms += std::chrono::duration<double, std::milli>(got - want).count();
+                if (target - now > std::chrono::milliseconds(1)) {
+                    // Less than 1 ms ahead: keep running (sleep granularity
+                    // is about that coarse, especially under WSL).
+                    // Sleep until the target, in short steps so that a stop
+                    // request is still seen promptly. One capped sleep per
+                    // slice is not enough: when a slice is longer than the
+                    // cap the machine runs ahead of its clock (measured: 136%
+                    // of nominal in release with 20000-instruction slices).
+                    clock::time_point t = now;
+                    while (t < target && !user_stop_.load(std::memory_order_relaxed)) {
+                        const auto want = std::min<clock::duration>(target - t, std::chrono::milliseconds(20));
+                        std::this_thread::sleep_for(want);
+                        const auto woke = clock::now();
+                        ++sleeps;
+                        slept_ms += std::chrono::duration<double, std::milli>(woke - t).count();
+                        oversleep_ms += std::chrono::duration<double, std::milli>(woke - t - want).count();
+                        t = woke;
+                    }
                 } else if (now - target > std::chrono::milliseconds(250)) {
                     // Too far behind (e.g. after a debugger pause): resync.
                     wall_start = now;
