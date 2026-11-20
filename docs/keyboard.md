@@ -241,7 +241,10 @@ SDL's timestamp) and window focus changes; the keymap rule chosen for each
 host key and whether a tap key fired or was cancelled; each terminal key
 make/break with the key mode the firmware set for it; typematic repeats;
 each key byte the keyboard sends to the terminal; and the key-to-screen
-latency. Add `perf=debug` for the achieved clock and redraw cost.
+latency. Add `perf=debug` for the achieved clock and redraw cost. With a
+host link, `wsc=debug` logs each scan code the controller polls from the
+terminal and the operator action it decodes (`scan code 7C -> attn`), and
+`tn5250=debug` each record sent to the host (`send record No-op flags ATN`).
 
 On the PCOMM map, PC Enter is the terminal's **Field Exit** and Right Ctrl
 is **Enter**. In a terminal-local menu such as Offline Setup ("Move cursor
@@ -477,7 +480,16 @@ The terminal keeps some keys for **local functions** and never sends them
 
 The controller decodes the fig. 105 stream back to key positions (tracking
 `57`/`56` shift, `54` Shift Lock and the `6F` CMD prefix, which sets the
-action's Alt flag), then looks the position up below. US functions and US graphics (EBCDIC CCSID 37). Sources, in order of weight:
+action's Alt flag), then looks the position up below. Shift Lock gives the
+upper graphics of the typing keys only; a key's shifted *function* (Sys Req
+on Attn, F13–F24, Roll on ↑/↓, Delete, Backtab) needs a held Shift
+(documented: GA18-7492 §4.2.2 describes Shift Lock as entering upper-case
+letters and upper symbols, and only the held Upper Shift as selecting "functions
+located in the shift position of a key"; observed: the terminal sends `57`
+itself for F13–F24 and Delete even under Shift Lock, and nothing for F1).
+On the PC, Caps Lock is this Shift Lock, and switching Caps Lock off again
+does not release it (the terminal sends `54` for every press); only a Shift
+key does. Before this rule, Esc under a latched Shift Lock sent Sys Req. US functions and US graphics (EBCDIC CCSID 37). Sources, in order of weight:
 the 3489 User's Guide key tables (§4.2.2–4.2.8, which show this 122-key
 keyboard next to the Enhanced one, with the keys of each group marked in a
 layout diagram); a top-down photo of a genuine IBM 1394324 "5250 converged
@@ -515,8 +527,8 @@ Set-3 positions (TMK) with the 1394324 legends:
 | `6E` | Dup | Dup |
 | `58` | Enter (right of the space bar) | AID F1 |
 | `11` | Reset / Quit | Reset |
-| `14` | Shift Lock | locks upper shift for every key; a Shift key releases it |
-| `05` | Attn / SysRq | Attn; Shift: SysRq |
+| `14` | Shift Lock | locks upper shift for the typing keys (not for shifted functions); a Shift key releases it |
+| `05` | Attn / SysRq | Attn; held Shift: SysRq (Shift Lock alone: Attn) |
 | `06` | blank, front Clear | Alt: AID BD; unshifted unmapped |
 | `0C` | ErInp | Erase Input |
 | `0B` | Help / Hex | AID F3; Alt: Hex |

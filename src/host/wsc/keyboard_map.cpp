@@ -381,7 +381,12 @@ bool KeyboardMap::translate_typewriter(uint8_t key, bool brk, OperatorAction& ou
     }
     const bool cmd = cmd_;
     cmd_ = false;
-    const bool upper = shift() || caps_;
+    // Shift Lock enters the upper graphics of the typing keys only; the
+    // shifted function of a key (SysRq on Attn, F13-F24, Roll on the cursor
+    // keys, Delete) needs a held Shift [doc GA18-7492 4.2.2: Shift Lock vs
+    // Upper Shift]. The terminal sends 57h itself where a key needs upper
+    // shift (observed for F13-F24 and Delete, also under Shift Lock).
+    const bool upper = shift();
     out.shift = shift();
     out.alt = cmd;
 
@@ -419,7 +424,7 @@ bool KeyboardMap::translate_typewriter(uint8_t key, bool brk, OperatorAction& ou
     for (const CharKey& c : kTypewriterUs) {
         if (c.scan != pos) continue;
         out.kind = K::Character;
-        out.ebcdic = upper ? c.upper : c.lower;
+        out.ebcdic = upper || caps_ ? c.upper : c.lower;
         return true;
     }
     return true;   // Unmapped: blank keytops (04 06 83 6F 76 77 7E 84 7B)

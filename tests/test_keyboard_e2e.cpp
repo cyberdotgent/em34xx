@@ -235,3 +235,41 @@ TEST_CASE("122-key end to end: PCOMM map, host key to operator action") {
     CHECK_FALSE(c.km.shift());
     CHECK_FALSE(c.km.cmd_pending());
 }
+
+TEST_CASE("122-key end to end: Esc is Attn, Shift+Esc Sys Req, also under Caps Lock") {
+    Chain c;
+    OperatorAction a = c.one({"Escape"});
+    CHECK(a.kind == AK::Attn);
+    a = c.one({"LShift", "Escape"});
+    CHECK(a.kind == AK::SysReq);
+    a = c.one({"Escape"});   // Shift released: Attn again
+    CHECK(a.kind == AK::Attn);
+    a = c.one({"RShift", "Escape"});
+    CHECK(a.kind == AK::SysReq);
+
+    // Caps Lock is the 122-key Shift Lock (54h). It shifts the typing keys
+    // only; Esc stays Attn, F1 stays F1, Up stays cursor up.
+    CHECK(c.chord({"CapsLock"}).empty());
+    CHECK(c.km.caps_lock());
+    a = c.one({"Escape"});
+    CHECK(a.kind == AK::Attn);
+    a = c.one({"F1"});
+    CHECK(a.kind == AK::Aid);
+    CHECK(a.aid == 0x31);
+    a = c.one({"Up"});
+    CHECK(a.function == KeyFunction::CursorUp);
+    a = c.one({"Tab"});
+    CHECK(a.function == KeyFunction::Tab);
+    a = c.one({"a"});
+    CHECK(a.ebcdic == 0xC1);
+    a = c.one({"1"});
+    CHECK(a.ebcdic == 0x5A);
+    CHECK(c.chord({"CapsLock"}).empty());   // pressing it again keeps the lock
+    a = c.one({"Escape"});
+    CHECK(a.kind == AK::Attn);
+    a = c.one({"LShift", "Escape"});   // a Shift key releases the lock
+    CHECK(a.kind == AK::SysReq);
+    CHECK_FALSE(c.km.caps_lock());
+    a = c.one({"Escape"});
+    CHECK(a.kind == AK::Attn);
+}

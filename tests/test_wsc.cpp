@@ -378,13 +378,27 @@ TEST_CASE("keyboard map: 122-key typewriter, shift and shift lock") {
     CHECK(a.function == KeyFunction::Delete);
     CHECK_FALSE(km.translate(0xD7, a));
 
-    // Shift Lock (54h make, D4h break) holds every key in upper shift until
-    // a Shift key is pressed.
+    // Shift Lock (54h make, D4h break) holds the typing keys in upper shift
+    // until a Shift key is pressed. Shifted functions need a held Shift
+    // [doc GA18-7492 4.2.2]: Attn stays Attn, not Sys Req.
     CHECK_FALSE(km.translate(0x54, a));
     CHECK_FALSE(km.translate(0xD4, a));
     CHECK(km.caps_lock());
     REQUIRE(km.translate(0x31, a));
     CHECK(a.ebcdic == 0x5A);
+    REQUIRE(km.translate(0x11, a));
+    CHECK(a.ebcdic == 0xC1);
+    const std::vector<Expect> locked = {
+        {0x7C, AK::Attn, 0, N}, {0x71, AK::Function, 0, KeyFunction::CursorUp},
+        {0x70, AK::Function, 0, KeyFunction::CursorDown}, {0x20, AK::Function, 0, KeyFunction::Tab},
+        {0x6C, AK::Function, 0, KeyFunction::Insert},
+    };
+    check_layer(km, locked);
+    CHECK_FALSE(km.translate(0x6F, a));   // CMD + 31h: F1, not F13
+    REQUIRE(km.translate(0x31, a));
+    CHECK(a.kind == AK::Aid);
+    CHECK(a.aid == 0x31);
+    CHECK(km.caps_lock());
     CHECK_FALSE(km.translate(0x54, a));   // pressing it again keeps the lock
     CHECK(km.caps_lock());
     CHECK_FALSE(km.translate(0x57, a));
