@@ -27,6 +27,7 @@ public:
     std::string describe() const override;
 
     Station* station(uint8_t address);
+    const Station* station(uint8_t address) const;
     const std::vector<std::unique_ptr<Station>>& stations() const { return stations_; }
     uint64_t now() const { return now_; }
 

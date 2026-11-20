@@ -1,6 +1,7 @@
 // The TN5250 bridge: the virtual workstation controller (LinkScheduler and
 // one Station per configured address) with a TN5250 session behind each
-// display station. This is the TwinaxHost behind `--twinax-host tn5250`.
+// display station. This is the TwinaxHost behind `--twinax-host tn5250` and
+// the monitor's `connect` command.
 //
 //   IBM i <-> tn5250::Client (I/O thread) <-> engine (pump) <-> DisplayStationPort
 //         <-> Station <-> LinkScheduler <-> TwinaxHost <-> terminal link device
@@ -11,24 +12,26 @@
 // engine only in pump(), which advance() calls. The controller and the
 // engine therefore run on the emulation thread only, in emulated time.
 //
-// Session lifecycle (per display station; docs/twinax-bridge.md):
-//   - The TN5250 session starts when the station first reaches Online
-//     (identification done), so the host never sees a device that is not
-//     there.
-//   - Device lost (no response, power cycle, reset): the session stays
-//     connected and the engine is told the device is gone. If the device
-//     returns, the engine marks the whole screen dirty and the controller
-//     repaints it. If it stays away for `lost_disconnect_ns` of emulated
-//     time, the session is closed; the next Online starts a new one.
-//   - Host ends the session (closed or failed connection): while the device
-//     is online, the bridge reconnects with a fresh session after a back-off
-//     on the wall clock (the host is a real network peer), doubling from
-//     `reconnect_min_ms` to `reconnect_max_ms`. The new session's screen
-//     replaces the old one through the normal diff.
+// The TN5250 session is the cable (docs/twinax-bridge.md):
+//   - A display station's controller end is plugged in only while its
+//     TN5250 session is connected (negotiation done). Session up: the
+//     station is plugged and the terminal goes through its power-on /
+//     discovery handshake and comes on line; the sign-on screen follows.
+//   - Session down (host close, connection lost, failed connect,
+//     `disconnect`): the station is unplugged. Nothing polls it, so the
+//     terminal sees no controller, exactly as with a pulled cable.
+//   - Reconnecting repeats the full plug-in sequence. Unless the station
+//     is held (monitor `disconnect`), the bridge reconnects after a
+//     wall-clock back-off (the host is a real network peer), doubling from
+//     `reconnect_min_ms` to `reconnect_max_ms`.
+//   - The terminal itself going away while the session is up (no response,
+//     power cycle) does not end the session: the engine is told, and when
+//     the device returns the whole screen is repainted.
 //
-// Printer stations are discovered, identified and polled, and get a
-// placeholder printer session (NullPrinterSession) that accepts nothing and
-// logs once that printer sessions are not implemented. A real
+// Printer stations are discovered, identified and polled while at least
+// one display session of the bridge is connected (the cable is shared), and
+// get a placeholder printer session (NullPrinterSession) that accepts
+// nothing and logs once that printer sessions are not implemented. A real
 // tn5250::PrinterSession plugs in through PrinterStationPort.
 #pragma once
 
@@ -54,7 +57,7 @@ struct BridgeOptions {
     std::string model = "3477";                     // for the derived terminal type
     DisplaySubtype display = DisplaySubtype::Color;
     WscTiming timing;
-    uint64_t lost_disconnect_ns = 600'000'000'000;  // 10 min of emulated time; 0 = never
+    bool reconnect = true;                          // reconnect after the session ends
     unsigned reconnect_min_ms = 2000;               // wall clock
     unsigned reconnect_max_ms = 60000;
     // Tests replace the network: one transport per session start.
@@ -68,11 +71,12 @@ struct BridgeOptions {
 Tn5250Config station_session_config(const Tn5250Config& tn5250, const StationConfig& station, bool first_display,
                                     const std::string& model, DisplaySubtype display);
 
-// A display station's DisplaySessionPort: owns the tn5250::Client (replaced
-// on reconnect) and forwards to it through a Tn5250DisplayAdapter.
+// A display station's DisplaySessionPort: owns the tn5250::Client (a fresh
+// one per connection) and forwards to it through a Tn5250DisplayAdapter. It
+// plugs and unplugs its Station with the session.
 class DisplayStationPort : public DisplaySessionPort {
 public:
-    DisplayStationPort(StationConfig station, Tn5250Config cfg, const BridgeOptions& opt);
+    DisplayStationPort(StationConfig station, Tn5250Config cfg, const BridgeOptions& opt, Station& link);
     ~DisplayStationPort() override;
 
     // DisplaySessionPort.
@@ -84,30 +88,32 @@ public:
     bool take_alarm() override;
     void operator_action(const OperatorAction& action) override;
 
-    // Lifecycle, driven by Tn5250Bridge::advance() in emulated time.
+    // Lifecycle, driven by Tn5250Bridge::advance() on the emulation thread.
     void tick(uint64_t now_ns);
+    // Close the session and do not reconnect (monitor `disconnect N`).
+    void hold();
+    bool held() const { return held_; }
 
     const StationConfig& station() const { return station_; }
     const Tn5250Config& config() const { return cfg_; }
     tn5250::Client* client() { return client_.get(); }
+    bool connected() const;       // session negotiated: the cable is plugged
     bool online() const { return online_; }
     unsigned sessions_started() const { return starts_; }
     std::string describe() const;
 
 private:
     void start_session();
-    void end_session(const char* why);
 
     StationConfig station_;
     Tn5250Config cfg_;
     const BridgeOptions& opt_;
+    Station& link_;
     std::unique_ptr<tn5250::Client> client_;
     std::unique_ptr<Tn5250DisplayAdapter> adapter_;
     uint64_t generation_base_ = 0;    // keeps the generation monotonic across sessions
     bool online_ = false;
-    uint64_t now_ = 0;
-    uint64_t lost_at_ = 0;
-    bool lost_pending_ = false;
+    bool held_ = false;
     unsigned starts_ = 0;
     unsigned backoff_ms_ = 0;
     std::chrono::steady_clock::time_point retry_at_{};
@@ -152,6 +158,7 @@ private:
 
 class Tn5250Bridge : public TwinaxHost {
 public:
+    // Display sessions start connecting at once.
     Tn5250Bridge(const TwinaxConfig& twinax, const Tn5250Config& tn5250, BridgeOptions opt = BridgeOptions());
     ~Tn5250Bridge() override;
 
@@ -161,10 +168,14 @@ public:
     void no_response() override { sched_.no_response(); }
     void advance(uint64_t emu_ns) override;
     std::string describe() const override;
+    bool disconnect_station(unsigned address) override { return address < 8 && hold(uint8_t(address)); }
 
     LinkScheduler& scheduler() { return sched_; }
     DisplayStationPort* display(uint8_t address);
     PrinterStationPort* printer(uint8_t address);
+    // Close one display station's session and keep it closed; false if the
+    // address is not a display station of this bridge.
+    bool hold(uint8_t address);
 
 private:
     BridgeOptions opt_;

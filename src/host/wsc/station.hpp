@@ -57,6 +57,15 @@ public:
     void attach_display(DisplaySessionPort* port) { display_ = port; }
     void attach_printer(PrinterSessionPort* port) { printer_ = port; }
 
+    // The controller end of this station's cable. Unplugged, the station is
+    // never polled and nothing is sent to it, as if no controller were on
+    // the line; plugging it in starts from Absent, so the terminal goes
+    // through the full power-on/discovery handshake again. Plugged by
+    // default; the TN5250 bridge plugs a station only while its TN5250
+    // session is connected.
+    void set_plugged(bool on, uint64_t now);
+    bool plugged() const { return plugged_; }
+
     // Scheduler side.
     void pump() { if (display_) display_->pump(); }
     bool due(uint64_t now) const;
@@ -105,6 +114,7 @@ private:
     DisplaySessionPort* display_ = nullptr;
     PrinterSessionPort* printer_ = nullptr;
 
+    bool plugged_ = true;
     StationState state_ = StationState::Absent;
     StationIdentity id_;
     bool type_mismatch_ = false;

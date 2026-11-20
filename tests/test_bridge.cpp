@@ -133,6 +133,7 @@ bool contains(const Bytes& hay, const std::string& needle) {
 struct Bench {
     TwinaxHost& host;
     std::map<uint8_t, FakeStation*> cable;
+    std::map<uint8_t, unsigned> sent;   // messages per station address
     uint64_t t = 0;
 
     explicit Bench(TwinaxHost& h) : host(h) {}
@@ -141,6 +142,7 @@ struct Bench {
         host.advance(t);
         TwinaxMessage m;
         if (!host.to_station(m)) { t += 100'000; return; }
+        ++sent[twinax_message_station(m)];
         t += 16'000 * m.size();
         TwinaxMessage r;
         auto it = cable.find(twinax_message_station(m));
@@ -193,14 +195,12 @@ TEST_CASE("tn5250 bridge: sign-on screen to the station, keystrokes back to the 
     tn.port = 2323;
 
     auto server = std::make_shared<ServerScript>();
-    server->push(negotiation());
-    server->push(framed_record(tn5250_test::signon_stream()));
     int connects = 0;
     std::vector<std::string> station_devnames;
     BridgeOptions opt;
     opt.model = "3477";
     opt.display = DisplaySubtype::Green;
-    opt.reconnect_min_ms = 50;
+    opt.reconnect_min_ms = 400;
     opt.transport = [&](const StationConfig& st, std::string&) -> std::unique_ptr<tn34xx::tn5250::Transport> {
         ++connects;
         station_devnames.push_back(st.device_name);
@@ -218,10 +218,6 @@ TEST_CASE("tn5250 bridge: sign-on screen to the station, keystrokes back to the 
     CHECK(bridge.display(0)->config().device_name == "TN34XXA");
 
     Bench b(bridge);
-    // Nothing on the cable yet: no session is started.
-    b.run_for_emulated(2'000'000'000);
-    CHECK(connects == 0);
-
     FakeStation f(0);
     FakeStationOptions popt;
     popt.type = StationType::Printer;
@@ -229,10 +225,21 @@ TEST_CASE("tn5250 bridge: sign-on screen to the station, keystrokes back to the 
     b.plug(f);
     b.plug(p);
 
-    // The station comes online, the session starts, and the sign-on panel
-    // reaches the station's buffer.
+    // The session connects at once, but until the host has negotiated the
+    // cable is unplugged: nothing is sent to either station.
+    REQUIRE(b.run_until([&] { return connects == 1; }));
+    b.run_for_emulated(2'000'000'000);
+    CHECK(b.sent[0] == 0);
+    CHECK(b.sent[1] == 0);
+    CHECK(bridge.describe().find("station 0 display: cable unplugged") != std::string::npos);
+
+    // Negotiation done: the cable is plugged, the station is discovered and
+    // goes on line, and the sign-on panel reaches the station's buffer.
+    server->push(negotiation());
+    server->push(framed_record(tn5250_test::signon_stream()));
     REQUIRE(b.run_until([&] { return row_text(f, 0, 35, 7) == "Sign On"; }));
     CHECK(connects == 1);
+    CHECK(bridge.describe().find("station 0 display: cable plugged") != std::string::npos);
     REQUIRE(station_devnames.size() == 1);
     CHECK(station_devnames[0] == "TN34XXA");
     CHECK(server->host == "ibmi.example");
@@ -247,7 +254,7 @@ TEST_CASE("tn5250 bridge: sign-on screen to the station, keystrokes back to the 
     // The printer is identified and polled; its placeholder takes no data.
     REQUIRE(b.run_until([&] { return bridge.printer(1)->ready(); }));
     CHECK(p.printed().empty());
-    CHECK(bridge.describe().find("printer: session not implemented") != std::string::npos);
+    CHECK(bridge.describe().find("session not implemented (placeholder), on line") != std::string::npos);
 
     // Type 'a' (monocase field: A) and Enter on the station's keyboard.
     REQUIRE(b.run_until([&] { return (f.indicators() & 0x02) == 0; }));   // keyboard unlocked
@@ -273,22 +280,53 @@ TEST_CASE("tn5250 bridge: sign-on screen to the station, keystrokes back to the 
     CHECK(bridge.display(0)->sessions_started() == 1);
     CHECK(connects == 1);
 
-    // The host hangs up: the bridge reconnects with a fresh session.
+    // The host hangs up: the cable is pulled. Neither station is polled
+    // any more, so the terminal sees no controller.
+    Station& link = *bridge.scheduler().station(0);
+    CHECK(link.counters().discoveries == 2);   // power-on, then the power cycle above
     {
         std::lock_guard<std::mutex> g(server->mu);
         server->closed = true;
         server->cv.notify_all();
     }
-    REQUIRE(b.run_until([&] {
-        return bridge.display(0)->client()->state() == tn34xx::tn5250::ConnState::Closed;
-    }));
+    REQUIRE(b.run_until([&] { return !link.plugged(); }));
+    CHECK(link.state() == StationState::Absent);
+    CHECK_FALSE(bridge.display(0)->online());
+    b.run_for_emulated(5'000'000);   // a message already on the line completes
+    const unsigned before0 = b.sent[0], before1 = b.sent[1];
+    b.run_for_emulated(3'000'000'000);
+    CHECK(b.sent[0] == before0);
+    CHECK(b.sent[1] == before1);
+    CHECK(bridge.describe().find("cable unplugged") != std::string::npos);
+    // Without polls the terminal resets itself (its ~2.4 s timeout).
+    f.power_on();
+    p.power_on();
+
+    // The bridge reconnects after its back-off; once negotiated the cable is
+    // plugged again and the full discovery runs from scratch.
     {
         std::lock_guard<std::mutex> g(server->mu);
         server->closed = false;
         server->to_client.push_back(negotiation());
+        server->to_client.push_back(framed_record(tn5250_test::signon_stream()));
     }
     REQUIRE(b.run_until([&] { return connects == 2; }, 8000));
+    REQUIRE(b.run_until([&] { return link.plugged() && link.state() == StationState::Online; }));
+    CHECK(link.counters().discoveries == 3);
+    CHECK(b.sent[0] > before0);
+    REQUIRE(b.run_until([&] { return row_text(f, 0, 35, 7) == "Sign On"; }));
+    REQUIRE(b.run_until([&] { return bridge.printer(1)->ready(); }));
     CHECK(bridge.display(0)->sessions_started() == 2);
+
+    // Monitor `disconnect 0`: the cable is pulled and stays pulled.
+    REQUIRE(bridge.hold(0));
+    b.run_for_emulated(5'000'000);
+    CHECK_FALSE(link.plugged());
+    const unsigned held0 = b.sent[0];
+    b.run_until([] { return false; }, 600);   // past the reconnect back-off
+    CHECK(b.sent[0] == held0);
+    CHECK(connects == 2);
+    CHECK(bridge.describe().find("(disconnected)") != std::string::npos);
 }
 
 TEST_CASE("tn5250 bridge: per-station session settings") {
@@ -331,10 +369,16 @@ TEST_CASE("tn5250 bridge: make_twinax_host uses the bridge factory") {
     bool called = false;
     auto h = make_twinax_host(tw, tn, err, [&](const TwinaxConfig& t, const Tn5250Config& c, std::string& e) {
         called = true;
-        return make_tn5250_bridge(t, c, BridgeOptions(), e);
+        BridgeOptions o;
+        o.transport = [](const StationConfig&, std::string& why) -> std::unique_ptr<tn34xx::tn5250::Transport> {
+            why = "no network in this test";
+            return nullptr;
+        };
+        o.reconnect = false;
+        return make_tn5250_bridge(t, c, o, e);
     });
     REQUIRE(h);
     CHECK(called);
     CHECK(dynamic_cast<Tn5250Bridge*>(h.get()) != nullptr);
-    CHECK(h->describe().find("station 0 display: session idle") != std::string::npos);
+    CHECK(h->describe().find("station 0 display: cable unplugged") != std::string::npos);
 }

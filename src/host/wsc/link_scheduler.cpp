@@ -15,6 +15,12 @@ Station* LinkScheduler::station(uint8_t address) {
     return nullptr;
 }
 
+const Station* LinkScheduler::station(uint8_t address) const {
+    for (const auto& s : stations_)
+        if (s->address() == address) return s.get();
+    return nullptr;
+}
+
 void LinkScheduler::advance(uint64_t emu_ns) {
     if (emu_ns > now_) now_ = emu_ns;
     for (auto& s : stations_) s->pump();

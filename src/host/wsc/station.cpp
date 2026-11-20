@@ -62,7 +62,36 @@ void Station::enter(StationState s, uint64_t) {
     state_ = s;
 }
 
+void Station::set_plugged(bool on, uint64_t now) {
+    if (on == plugged_) return;
+    plugged_ = on;
+    LOG_INFO("wsc", "station %u: cable %s", cfg_.address, on ? "plugged in" : "unplugged");
+    if (on) {
+        ready_at_ = now;   // probe at once
+        return;
+    }
+    if (announced_) {
+        if (display_) display_->device_lost();
+        if (printer_) printer_->device_lost();
+        announced_ = false;
+    }
+    enter(StationState::Absent, now);
+    ops_.clear();
+    expect_ = Expect::Nothing;
+    waiting_ = false;
+    misses_ = 0;
+    reset_lpe_ = false;
+    level_ = -1;
+    printer_status_ = -1;
+    keymap_.reset();
+    type_mismatch_ = false;
+    poll_soon_ = false;
+    mirror_ = DeviceMirror();
+    flushed_generation_ = ~uint64_t(0);
+}
+
 bool Station::due(uint64_t now) const {
+    if (!plugged_) return false;
     if (now >= ready_at_) return true;
     if (!ops_.empty() || state_ != StationState::Online || type_mismatch_) return false;
     // New screen content does not wait for the idle poll.
@@ -127,6 +156,7 @@ void Station::op_done(uint64_t now) {
 }
 
 void Station::on_response(const TwinaxMessage& msg, uint64_t now) {
+    if (!plugged_) return;   // the answer to a message sent before the cable was pulled
     misses_ = 0;
     const Expect expect = expect_;
     expect_ = Expect::Nothing;
@@ -167,6 +197,7 @@ void Station::on_response(const TwinaxMessage& msg, uint64_t now) {
 }
 
 void Station::on_no_response(uint64_t now) {
+    if (!plugged_) return;
     const Expect expect = expect_;
     expect_ = Expect::Nothing;
     if (expect == Expect::Nothing) {   // a load or Activate Write went out
@@ -525,8 +556,8 @@ void Station::recover(uint8_t st, uint64_t now) {
 }
 
 std::string Station::describe() const {
-    std::string out = format("station %u (%s): %s", cfg_.address, station_type_name(cfg_.type),
-                             station_state_name(state_));
+    std::string out = format("station %u (%s): cable %s, %s", cfg_.address, station_type_name(cfg_.type),
+                             plugged_ ? "plugged" : "unplugged", station_state_name(state_));
     if (state_ == StationState::Online) out += ", " + id_.describe();
     if (type_mismatch_) out += " [type mismatch]";
     out += format("; polls %llu, keys %llu, steps %llu, exceptions %llu, LPE %llu, no-response %llu\n",
