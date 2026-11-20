@@ -281,9 +281,56 @@ active width) and close-up photos of a column separator and of the cursor
 in each format remove the rendering unknowns, which would make the
 search above decisive.
 
-The emulator does not compute a signature: bits 7-4 read `0`, so an
-unmodified boot stops at the display test. This is the one remaining piece
-of POST hardware that is not modelled.
+**Timing fixed from the board (2026-11-20, private tooling).** With the
+59.8185 MHz crystal as dot clock and 104 units of 16 dots per line (the
+132-column format packing two 8-dot characters per unit), the searches were
+repeated with the line length fixed and the window = one frame (551 or 529
+lines):
+
+- a different reading of the type-5 complement: `20129` bits 3-0 XORed
+  into the **readout** (`sel 01` = signature XOR `F`) instead of inverting
+  the video. Dot-serial, active area only: no model passes;
+- per 16-dot character time, a 1-bit function of the dot word (OR, AND,
+  parity, any single dot) into a serial 4-bit register, or a 4-bit function
+  (OR or XOR per 4-dot group, XOR fold, any 4-dot group, both bit orders)
+  into a 4-bit MISR, every feedback polynomial, active area aligned to the
+  top or the bottom of the frame, with the readout-XOR or video-inversion
+  reading. Many models pass, but the same search with random expected
+  values that keep the real data's structure passes as often (1400-10000
+  hits per random set against 150-2600 for the real values), so the nine
+  independent equations cannot single out a model in this family. Nothing
+  here is a candidate.
+
+So the board timing does not make the existing data decisive: the
+expected values are too few for any family flexible enough to contain a
+plausible gate-array design. The single-dot measurement below is still
+what is needed.
+
+**TEMPORARY shim (implemented, `src/devices/ibm3477/display.*`).** Until the
+function is measured, the display controller stands in for it so that the
+firmware can boot:
+
+- Bit 7 written 0 -> 1 starts a measurement; at the next start of vertical
+  retrace the result is latched into bits 7-4 and held until bit 7 is
+  cleared (observed protocol).
+- The result is looked up in a table keyed on the selector (bits 6-5) and a
+  64-bit FNV-1a **fingerprint of the displayed frame**: the CRT timing block
+  and cursor registers (`00-18`), the mode block (`25-2E`, which includes
+  the inversion bits in `20129`), the window starts (`30-35`), and for every
+  displayed cell its three bytes and the glyph scan lines it fetches. The
+  display type enters through the timing registers, which differ per tube.
+- The table has twelve entries: the six test screens on types 3/4 (which
+  share their raster settings) and on type 5, with the results a working
+  unit measures for them (the values the test requires). A frame that is
+  not in the table gets a placeholder nibble derived from the fingerprint;
+  selector `00` never reads `0`.
+- It does not look at the CPU, the firmware's code addresses or its stack,
+  and holds no ROM bytes. It is on by default; `--no-vdo-shim` or
+  `[emulator] vdo_shim = false` turns it off (bits 7-4 then read `0` and
+  POST stops at the display test with the alarm on).
+
+Remove the table and implement the real function as soon as single-dot
+signatures (above) or the gate array's documentation are available.
 
 ### Keyboard interface (`20012-20014`)
 
@@ -532,13 +579,14 @@ Observed with `--display green` and no Twinax device:
 
 1. Reset, register-only RAM test, ROM checksums, strap decoding.
 2. POST tests: RAM passes and the communications loop-back test (`COM`)
-   passes with the Twinax engine model (observed). POST then stops at the
-   display test (`VDO`) with the alarm tone on (`20010` = `9B`) and the CPU
-   halted, because the video signature is not modelled (see [Display
-   test](#display-test-and-the-sense-lines-2012f-bits-7-4)).
+   passes with the Twinax engine model (observed). The display test
+   (`VDO`) passes with the **temporary** signature shim (see [Display
+   test](#display-test-and-the-sense-lines-2012f-bits-7-4)); without it
+   (`--no-vdo-shim`) POST stops there with the alarm tone on (`20010` =
+   `9B`) and the CPU halted.
 
-Later stages, observed only by letting the failed display test continue
-from the monitor (bring-up exploration, not a product setting):
+Later stages (observed with the shim; before it, by letting the failed
+display test continue from the monitor):
 
 - the keyboard wrap (`KWP`) and keyboard (`KBD`) tests pass;
 - the main firmware installs its handlers for vectors `06h`, `07h`, `09h`,
@@ -590,8 +638,8 @@ is the crystal and an 80-column cell is 16 dots, CRT register 00 = 67h
 
 ## Next steps
 
-1. The video signature behind `2012F` bits 7-4 (display test). Needs
-   hardware: single-dot signatures from a real unit (see [Display
+1. The video signature behind `2012F` bits 7-4 (display test), to replace
+   the temporary shim. Needs hardware: single-dot signatures from a real unit (see [Display
    test](#display-test-and-the-sense-lines-2012f-bits-7-4)), or the gate
    array's documentation.
 2. Twinax engine: Activate Read/Write edge cases not yet seen from the

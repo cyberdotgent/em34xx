@@ -372,9 +372,9 @@ its cable unplugged (no reconnect) while the other stations carry on.
 ### Live results with the 3477 firmware
 
 Observed with the 3477 brought past its display test by hand (a private
-bring-up aid; the video signature is not modelled, see
-docs/bringup-3477.md) and a saved setup (`--nvram`), then `connect HOST` at
-the monitor:
+bring-up aid, before the temporary video-signature shim made an unmodified
+boot pass; see docs/bringup-3477.md) and a saved setup (`--nvram`), then
+`connect HOST` at the monitor:
 
 - pub400.com: the session negotiates, the cable is plugged, the terminal is
   discovered (display, model 24, 122-key keyboard, 27x132 capable) and
