@@ -56,5 +56,7 @@ stub and front end take the lock briefly through `Emulator::with_machine`.
 5250 workstation frame (sync, data LSB-first, 3-bit station address with 7 as
 end-of-message, even parity, fill). The model's link device, still unknown,
 will turn firmware register accesses into frames. A `TwinaxHost` plays the
-controller. The planned TN5250 host will encapsulate and decapsulate the 5250
-data stream at that boundary.
+controller. The TN5250 client (`src/tn5250`, see `docs/tn5250.md`) keeps
+the 5250 shadow screen and does the operator field editing; the virtual
+workstation controller (`src/host/wsc`) drives the station from it through
+`tn5250::DisplaySession`.
