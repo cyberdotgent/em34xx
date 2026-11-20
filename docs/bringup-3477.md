@@ -87,21 +87,51 @@ clock (`clock_hz / 50`).
 | 5-4 | Boot mode: `00` normal; `01`, `10`, `11` select manufacturing/burn-in modes | Observed (mode select), meaning hypothesis |
 
 The three accepted codes are display types 3, 4 and 5. The firmware reports
-the type to the controller in the Read Info VPD as the model suffix after
-"3477": `FD0`, `FE0` and `FW0` respectively, always with the monochrome
-model ID `24` (observed). The VPD table also holds `FG0`, `FA0` and the
-colour model `FC0` (model ID `50`), but no strap value selects those types
-in this ROM (observed). Type 5 also has its own character-cell height (19
-instead of 21 scan lines in the 24x80 format) and monitor-control setting
-in `2012F`, so it is a different tube.
+the type in the Read Info VPD as the model suffix after "3477": `FD0`, `FE0`
+and `FW0` respectively, always with the monochrome model ID `24` (observed).
+Type 5 also has its own character-cell height (19 instead of 21 scan lines
+in the 24x80 format) and monitor-control setting in `2012F`, so it is a
+different tube.
+
+### Colour
+
+The firmware knows six display types, with VPD suffixes `FG0`, `FA0`,
+`FD0`, `FE0`, `FW0` and `FC0` (types 1-6). Type 6 is colour, and the code
+handles it everywhere (observed): model ID `50` for Read Device ID `8C`
+and the extended ID, Read Info monitor characteristics `FA` instead of `7A`,
+ECB info `E0` instead of `C0`, four ECB planes instead of three, colour
+attribute tables, its own `2012F` and `20128` settings and video-signature
+table entries, and mode records and fonts (21/18/12 scan-line cells, as
+types 3 and 4).
+
+The type is written in one place only: the strap decoder at the start of
+POST, which yields types 3, 4 and 5 and nothing else (observed). No other
+input sets it. Not the other `2000A` bits, the `2012F` sense bits,
+`20006`, the I2C devices or the battery-backed setup values (observed).
+So **this ROM pair cannot identify as a colour 3477**, nor as `FG0` or
+`FA0`. The 1989 PAI lists FGx (14" green), FAx (14" amber), FCx (14"
+colour) and FDx (15" green) (documented). This ROM accepts only the 15"
+family (FD/FE/FW). The 14" models, colour included, presumably ran a
+different POST ROM, whose decoder maps other strap codes to types 1, 2 and 6
+(hypothesis).
+
+Forcing type 6 in RAM after the decoder ran (a private experiment, not an
+emulator setting) brings the station on line with model ID `50` under
+`--twinax-host wsc`. The screen is then blank, because colour mode leaves
+`20128` bit 4 clear and the display model treats that bit as "video on"
+(observed). In colour mode the bit must mean something else (hypothesis).
+
+27x132 is offered on every type: mode records and 132-column fonts exist
+for all six (observed), and the PAI says the same for all models
+(documented).
 
 Mapping of the `--display` subtype:
 
-| Subtype | Straps | Reported model | Status |
+| Subtype | Straps | Reported model, 8C / Read Info ECB | Status |
 | --- | --- | --- | --- |
-| green, amber | `0C` (type 4) | `3477 FE0`, ID 24 | hypothesis |
-| paperwhite | `0E` (type 5) | `3477 FW0`, ID 24 | hypothesis (W = white) |
-| color | `0E` (type 5) | `3477 FW0`, ID 24 | no colour strap code exists in this ROM; the closest tube is used and the unit identifies as monochrome |
+| green, amber | `0C` (type 4) | `3477 FE0`, `24` / `C0` | hypothesis |
+| paperwhite | `0E` (type 5) | `3477 FW0`, `24` / `C0` | hypothesis (W = white) |
+| color | `0C` (type 4) | `3477 FE0`, `24` / `C0` | no colour type is reachable in this ROM (observed). Type 4 has the cell heights of the colour type. The emulator warns at start-up and renders the attributes in colour on a unit that identifies as monochrome |
 
 Type `010` (`FD0`) is not selected by any subtype. The whole byte can be
 overridden with `--straps HEX` or `[emulator] straps`.

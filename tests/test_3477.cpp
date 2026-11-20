@@ -226,7 +226,7 @@ TEST_CASE("3477 straps follow the display subtype") {
     CHECK(ibm3477_default_straps(DisplaySubtype::Green) == 0x0C);
     CHECK(ibm3477_default_straps(DisplaySubtype::Amber) == 0x0C);
     CHECK(ibm3477_default_straps(DisplaySubtype::PaperWhite) == 0x0E);
-    CHECK(ibm3477_default_straps(DisplaySubtype::Color) == 0x0E);
+    CHECK(ibm3477_default_straps(DisplaySubtype::Color) == 0x0C);
 }
 
 TEST_CASE("3477 keyboard interface: power-on, reset and ID handshake") {

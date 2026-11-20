@@ -124,13 +124,16 @@ uint8_t ibm3477_default_straps(DisplaySubtype d) {
     // Bits 3..1 carry the display type; only 010, 110 and 111 are accepted
     // (types 3, 4, 5) [observed]. The firmware reports the type in the Read
     // Info VPD as the model suffix FD0, FE0 and FW0 respectively, all with
-    // the monochrome model ID 24 [observed]; the colour model (FC0, model ID
-    // 50) is a type that no strap value selects in this ROM. So: paper-white
-    // is FW0 (111) [hypothesis: W = white; type 5 also has its own cell
-    // geometry and monitor-control setting]; green and amber are 110
-    // [hypothesis]; colour has no strap code of its own and uses 111, the
-    // closest tube, so the firmware identifies it as a monochrome FW0.
-    return (d == DisplaySubtype::Color || d == DisplaySubtype::PaperWhite) ? 0x0E : 0x0C;
+    // the monochrome model ID 24 [observed]. Colour (FC0, model ID 50) is
+    // display type 6; the firmware handles type 6 throughout, but its strap
+    // decoder never produces it, and no other input sets the type
+    // [observed], so this ROM cannot identify as colour.
+    // Paper-white is FW0 (111) [hypothesis: W = white; type 5 also has its
+    // own cell heights and monitor-control setting]; green and amber are 110
+    // [hypothesis]. Colour uses 110 as well: type 4 has the same cell heights
+    // as type 6 (21/18/12 scan lines) [observed], so the screen formats
+    // match; the unit then identifies as a monochrome FE0.
+    return d == DisplaySubtype::PaperWhite ? 0x0E : 0x0C;
 }
 
 // ---------------------------------------------------------------------------

@@ -29,6 +29,7 @@
 #include "input/host_keymap.hpp"
 #include "input/keyboard_ids.hpp"
 #include "machine/machine.hpp"
+#include "util/log.hpp"
 #include "util/strings.hpp"
 
 #include <stdexcept>
@@ -88,8 +89,10 @@ public:
             "system gate array at 20000: interrupt request/mask registers and fixed vectors "
             "(observed use, bit map hypothesis), 50 Hz timer (hypothesis)",
             "display type straps at 2000A: 04/0C/0E = types 3/4/5, reported as model FD0/FE0/FW0 "
-            "(observed); green/amber -> 0C, paper-white -> 0E (hypothesis); colour (FC0) has no "
-            "strap code in this ROM and uses 0E",
+            "with model ID 24 (observed); green/amber -> 0C, paper-white -> 0E (hypothesis)",
+            "colour: the firmware has a complete colour path (display type 6 = FC0, model ID 50, "
+            "4 ECB planes) but nothing in this ROM selects type 6 (observed); --color renders the "
+            "attributes in colour on a unit that identifies as FE0, model ID 24",
             "setup configuration in battery-backed RAM: POST never tests 01A0-0A9F and only "
             "validates the checksummed setup block there; an hour meter and a power-on counter "
             "live in the same range (observed); battery backing of the whole 128 KiB is a hypothesis",
@@ -132,6 +135,9 @@ public:
         Ibm3477KeyboardInterface* kbd_ptr = kbd.get();
 
         const uint8_t straps = opt.straps >= 0 ? uint8_t(opt.straps) : ibm3477_default_straps(opt.display);
+        if (opt.display == DisplaySubtype::Color)
+            LOG_WARN("system", "3477: this ROM has no colour display type; the terminal identifies as a "
+                               "monochrome 3477 FE0 (model ID 24h) and only the rendering is in colour");
         Ibm3477System& sys = m.add_device<Ibm3477System>(info_.clock_hz, straps, std::move(kbd));
         bus.map_mmio("system", Ibm3477System::kBase, Ibm3477System::kSize, &sys);
         bus.set_interrupt_controller(&sys.interrupts());
