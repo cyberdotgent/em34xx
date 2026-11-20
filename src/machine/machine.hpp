@@ -50,6 +50,9 @@ struct TerminalOptions {
     int keyboard_id = -1;                // explicit ID byte override, -1 = from layout
     // Enter F13..F24 as Shift+F1..F12 on the host (122-key keyboards only).
     bool shift_fkeys = true;
+    // Host keymap: "pcomm" (default), "positional" or a TOML file
+    // (src/input/host_keymap.hpp, docs/keyboard.md).
+    std::string keymap = "pcomm";
     // Configuration strap byte presented by the model, -1 = derived from the
     // display subtype (3477: register 2000A).
     int straps = -1;

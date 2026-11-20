@@ -26,6 +26,7 @@ type = "122"             # 122 (terminal) | enhanced
 layout = "us"            # selects the terminal language; see docs/keyboard.md
 # id = 0xBF              # explicit keyboard ID byte override
 shift_fkeys = true       # Shift+F1..F12 enters F13..F24 (122-key keyboard)
+keymap = "pcomm"         # host keymap: pcomm, positional or a TOML file (keymaps/)
 
 [monitor]
 rc = ""                  # monitor script run at start-up

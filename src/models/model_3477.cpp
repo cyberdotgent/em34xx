@@ -25,6 +25,7 @@
 #include "devices/ibm3477/keyboard_if.hpp"
 #include "devices/ibm3477/system.hpp"
 #include "devices/ibm3477/twinax_engine.hpp"
+#include "input/host_keymap.hpp"
 #include "input/keyboard_ids.hpp"
 #include "machine/machine.hpp"
 #include "util/strings.hpp"
@@ -113,6 +114,9 @@ public:
         parse_keyboard_type(opt.keyboard_type, type);
         auto kbd = std::make_unique<Ibm3477KeyboardInterface>(info_.clock_hz, type, id1, id2);
         kbd->keyboard().set_shift_fkeys(opt.shift_fkeys);
+        auto keymap = std::make_shared<Keymap>();
+        if (!load_keymap(opt.keymap, opt.shift_fkeys, *keymap, error)) throw std::runtime_error(error);
+        kbd->keyboard().set_keymap(std::move(keymap));
         Ibm3477KeyboardInterface* kbd_ptr = kbd.get();
 
         const uint8_t straps = opt.straps >= 0 ? uint8_t(opt.straps) : ibm3477_default_straps(opt.display);

@@ -165,10 +165,156 @@ and the table byte. An explicit ID override in the configuration replaces
 
 ## Host key mapping
 
-Host keys arrive as USB HID usages (SDL scancodes). They are mapped to the
-set-3 key at the **same physical position**, not by legend. The terminal
-firmware assigns each position its meaning (5250 functions, national
-characters).
+Host keys arrive as USB HID usages (SDL scancodes). The emulated terminal has
+a real IBM 122-key or Enhanced keyboard, and its firmware decides what each
+key does, so the emulator turns PC keys into **terminal key positions**
+(set-3 make/break codes), never into 5250 functions. Two layers do this:
+
+1. the **host keymap** (`src/input/host_keymap.*`): rules that map a PC key
+   plus the PC's Shift/Ctrl/Alt state to one terminal key, with the
+   terminal's own Shift and Alt held or released around it;
+2. the **positional fallback** for keys without a rule: the terminal key at
+   the same physical place on the keyboard.
+
+### Host keymap
+
+Select it with `--keymap MAP` or `[keyboard] keymap = "MAP"`:
+
+- `pcomm` (default): the default 5250 keyboard of IBM Personal
+  Communications (PCOMM), which matches how the real terminal is used from a
+  PC (Right Ctrl = Enter, Esc = Attention, Shift+F1 = F13, ...);
+- `positional`: physical positions only (plus Shift+F1..F12 → F13..F24 on the
+  122-key keyboard);
+- a TOML file (below). `keymaps/pcomm-like.toml` is the `pcomm` map written
+  out, `keymaps/positional.toml` the `positional` one; a unit test keeps
+  them equal to the built-ins.
+
+Engine behaviour:
+
+- **Matching.** A rule names the host key and the modifier state. For each
+  group (Shift, Ctrl, Alt) a rule requires it up (not listed), held on either
+  side (`shift`), held on one side (`lshift`, `rshift`, `lctrl`, `rctrl`,
+  `lalt`, `ralt` = `altgr`), or ignores it (`*`). The most specific matching
+  rule wins (a side-specific condition counts 2, up/either 1, ignored 0);
+  among equals the rule defined last wins, so a file overrides the built-ins.
+- **Terminal modifiers.** The PC's Shift and Alt keys press the terminal's
+  Shift (`12`/`59`) and Alt (`19`/`39`) keys. A rule can release or press
+  them for as long as its key is down: break codes for the held ones before
+  the key's make code, make codes again after its break if the PC keys are
+  still held. Modifier changes while such a key is down are not reported;
+  the final state is. The terminal has no Ctrl key: the PC's Ctrl keys only
+  select rules (or press Reset/Enter, below).
+- **Release.** The engine remembers what each host key pressed and releases
+  exactly that, whatever the modifiers did meanwhile (Shift+F1 → F13, then
+  Shift up, then F1 up releases F13). Two host keys on one terminal key give
+  one make and one break.
+- **Tap keys.** A `tap` rule sends its key (make, then break) when the host
+  key is released, and only if no other key was pressed while it was held;
+  otherwise the key was just a modifier. This is PCOMM's Enter/Ctrl and
+  Reset/Ctrl behaviour for Right and Left Ctrl.
+- **Typematic.** The keyboard model repeats the last key made from the `F3`
+  setting; host auto-repeat (a second press without a release) is ignored.
+
+### Default (`pcomm`) assignments
+
+PCOMM's IBM-default 5250 layout (documented: *Personal Communications AS/400
+and 3270 for Windows 95 V4.1 Reference*, SC31-8206, §1.8.1.2; the installed
+help describes the functions). The terminal keys are from the U.S. 122-key
+typewriter and Enhanced keyboard figures of the *InfoWindow II 3489 User's
+Guide*, GA18-7492-00, ch. 4: an upper legend is entered with Shift, a front
+legend with Alt (documented for the 3489; **assumed** for the 3477, which
+uses the same keyboards).
+
+| PC key | Function | 122-key terminal key | Enhanced terminal key |
+| --- | --- | --- | --- |
+| Esc | Attention | `05` Attn | `08` Attn |
+| Shift+Esc | System Request | Shift+`05` | Alt+`57` (Print/SysRq) |
+| F1–F12 | F1–F12 | lower row (positional) | (positional) |
+| Shift+F1–F12 | F13–F24 | upper row `08`…`5F`, Shift released | Shift+F1–F12 (positional) |
+| F13–F24 (host) | F13–F24 | upper row | Shift+F1–F12 |
+| Alt+F1 | Help | `0B` Help/Hex, Alt released | `5F` Help/Test |
+| Pause | Clear | Alt+`06` | Alt+`62` (Pause/Clear) |
+| Ctrl+Pause | Print (host print) | `03` Print | `57` Print |
+| Alt+Pause | Test (request) | Alt+`0A` Play/Test | Alt+`5F` |
+| Print Screen | Print (ours: PCOMM leaves it to Windows) | `03` | `57` |
+| Shift+Tab | Backtab | `67` Field Backspace | Shift+`0D` |
+| Enter | Field Exit | `5A` | `5A` |
+| Shift+Enter | New Line | `64` (↵ key) | Shift+`5A` |
+| Left Ctrl (tap) | Reset | `11` Reset | `11` |
+| Alt+Left Ctrl (tap) | Quit | Alt+`11` | Alt+`11` |
+| Right Ctrl (tap) | Enter | `58` Enter | `58` |
+| Insert | Insert | `65` Insert | `67` |
+| Shift+Insert | Dup | `6E` Dup | Shift+`67` |
+| Home | Home | Alt+`62` (Rule/Home) | `6E` |
+| Ctrl+Home | Rule | `62` | Alt+`6D` |
+| Page Up | Roll Down | Shift+`60` (Roll ↓) | `6F` |
+| Alt+Page Up | Jump | `6F` Jump | Alt+`6F` |
+| Delete | Delete | `6D` Delete | `64` |
+| End | (Erase EOF) | nothing | `65` (positional) |
+| Alt+End, Ctrl+Alt+End, AltGr+End | Erase Input | `0C` ErInp | Alt+`65` |
+| Page Down | Roll Up | Shift+`63` (Roll ↑) | `6D` |
+| Keypad − | Field − | `7C` | `84` |
+| Keypad + | Field + | `79` | `7B` |
+| Keypad Enter | Field Exit | `5A` | `5A` |
+
+Insert, Home, Page Up/Down, Delete, End and the keypad keys keep their
+function with any modifiers that have no rule of their own; every other key
+and combination is positional (e.g. Alt+arrows reach the terminal's fast
+cursor, Shift+↑/↓ the 122-key's Roll keys). Set-3 codes `7B`/`7C` on the
+Enhanced keypad (Field + and →| in the place of the PC's tall +) are
+inferred from the figure.
+
+PCOMM functions with **no terminal key**, not mapped: Erase EOF (End; 5250
+keyboards have none, Field Exit erases to the end of the field), Field Mark
+(Shift+Home), mark/move-mark selection (Shift/Ctrl+arrows), Delete Word
+(Ctrl/Alt+Delete), text-assist keys (required backspace/tab, carrier return,
+display text codes), cursor blink / alternate cursor (Alt+F10/F11), PCOMM's
+own macro record/play/pause (Ctrl+F5/F6/F7; the terminal's Record and Play
+keys are available as `record`/`play`), edit cut/copy/paste, and the Num
+Lock-off keypad functions (the terminal keypad is numeric).
+
+### Keymap files
+
+```toml
+base = "pcomm"          # rules to start from: pcomm (default), positional, none
+
+[[map]]
+host = "Escape"         # PC key: name or HID usage number
+mods = "shift"          # or ["ctrl", "alt"]; "*" = ignore the other groups
+to = "sysrq"            # terminal function, "0x05", "none" or "positional"
+keyboard = "122"        # optional: 122, enhanced or both (default)
+shift = "press"         # optional: keep, press or release (overrides `to`)
+alt = "release"         # optional, as shift
+tap = false             # optional: send on release if used alone
+```
+
+Host key names (case, `-`, `_` and spaces ignored): `a`–`z`, `0`–`9`,
+`f1`–`f24`, `escape`/`esc`, `enter`/`return`, `tab`, `space`, `backspace`,
+`minus`, `equals`, `leftbracket`, `rightbracket`, `backslash`, `nonushash`,
+`nonusbackslash`, `semicolon`, `apostrophe`, `grave`, `comma`, `period`,
+`slash`, `capslock`, `printscreen`, `scrolllock`, `pause`, `insert`, `home`,
+`pageup`, `delete`, `end`, `pagedown`, `up`, `down`, `left`, `right`,
+`numlock`, `kp_divide`, `kp_multiply`, `kp_minus`, `kp_plus`, `kp_enter`,
+`kp_0`–`kp_9`, `kp_period`, `kp_equals`, `kp_comma`, `application`/`menu`,
+`execute`, `help`, `select`, `stop`, `international1`–`5`, `lctrl`,
+`lshift`, `lalt`, `lgui`, `rctrl`, `rshift`, `ralt`/`altgr`, `rgui`, or
+`hid:0xNN`.
+
+Terminal functions resolve to a key on the configured keyboard type, with
+the terminal's Shift and Alt set as the legend needs (columns above):
+`attn`, `sysrq`, `setup`, `clear`, `erinp`, `print`, `help`, `hex`, `test`,
+`play`, `record`, `pause`, `reset`, `quit`, `enter`, `fieldexit`, `newline`,
+`field+`, `field-`, `dup`, `insert`, `delete`, `backtab`, `tab`,
+`changescreen`, `jump`, `rule`, `home`, `rollup`, `rolldown`, `up`, `down`,
+`left`, `right`, `backspace`, `back`, `fwd`, `f1`–`f24`. A raw position
+(`"0x5A"` or a number) presses that set-3 key with Shift/Alt as the PC holds
+them. `none` swallows the key; `positional` restores the positional key.
+Errors name the file and line.
+
+### Positional fallback
+
+Keys are mapped to the set-3 key at the **same physical position**, not by
+legend.
 
 Same on both types: the main typing block, F1–F12 (`07 0F 17 1F 27 2F 37 3F
 47 4F 56 5E`), the edit cluster (Ins `67`, Home `6E`, PgUp `6F`, Del `64`, End
@@ -179,50 +325,44 @@ and the Japanese keys (Ro `51`, Yen `5D`, Muhenkan `85`, Henkan `86`, Kana
 `87`).
 
 IBM Enhanced only: Esc `08`, backslash `5C`, Print Screen `57`, Scroll Lock
-`5F`, Left/Right GUI `8B`/`8C`, Menu `8D`. Host F13–F24 are unmapped.
+`5F`, Left/Right GUI `8B`/`8C`, Menu `8D`. Host F13–F24 have no position
+(the `pcomm` map sends Shift+F1–F12).
 
 122-key only. These are host-mapping choices. The 122-key has an upper row of
 12 function keys, a 10-key block left of the typing area, and extra keypad
 keys; a PC keyboard has none of them.
 
-| Host key | Set 3 | 122-key position |
+| Host key | Set 3 | 122-key position (5250 legend, 3489 figure 4-1) |
 | --- | --- | --- |
 | F13–F24 | `08 10 18 20 28 30 38 40 48 50 57 5F` | upper function-key row |
-| Esc | `05` | left block, row 1 left |
-| Print Screen | `06` | left block, row 1 right |
-| Scroll Lock | `04` | left block, row 2 left |
-| Execute (HID 74) | `0C` | left block, row 2 right |
-| Help (HID 75) | `03` | left block, row 3 left |
-| Select (HID 77) | `0B` | left block, row 3 right |
-| Application/Menu | `83` | left block, row 4 left |
-| Stop (HID 78) | `0A` | left block, row 4 right |
-| Left GUI | `01` | left block, row 5 left |
-| Right GUI | `09` | left block, row 5 right |
+| Esc | `05` | left block, row 1 left (SysRq / Attn) |
+| Print Screen | `06` | left block, row 1 right (Clear, front) |
+| Scroll Lock | `04` | left block, row 2 left (blank) |
+| Execute (HID 74) | `0C` | left block, row 2 right (ErInp) |
+| Help (HID 75) | `03` | left block, row 3 left (Print) |
+| Select (HID 77) | `0B` | left block, row 3 right (Help / Hex) |
+| Application/Menu | `83` | left block, row 4 left (blank) |
+| Stop (HID 78) | `0A` | left block, row 4 right (Play / Test) |
+| Left GUI | `01` | left block, row 5 left (SetUp) |
+| Right GUI | `09` | left block, row 5 right (Record / Pause) |
 | Backslash | `53` | key left of the ISO-shaped Enter (`5C` is hidden on 122-key boards) |
-| Keypad `,` | `7B` | keypad row 3 right |
+| Keypad `,` | `7B` | keypad row 3 right (blank) |
 | Keypad `=` | `78` | under keypad Enter (hidden on IBM boards) |
 
-The 122-key position between the left and right arrows (`62`) is reached via
-Pause. Physical layout and codes are from the TMK converter's set-3 diagram
-([unimap_trans.h][tmk-unimap]) and [seasip][seasip-6110344]. Most hosts have
-no F13–F24, Execute, Help, Select or Stop keys. A general remapping layer in
-the configuration is not implemented yet.
+On the 5250 122-key keyboard the edit cluster is Field Backspace `67`, Dup
+`6E`, Jump `6F` / New Line `64`, Insert `65`, Delete `6D`; `62` between the
+left and right arrows is Rule (Home on its front), reached via Pause; the
+Enter-shaped key `5A` is Field Exit and Right Ctrl's place `58` is Enter;
+the keypad has Field − at `7C` and the tall Field + at `79`. Physical layout
+and codes are from the TMK converter's set-3 diagram
+([unimap_trans.h][tmk-unimap]) and [seasip][seasip-6110344].
 
-**Shift+F1..F12 enters F13..F24** (122-key keyboard, on by default; this is
-the usual convention for terminal emulators on PC keyboards). Host F13–F24
-keys, where present, still map directly. On a 122-key keyboard F13–F24 are
-separate unshifted keys, so the terminal must not see Shift held while one of
-them is pressed: the model sends the break code of each held Shift key
-(`F0 12`, `F0 59`, if that key is in a break-sending mode) before the upper-row
-make code, and the Shift make codes again after the upper-row key is released
-if Shift is still held. Shift presses and releases while an upper-row key is
-down are not reported; the final state is. Typematic repeat of the upper-row
-key follows its own key mode. Disable the mapping with `--no-shift-fkeys` or
-`[keyboard] shift_fkeys = false`. Enhanced keyboards have no F13–F24, so
-Shift+Fn passes through unchanged there.
-
-Typematic repeat is generated by the keyboard model (`advance_us`) from the
-`F3` setting. Host auto-repeat (a second press without a release) is ignored.
+**Shift+F1..F12 enters F13..F24** (122-key keyboard, both built-in maps, on
+by default; the usual convention for terminal emulators on PC keyboards). On
+a 122-key keyboard F13–F24 are separate unshifted keys, so these rules
+release the terminal Shift around the upper-row key, as described above.
+Disable them with `--no-shift-fkeys` or `[keyboard] shift_fkeys = false`.
+Enhanced keyboards enter F13–F24 as Shift+F1–F12 themselves.
 
 ## 5250 scan codes on the cable
 
@@ -311,6 +451,12 @@ every country (hypothesis to replace when a national 122-key table is found).
 - 3477 firmware (keystroke path, local-function keys), behaviour only.
 - IBM, *InfoWindow II 3489 Modular Display Station Maintenance Information*,
   SY18-2345-0 (1994), §1.2.1.1 Keyboard IDs (BOO shelf copy).
+- IBM, *InfoWindow II 3489 Modular Display Station User's Guide*,
+  GA18-7492-00, ch. 4: 122-key typewriter and Enhanced keyboard legends (BOO
+  shelf copy).
+- IBM, *Personal Communications AS/400 and 3270 for Windows 95 V4.1:
+  Reference*, SC31-8206-00, §1.8.1: PCOMM default keyboard layouts (BOO shelf
+  copy); IBM Personal Communications help, key function topics.
 - IBM, *Personal System/2 Hardware Interface Technical Reference: Keyboards*
   (1990), <https://www.mcamafia.de/pdf/ibm_hitrc11.pdf>: commands, set 3.
 - IBM, *PC AT Technical Reference* (1986): command set, typematic encoding.
