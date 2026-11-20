@@ -161,10 +161,8 @@ uses them as a **video signature** (observed protocol, hypothesis meaning):
 
 So the hardware folds the video of one field into a 4-bit value. Its exact
 function (which signal, which pixels and blanking intervals count, the
-feedback polynomial) is unknown. Simple candidates (per-phase pixel parity,
-4-bit CRCs over the active pixels of the rendered frame) do not reproduce
-the expected values (observed in a fit against the emulator's frames). It
-also cannot be a monitor ID: the values change with the screen contents.
+feedback polynomial) is unknown. It cannot be a monitor ID: the values
+change with the screen contents.
 
 What the test sets up (observed, from the register and RAM state at each
 measurement):
@@ -178,34 +176,110 @@ measurement):
   132-column format starts on an odd address (`4201`).
 - The "nearly empty" screen puts the striped glyph in the cells just
   outside the main window and the status line, where it must not be
-  displayed.
+  displayed, and a blank glyph with attribute `60` in row 0, column 1.
+- The cursor subtest reuses that screen: cursor at row 0, column 1
+  (`20117`/`20118`), `20127` = `40` (cursor on, no blink, hypothesis from
+  the bit's use in normal operation), and `20129` with its high nibble
+  cleared (`00`, or `0F` on type 5).
 - Types 3 and 4 run with identical register settings, so their shared
   expected values are one case, not two.
 - In all three formats, rows x scan lines + register `0E` is constant per
   type: 551 lines on types 3/4, 529 on type 5. So `0E` is the vertical
   blanking in scan lines and the frame length is fixed per tube.
 - An empty screen must give `0` on types 3/4 and `F` on type 5.
+- The firmware still contains two subtests for selector `11` (the corner
+  screen and the cursor screen), but no table entry uses them (observed).
+- During the test `2012F` bits 4-3 are `11` on every type; in normal
+  operation they are `11` only on types 1, 2 and 6 and `00` on the 15-inch
+  types 3-5 (observed). Their meaning is unknown.
 
-A systematic search (private tooling) found **no model** reproducing the
-expected values. It tried a serial dot stream into every 4-bit linear
-register, with active-area-only, per-line-blanking and whole-frame clocking
-and several attribute interpretations; 4-bit slices of the character bus
-into 4-bit multiple-input signature registers; and event counters mod 16.
-The best candidates match 6-7 of 12 values, about what chance gives for that
-many candidates. The likely cause is the number of unknowns: dot width of
-the 80-column cell, column-separator and cursor shapes, horizontal blanking,
-and where the signature register taps the video path. A model fitted
-to these 12 values alone would be underdetermined anyway.
+**Selectors `01` and `10` (hypothesis, consistent with every expected
+value).** `20129` bits 3-0 are `F` on the paperwhite set-up of the test
+and `0` on types 3/4. In normal operation the firmware sets them to `F`
+(together with `20128` bit 5) only on type 5 with the setup's reverse-image
+choice, so they invert the video (dark characters on a light screen). If
+selector `10` taps the video before that inversion and selector `01` after
+it, then:
 
-Experiments on a real terminal that would pin it down:
+- on types 3/4 both selectors see the same stream: equal values for the
+  same screen (observed in the expected values);
+- on type 5 they see complementary streams, so for a linear signature the
+  two values differ by the signature of an all-lit raster, which is what an
+  empty screen gives through selector `01` (`F`): the two values for the
+  same screen are bitwise complements (observed in the expected values).
 
-1. Photograph the 3486/3477 test-menu screens to get the column-separator,
-   cursor and underline shapes, which the model needs.
-2. With a scope or logic probe, find the horizontal total and the
-   dot clock (or simply the line frequency). This fixes the clock count
-   per line.
-3. Best: any documentation of the display gate array, or a board photo
-   with the part number.
+That accounts for three of the twelve values structurally; the others need
+the actual signature function.
+
+**What has been excluded (private tooling, 2026-11-20).** Any 4-bit linear
+signature register with a zero start can be written as `M x (sum of x^k
+over the lit clocks, modulo its feedback polynomial)`, where the 4x4 matrix
+`M` absorbs the injection point and the readout. Testing whether one `M`
+maps all screens to their expected nibbles (a rank test over GF(2)) covers
+every injection and readout at once, and with 9-10 equations for 16
+unknowns a wrong model passes by chance with probability 2^-16 or less. With
+the selector model above, 6912 rendering variants (80-column cell 12 or 16
+dots; column separator none/left/right/both, full height, underline lines
+only or alternate lines; cursor underline, last line, block, from line
+`10`; status rule on the underline lines, last line or the status row, or
+off; high intensity and attribute bit 6 shown or hidden; font 2 shown or
+hidden; status row shown or not) and every feedback polynomial, **no
+model passes**, for:
+
+- one clock per dot, active area only;
+- one clock per dot through horizontal blanking (any horizontal total, a
+  separate total and offset for 132 columns), with the result latched at
+  the end of the active area or at the start of vertical retrace;
+- one clock per two dots (a 30 MHz clock against a doubled dot rate) with
+  the even dot, the odd dot, their OR or their AND as input;
+- four dots per clock into a 4-bit multiple-input register (both bit
+  orders, Galois and Fibonacci forms);
+- a 16-bit serial signature (CRC-16, CCITT, the HP 16-bit signature
+  polynomial, both bit orders) read out as fixed nibbles.
+
+The one near-miss: with the result latched at the start of vertical
+retrace and free horizontal totals for both column modes, a few variants
+pass on the reducible polynomial x^4+x^2+x+1 (period 7), all with the
+second font not displayed and no status row. Random expected values give
+0-3 such passes in the same search, the readout matrix they need is not
+a plain register tap, and the passing variants need font 2 hidden, so this
+is treated as chance, not as a model.
+
+A single wrong rendering detail is enough to fail this test, so the result
+does not exclude a linear signature as such; it says that the rendering or
+the tap point differs from every variant above in some detail that
+cannot be inferred from the firmware alone. The previous search (event
+counters mod 16, 4-bit slices of the character bus) found nothing either.
+
+**Timing (hypothesis).** The 3486 board has a single 30 MHz oscillator and
+a V20 CPU (see docs/bringup-3486.md); the 3477 is assumed to be the same
+design. A 960-dot (80 x 12) or 1280-dot (80 x 16) active line cannot fit a
+~30 us line at 30 MHz, so the dot rate is a multiple of the crystal (for
+example both clock edges, 60 Mdot/s). If the first timing register (`67`
+= 103) is the horizontal total minus one in units of 8 crystal clocks (one
+16-dot 80-column cell at 60 Mdot/s), a line is 832 clocks = 27.7 us
+(36.1 kHz), the frame 551 lines = 65.4 Hz on types 3/4 and 529 lines =
+68.2 Hz on type 5, with 80 of 104 units active (77 %). Not confirmed;
+the 132-column format then has a narrower active area at the same dot
+rate, which would explain why only it sets the extra registers `25`/`2D`
+(horizontal position, hypothesis).
+
+**Observation that would resolve it.** The unknown is the signature
+function itself, and the expected values only sample it on six screens.
+The decisive experiment is on the real hardware, with a small test EPROM of
+our own (not IBM code) in place of the system ROM: set a format, clear the
+screen, light **one dot** (a one-dot glyph) at a chosen cell, line and
+column, run the same measurement (`2012F` = selector with bit 7 clear,
+then set, at the start of vertical retrace; read bits 7-4 at the next
+one) and show or beep out the nibble. About twenty single-dot positions
+(adjacent dots in one line, the same dot one line and one row lower, the
+first and last column, the status row) give the impulse response directly:
+whether the register is linear, its polynomial, how many clocks a dot, a
+line and the horizontal blanking take, and the readout. Without a custom
+ROM, a scope on the video and sync outputs (line frequency, dot clock,
+active width) and close-up photos of a column separator and of the cursor
+in each format remove the rendering unknowns, which would make the
+search above decisive.
 
 The emulator does not compute a signature: bits 7-4 read `0`, so an
 unmodified boot stops at the display test. This is the one remaining piece
@@ -495,7 +569,8 @@ from the monitor (bring-up exploration, not a product setting):
 ## Next steps
 
 1. The video signature behind `2012F` bits 7-4 (display test). Needs
-   hardware: the signature of a known screen on a real unit, or the gate
+   hardware: single-dot signatures from a real unit (see [Display
+   test](#display-test-and-the-sense-lines-2012f-bits-7-4)), or the gate
    array's documentation.
 2. Twinax engine: Activate Read/Write edge cases not yet seen from the
    firmware (a zero count, a transfer cut short by a parity error).
