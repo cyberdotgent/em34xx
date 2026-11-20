@@ -50,7 +50,9 @@ station_address = 0      # 0..6
 host = ""
 port = 23
 device_name = ""
-terminal_type = "IBM-3477-FC"
+terminal_type = ""       # "" = derive from the model and [display] subtype
+                         # (3477: colour IBM-3477-FC, mono IBM-3477-FG);
+                         # a [[twinax.station]] profile overrides it per station
 tls = false
 tls_verify = true
 ca_file = ""

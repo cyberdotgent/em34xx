@@ -22,7 +22,7 @@ namespace {
 
 void usage() {
     std::fprintf(stderr,
-                 "usage: tn5250-probe HOST [PORT] [--ttype IBM-3477-FC] [--devname NAME]\n"
+                 "usage: tn5250-probe HOST [PORT] [--ttype TYPE | --mono] [--devname NAME]\n"
                  "                    [--codepage 37|500|273] [--env NAME=VALUE] [--timeout SECONDS]\n"
                  "                    [--fields]\n");
 }
@@ -52,6 +52,7 @@ int main(int argc, char** argv) {
             return argv[++i];
         };
         if (a == "--ttype") cfg.terminal_type = next();
+        else if (a == "--mono") cfg.terminal_type = derived_terminal_type("3477", DisplaySubtype::Green);
         else if (a == "--devname") cfg.device_name = next();
         else if (a == "--codepage") cfg.codepage = next();
         else if (a == "--timeout") timeout = std::atoi(next().c_str());

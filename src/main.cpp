@@ -153,6 +153,11 @@ int main(int argc, char** argv) {
         std::fprintf(stderr, "tn34xx: %s\n", error.c_str());
         return 2;
     }
+    if (cfg.twinax.host == TwinaxHostKind::Tn5250)
+        for (const StationConfig& st : cfg.twinax.effective_stations())
+            if (st.type == StationType::Display)
+                LOG_INFO("tn5250", "station %u: terminal type %s", st.address,
+                         station_terminal_type(cfg.tn5250, st, model->info().name, cfg.terminal.display).c_str());
     machine->set_twinax_host(std::move(host));
     machine->reset();
     LOG_INFO("machine", "%s ready, CPU %s, reset vector at %06X", model->info().description.c_str(),

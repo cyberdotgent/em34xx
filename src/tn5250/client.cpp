@@ -20,9 +20,17 @@ const char* conn_state_name(ConnState s) {
     return "?";
 }
 
+namespace {
+// The caller normally resolves the type per station (station_terminal_type);
+// an empty one here means a colour 3477.
+std::string effective_type(const Tn5250Config& cfg) {
+    return cfg.terminal_type.empty() ? derived_terminal_type("3477", DisplaySubtype::Color) : cfg.terminal_type;
+}
+} // namespace
+
 TelnetSettings telnet_settings_for(const Tn5250Config& cfg) {
     TelnetSettings s;
-    s.terminal_type = cfg.terminal_type;
+    s.terminal_type = effective_type(cfg);
     auto add = [&](const std::string& name, const std::string& value, bool user) {
         s.environment.push_back(EnvVariable{name, std::vector<uint8_t>(value.begin(), value.end()), user});
     };
@@ -58,7 +66,7 @@ TelnetSettings telnet_settings_for(const Tn5250Config& cfg) {
 
 Client::Client(Tn5250Config cfg, TransportFactory factory)
     : cfg_(std::move(cfg)), factory_(std::move(factory)),
-      engine_(EngineOptions::for_terminal_type(cfg_.terminal_type)) {
+      engine_(EngineOptions::for_terminal_type(effective_type(cfg_))) {
     engine_.set_record_sink([this](const Record& r) { queue_outbound(r); });
 }
 

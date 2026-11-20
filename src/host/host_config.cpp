@@ -14,10 +14,23 @@ std::string Tn5250Config::validate() const {
     return {};
 }
 
+std::string derived_terminal_type(const std::string& model, DisplaySubtype display) {
+    const bool colour = !is_monochrome(display);
+    if (model == "3477") return colour ? "IBM-3477-FC" : "IBM-3477-FG";
+    return colour ? "IBM-3179-2" : "IBM-5251-11";
+}
+
+std::string station_terminal_type(const Tn5250Config& tn5250, const StationConfig& station,
+                                  const std::string& model, DisplaySubtype display) {
+    if (!station.profile.empty()) return station.profile;
+    if (!tn5250.terminal_type.empty()) return tn5250.terminal_type;
+    return derived_terminal_type(model, display);
+}
+
 std::string Tn5250Config::describe() const {
     if (!configured()) return "tn5250: not configured\n";
     std::string out = format("tn5250: %s:%u%s\n", host.c_str(), port, tls ? " (TLS)" : "");
-    out += format("  terminal type %s, device name %s, codepage %s\n", terminal_type.c_str(),
+    out += format("  terminal type %s, device name %s, codepage %s\n", terminal_type.empty() ? "(derived from model and display)" : terminal_type.c_str(),
                   device_name.empty() ? "(host assigned)" : device_name.c_str(), codepage.c_str());
     if (tls) out += format("  verify %s%s\n", tls_verify ? "on" : "off",
                            ca_file.empty() ? "" : (", CA " + ca_file).c_str());

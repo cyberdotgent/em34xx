@@ -236,7 +236,8 @@ Host link (configuration only; the TN5250 bridge is not implemented yet):
       --tn5250-host HOST    TN5250 server
       --tn5250-port PORT    (default 23)
       --tn5250-device NAME  device name (DEVNAME)
-      --tn5250-type TYPE    terminal type (default IBM-3477-FC)
+      --tn5250-type TYPE    terminal type for every display station (default:
+                            derived, 3477 colour IBM-3477-FC, mono IBM-3477-FG)
       --tn5250-tls          use TLS
       --tn5250-no-verify    do not verify the server certificate
       --tn5250-ca FILE      CA bundle for TLS

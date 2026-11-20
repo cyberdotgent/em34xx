@@ -196,3 +196,32 @@ TEST_CASE("tn5250 client: TLS is refused until a TLS transport exists") {
     CHECK(make_transport(cfg, err) == nullptr);
     CHECK(err.find("TLS") != std::string::npos);
 }
+
+TEST_CASE("tn5250 terminal type: derived from model and display, overridable per station") {
+    using tn34xx::DisplaySubtype;
+    CHECK(derived_terminal_type("3477", DisplaySubtype::Color) == "IBM-3477-FC");
+    CHECK(derived_terminal_type("3477", DisplaySubtype::Green) == "IBM-3477-FG");
+    CHECK(derived_terminal_type("3477", DisplaySubtype::Amber) == "IBM-3477-FG");
+    CHECK(derived_terminal_type("3477", DisplaySubtype::PaperWhite) == "IBM-3477-FG");
+    CHECK(derived_terminal_type("3486", DisplaySubtype::Green) == "IBM-5251-11");
+
+    Tn5250Config cfg;
+    CHECK(cfg.terminal_type.empty());          // default: derive
+    StationConfig st;
+    CHECK(station_terminal_type(cfg, st, "3477", DisplaySubtype::Amber) == "IBM-3477-FG");
+    cfg.terminal_type = "IBM-3477-FC";         // --tn5250-type
+    CHECK(station_terminal_type(cfg, st, "3477", DisplaySubtype::Amber) == "IBM-3477-FC");
+    st.profile = "IBM-3179-2";                 // per-station profile wins
+    CHECK(station_terminal_type(cfg, st, "3477", DisplaySubtype::Amber) == "IBM-3179-2");
+
+    // The engine's capabilities follow the type: FG is 27x132 monochrome.
+    const EngineOptions fg = EngineOptions::for_terminal_type(derived_terminal_type("3477", DisplaySubtype::Green));
+    CHECK(fg.wide);
+    CHECK_FALSE(fg.color);
+    CHECK(fg.model == "0FG");
+
+    // An empty type in the session's own settings means a colour 3477.
+    Tn5250Config bare;
+    bare.host = "h";
+    CHECK(telnet_settings_for(bare).terminal_type == "IBM-3477-FC");
+}
