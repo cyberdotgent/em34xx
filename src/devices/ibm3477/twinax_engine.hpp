@@ -22,12 +22,12 @@
 // (observed / hypothesis) behind each behaviour.
 //
 // Line side: the engine is the terminal end of the TwinaxHost contract in
-// host/twinax_link.hpp. Line time is counted in CPU clocks from tick().
+// machine/twinax_port.hpp. Line time is counted in CPU clocks from tick().
 #pragma once
 
 #include "bus/device.hpp"
 #include "devices/ibm3477/system.hpp"
-#include "host/twinax_link.hpp"
+#include "machine/twinax_port.hpp"
 
 #include <array>
 #include <cstdint>

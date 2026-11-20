@@ -63,8 +63,27 @@ if(TN34XX_WARNINGS_AS_ERRORS)
   target_compile_options(tn34xx_warnings INTERFACE $<IF:$<BOOL:${MSVC}>,/WX,-Werror>)
 endif()
 
-# --- Emulator core: everything except the SDL front end and main(). --------
-add_library(tn34xx_core STATIC
+# --- Libraries ---------------------------------------------------------------
+# Layered; each library links only the layers below it (docs/architecture.md):
+#
+#   tn34xx_emu       util, cpu, bus, rom, machine (Machine, Emulator, interfaces)
+#   tn34xx_net       sockets                                   -> emu
+#   tn34xx_machines  devices, models, input                    -> emu
+#   tn34xx_host      Twinax hosts, workstation controller      -> emu
+#   tn34xx_tn5250    TN5250 client (TLS)                       -> host, net
+#   tn34xx_bridge    TN5250 bridge (controller + sessions)     -> host, tn5250
+#   tn34xx_present   CRT rendering, display profiles           -> emu
+#   tn34xx_app       config, monitor, gdb, application         -> all of the above
+#   tn34xx_console   replxx monitor console                    -> app
+#   tn34xx_frontend_sdl  SDL3 front end                        -> present, emu
+#   tn34xx_frontends     front-end registry                    -> frontend_sdl
+function(tn34xx_library name)
+  add_library(${name} STATIC ${ARGN})
+  target_include_directories(${name} PUBLIC src)
+  target_link_libraries(${name} PRIVATE tn34xx_warnings)
+endfunction()
+
+tn34xx_library(tn34xx_emu
   src/util/log.cpp
   src/util/sha256.cpp
   src/util/fingerprint.cpp
@@ -79,6 +98,23 @@ add_library(tn34xx_core STATIC
   src/machine/twinax_port.cpp
   src/machine/machine.cpp
   src/machine/emulator.cpp
+)
+target_link_libraries(tn34xx_emu PUBLIC Threads::Threads)
+if(WIN32)
+  target_compile_definitions(tn34xx_emu PUBLIC _WIN32_WINNT=0x0601 WINVER=0x0601)
+endif()
+if(MINGW)
+  # C99 printf family (%zu, %llu) instead of msvcrt's; see util/strings.hpp.
+  target_compile_definitions(tn34xx_emu PUBLIC __USE_MINGW_ANSI_STDIO=1)
+endif()
+
+tn34xx_library(tn34xx_net src/net/socket.cpp)
+target_link_libraries(tn34xx_net PUBLIC tn34xx_emu)
+if(WIN32)
+  target_link_libraries(tn34xx_net PUBLIC ws2_32)
+endif()
+
+tn34xx_library(tn34xx_machines
   src/models/registry.cpp
   src/models/model_3477.cpp
   src/models/model_3486.cpp
@@ -93,6 +129,10 @@ add_library(tn34xx_core STATIC
   src/devices/ibm3477/keyboard_if.cpp
   src/devices/ibm3477/system.cpp
   src/devices/ibm3477/twinax_engine.cpp
+)
+target_link_libraries(tn34xx_machines PUBLIC tn34xx_emu PRIVATE tomlplusplus::tomlplusplus)
+
+tn34xx_library(tn34xx_host
   src/host/host_config.cpp
   src/host/twinax_link.cpp
   src/host/wsc/device_commands.cpp
@@ -102,38 +142,11 @@ add_library(tn34xx_core STATIC
   src/host/wsc/screen_writer.cpp
   src/host/wsc/station.cpp
   src/host/wsc/tn5250_adapter.cpp
-  src/config/config.cpp
-  src/config/connect_args.cpp
-  src/monitor/expr.cpp
-  src/monitor/monitor.cpp
-  src/gdb/gdb_stub.cpp
-  src/net/socket.cpp
-  src/present/crt_render.cpp
-  src/present/display_profile.cpp
 )
-target_include_directories(tn34xx_core PUBLIC src)
-target_link_libraries(tn34xx_core
-  PUBLIC tomlplusplus::tomlplusplus
-  PRIVATE tn34xx_warnings Threads::Threads)
-if(WIN32)
-  target_link_libraries(tn34xx_core PRIVATE ws2_32)
-  target_compile_definitions(tn34xx_core PUBLIC _WIN32_WINNT=0x0601 WINVER=0x0601)
-endif()
-if(MINGW)
-  # C99 printf family (%zu, %llu) instead of msvcrt's; see util/strings.hpp.
-  target_compile_definitions(tn34xx_core PUBLIC __USE_MINGW_ANSI_STDIO=1)
-endif()
-
-# --- SDL3 front end -------------------------------------------------------
-add_library(tn34xx_frontend STATIC
-  src/frontend/sdl_frontend.cpp
-)
-target_link_libraries(tn34xx_frontend
-  PUBLIC tn34xx_core
-  PRIVATE tn34xx_warnings SDL3::SDL3)
+target_link_libraries(tn34xx_host PUBLIC tn34xx_emu)
 
 # --- TN5250 client: the host side of the Twinax bridge (src/tn5250) --------
-add_library(tn34xx_tn5250 STATIC
+tn34xx_library(tn34xx_tn5250
   src/tn5250/client.cpp
   src/tn5250/codepage.cpp
   src/tn5250/engine.cpp
@@ -143,9 +156,7 @@ add_library(tn34xx_tn5250 STATIC
   src/tn5250/tls_${TN34XX_TLS_BACKEND}.cpp
   src/tn5250/transport.cpp
 )
-target_link_libraries(tn34xx_tn5250
-  PUBLIC tn34xx_core Threads::Threads
-  PRIVATE tn34xx_warnings)
+target_link_libraries(tn34xx_tn5250 PUBLIC tn34xx_host tn34xx_net Threads::Threads)
 if(TN34XX_TLS_BACKEND STREQUAL "openssl")
   target_link_libraries(tn34xx_tn5250 PRIVATE OpenSSL::SSL OpenSSL::Crypto)
 elseif(TN34XX_TLS_BACKEND STREQUAL "schannel")
@@ -153,19 +164,38 @@ elseif(TN34XX_TLS_BACKEND STREQUAL "schannel")
 endif()
 
 # --- TN5250 bridge: the workstation controller with TN5250 sessions --------
-add_library(tn34xx_bridge STATIC
-  src/host/wsc/tn5250_bridge.cpp
+tn34xx_library(tn34xx_bridge src/host/wsc/tn5250_bridge.cpp)
+target_link_libraries(tn34xx_bridge PUBLIC tn34xx_tn5250 tn34xx_host)
+
+tn34xx_library(tn34xx_present
+  src/present/crt_render.cpp
+  src/present/display_profile.cpp
 )
-target_link_libraries(tn34xx_bridge
-  PUBLIC tn34xx_tn5250 tn34xx_core
-  PRIVATE tn34xx_warnings)
+target_link_libraries(tn34xx_present PUBLIC tn34xx_emu)
+
+tn34xx_library(tn34xx_app
+  src/config/config.cpp
+  src/config/connect_args.cpp
+  src/monitor/expr.cpp
+  src/monitor/monitor.cpp
+  src/gdb/gdb_stub.cpp
+)
+target_link_libraries(tn34xx_app
+  PUBLIC tn34xx_machines tn34xx_host tn34xx_bridge tn34xx_present tn34xx_net tomlplusplus::tomlplusplus)
+
+tn34xx_library(tn34xx_console src/app/console.cpp)
+target_link_libraries(tn34xx_console PUBLIC tn34xx_app PRIVATE replxx::replxx)
+
+# --- SDL3 front end -------------------------------------------------------
+tn34xx_library(tn34xx_frontend_sdl src/frontend/sdl_frontend.cpp)
+target_link_libraries(tn34xx_frontend_sdl PUBLIC tn34xx_present PRIVATE SDL3::SDL3)
 
 add_executable(tn5250-probe src/tools/tn5250_probe.cpp)
 target_link_libraries(tn5250-probe PRIVATE tn34xx_tn5250 tn34xx_warnings)
 
 # --- Executable -----------------------------------------------------------
-add_executable(tn34xx src/main.cpp src/app/console.cpp)
-target_link_libraries(tn34xx PRIVATE tn34xx_core tn34xx_bridge tn34xx_frontend tn34xx_warnings replxx::replxx)
+add_executable(tn34xx src/main.cpp)
+target_link_libraries(tn34xx PRIVATE tn34xx_app tn34xx_console tn34xx_frontend_sdl tn34xx_warnings)
 
 if(TN34XX_BUILD_TESTS)
   enable_testing()

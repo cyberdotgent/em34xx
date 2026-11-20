@@ -2,31 +2,40 @@ find_package(doctest CONFIG REQUIRED)
 find_package(nlohmann_json CONFIG REQUIRED)
 find_package(ZLIB REQUIRED)
 
+# Emulator core, devices and the workstation controller: no monitor, no
+# configuration, no front end.
 add_executable(tn34xx_unit_tests
   unit_main.cpp
   test_cpu.cpp
   test_bus.cpp
-  test_monitor_expr.cpp
-  test_twinax.cpp
-  test_util.cpp
   test_keyboard.cpp
   test_host_keymap.cpp
   test_keyboard_e2e.cpp
-  test_display.cpp
   test_display3477.cpp
   test_3477.cpp
   test_twinax_engine.cpp
   test_wsc.cpp
-  test_connect.cpp
   fake_station.cpp
 )
-target_link_libraries(tn34xx_unit_tests PRIVATE tn34xx_core doctest::doctest)
+target_link_libraries(tn34xx_unit_tests PRIVATE tn34xx_machines tn34xx_host tn34xx_warnings doctest::doctest)
 target_compile_definitions(tn34xx_unit_tests PRIVATE TN34XX_SOURCE_DIR="${PROJECT_SOURCE_DIR}")
 add_test(NAME unit COMMAND tn34xx_unit_tests)
 
+# Application layer: configuration, monitor, presentation.
+add_executable(tn34xx_app_tests
+  unit_main.cpp
+  test_monitor_expr.cpp
+  test_twinax.cpp
+  test_util.cpp
+  test_display.cpp
+  test_connect.cpp
+)
+target_link_libraries(tn34xx_app_tests PRIVATE tn34xx_app tn34xx_warnings doctest::doctest)
+add_test(NAME app COMMAND tn34xx_app_tests)
+
 # SingleStepTests runner. Fetch the vectors with tools/fetch-test-vectors.sh.
 add_executable(tn34xx_cpu_vectors cpu_vectors.cpp)
-target_link_libraries(tn34xx_cpu_vectors PRIVATE tn34xx_core nlohmann_json::nlohmann_json ZLIB::ZLIB)
+target_link_libraries(tn34xx_cpu_vectors PRIVATE tn34xx_emu nlohmann_json::nlohmann_json ZLIB::ZLIB)
 
 set(TN34XX_TESTDATA "${PROJECT_SOURCE_DIR}/testdata" CACHE PATH "Directory holding fetched test vectors")
 if(EXISTS "${TN34XX_TESTDATA}/8088/metadata.json")
@@ -54,10 +63,15 @@ add_executable(tn34xx_tn5250_tests
   test_bridge.cpp
   fake_station.cpp
 )
-target_link_libraries(tn34xx_tn5250_tests PRIVATE tn34xx_bridge tn34xx_tn5250 tn34xx_warnings doctest::doctest)
+target_link_libraries(tn34xx_tn5250_tests PRIVATE tn34xx_bridge tn34xx_app tn34xx_warnings doctest::doctest)
 if(TN34XX_TLS_BACKEND STREQUAL "openssl")
   # The TLS test runs its own in-process OpenSSL server.
   target_compile_definitions(tn34xx_tn5250_tests PRIVATE TN34XX_TLS_OPENSSL=1)
   target_link_libraries(tn34xx_tn5250_tests PRIVATE OpenSSL::SSL OpenSSL::Crypto)
 endif()
 add_test(NAME tn5250 COMMAND tn34xx_tn5250_tests)
+
+# Library layering (docs/architecture.md): includes must follow the
+# dependency direction of the CMake libraries.
+add_test(NAME layering COMMAND ${CMAKE_COMMAND} -DSOURCE_DIR=${PROJECT_SOURCE_DIR}
+         -P ${PROJECT_SOURCE_DIR}/cmake/check_layers.cmake)
