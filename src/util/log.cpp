@@ -2,6 +2,7 @@
 
 #include "util/strings.hpp"
 
+#include <chrono>
 #include <cstdio>
 #include <map>
 #include <mutex>
@@ -16,6 +17,8 @@ struct LogState {
     std::map<std::string, LogLevel> levels;
     LogSink sink;
     FILE* file = nullptr;
+    bool timestamps = false;
+    std::chrono::steady_clock::time_point start = std::chrono::steady_clock::now();
 };
 
 LogState& state() {
@@ -71,6 +74,10 @@ bool log_configure(const std::string& spec, std::string& error) {
     for (const std::string& item : split(spec, ',')) {
         const std::string part = trim(item);
         if (part.empty()) continue;
+        if (to_lower(part) == "time") {
+            log_set_timestamps(true);
+            continue;
+        }
         const auto eq = part.find('=');
         LogLevel level;
         if (eq == std::string::npos) {
@@ -99,11 +106,17 @@ void log_write(const char* category, LogLevel level, const char* fmt, ...) {
     std::vsnprintf(body, sizeof body, fmt, ap);
     va_end(ap);
 
-    std::string line = std::string("[") + category + "] ";
+    LogState& s = state();
+    std::string line;
+    if (s.timestamps) {
+        const double t =
+            std::chrono::duration<double>(std::chrono::steady_clock::now() - s.start).count();
+        line = format("%10.6f ", t);
+    }
+    line += std::string("[") + category + "] ";
     if (level <= LogLevel::Warn) line += std::string(log_level_name(level)) + ": ";
     line += body;
 
-    LogState& s = state();
     std::lock_guard<std::mutex> lock(s.mutex);
     if (s.file) {
         std::fprintf(s.file, "%s\n", line.c_str());
@@ -114,6 +127,12 @@ void log_write(const char* category, LogLevel level, const char* fmt, ...) {
     } else {
         std::fprintf(stderr, "%s\n", line.c_str());
     }
+}
+
+void log_set_timestamps(bool on) {
+    LogState& s = state();
+    std::lock_guard<std::mutex> lock(s.mutex);
+    s.timestamps = on;
 }
 
 void log_set_sink(LogSink sink) {

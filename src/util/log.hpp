@@ -16,7 +16,8 @@ bool parse_log_level(const std::string& text, LogLevel& out);
 // Set the level for one category, or for all categories with "*" / "all".
 void log_set_level(const std::string& category, LogLevel level);
 LogLevel log_level(const char* category);
-// Parse "cat=level,cat=level" (or a bare level for all categories).
+// Parse "cat=level,cat=level" (or a bare level for all categories). The
+// item "time" prefixes every line with seconds since start-up.
 bool log_configure(const std::string& spec, std::string& error);
 
 bool log_enabled(const char* category, LogLevel level);
@@ -29,6 +30,8 @@ void log_write(const char* category, LogLevel level, const char* fmt, ...)
     __attribute__((format(printf, 3, 4)))
 #endif
     ;
+
+void log_set_timestamps(bool on);
 
 using LogSink = std::function<void(const std::string& line)>;
 void log_set_sink(LogSink sink);      // nullptr restores stderr

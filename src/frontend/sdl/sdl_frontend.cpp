@@ -2,6 +2,7 @@
 
 #include "app/application.hpp"
 #include "machine/emulator.hpp"
+#include "machine/model_info.hpp"
 #include "present/display_profile.hpp"
 #include "util/log.hpp"
 #include "util/strings.hpp"
@@ -10,6 +11,7 @@
 
 #include <algorithm>
 #include <atomic>
+#include <chrono>
 #include <mutex>
 #include <vector>
 
@@ -73,6 +75,53 @@ std::string SdlFrontend::window_title(const Emulator& emu, const FrontendOptions
 
 } // namespace
 
+namespace {
+
+double ms_since(std::chrono::steady_clock::time_point t0) {
+    return std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t0).count();
+}
+
+// `--log input=debug`: every SDL keyboard event as SDL delivered it, before
+// the keymap (whose decisions Set3Keyboard / HostKeymapEngine log next).
+void log_sdl_key(const SDL_KeyboardEvent& k) {
+    TN_LOG("input", Debug, "sdl %s scancode %u (%s) key %08X (%s) mod %04X%s raw %u window %u t=%.6f s",
+           k.down ? "down" : "up  ", unsigned(k.scancode), SDL_GetScancodeName(k.scancode), unsigned(k.key),
+           SDL_GetKeyName(k.key), unsigned(k.mod), k.repeat ? " REPEAT" : "", unsigned(k.raw),
+           unsigned(k.windowID), double(k.timestamp) / 1e9);
+}
+
+// `--log perf=debug`: what the window costs, every couple of seconds.
+struct PerfStats {
+    std::chrono::steady_clock::time_point start = std::chrono::steady_clock::now();
+    uint64_t cycles_start = 0;
+    uint64_t wakes = 0, rasters = 0, crt_renders = 0, presents = 0;
+    double raster_ms = 0, crt_ms = 0, crt_max_ms = 0;
+
+    void report(Emulator& emu) {
+        const double wall_ms = ms_since(start);
+        if (wall_ms < 2000.0) return;
+        uint64_t cycles = 0, hz = 0;
+        emu.with_machine([&](Machine& m) {
+            cycles = m.cpu().cycles();
+            hz = m.model().clock_hz;
+        });
+        if (cycles_start != 0 && log_enabled("perf", LogLevel::Debug)) {
+            const double mhz = double(cycles - cycles_start) / wall_ms / 1000.0;
+            TN_LOG("perf", Debug,
+                   "%.1f s: emulated %.2f MHz (%.0f%% of nominal); %llu display changes, %llu rasters "
+                   "(%.2f ms avg), %llu CRT renders (%.2f ms avg, %.2f ms max), %llu presents",
+                   wall_ms / 1000.0, mhz, hz ? 100.0 * mhz * 1e6 / double(hz) : 0.0, (unsigned long long)wakes,
+                   (unsigned long long)rasters, rasters ? raster_ms / double(rasters) : 0.0,
+                   (unsigned long long)crt_renders, crt_renders ? crt_ms / double(crt_renders) : 0.0, crt_max_ms,
+                   (unsigned long long)presents);
+        }
+        *this = PerfStats();
+        cycles_start = cycles;
+    }
+};
+
+} // namespace
+
 std::unique_ptr<Frontend> make_sdl_frontend() { return std::make_unique<SdlFrontend>(); }
 
 bool SdlFrontend::run(Application& app, const FrontendOptions& opts, std::string& error) {
@@ -109,6 +158,8 @@ bool SdlFrontend::run(Application& app, const FrontendOptions& opts, std::string
         return false;
     }
     SDL_SetRenderVSync(s.renderer, 1);
+    LOG_INFO("video", "SDL %d.%d.%d, video driver %s, renderer %s", SDL_MAJOR_VERSION, SDL_MINOR_VERSION,
+             SDL_MICRO_VERSION, SDL_GetCurrentVideoDriver(), SDL_GetRendererName(s.renderer));
 
     // Wake the event loop as soon as the emulator reports a new picture
     // (Emulator::set_display_callback runs on the emulation thread; pushing
@@ -131,13 +182,23 @@ bool SdlFrontend::run(Application& app, const FrontendOptions& opts, std::string
     std::string last_title;
     uint64_t seen_generation = 0;
     bool dirty = true;   // first frame
+    PerfStats perf;
     auto handle = [&](const SDL_Event& e) {
         switch (e.type) {
         case SDL_EVENT_QUIT:
             emu.request_quit(emu.exit_code());
             break;
+        case SDL_EVENT_WINDOW_FOCUS_GAINED:
+        case SDL_EVENT_WINDOW_FOCUS_LOST:
+            TN_LOG("input", Debug, "sdl window focus %s t=%.6f s",
+                   e.type == SDL_EVENT_WINDOW_FOCUS_GAINED ? "gained" : "lost", double(e.window.timestamp) / 1e9);
+            break;
+        case SDL_EVENT_KEYMAP_CHANGED:
+            TN_LOG("input", Debug, "sdl keymap changed");
+            break;
         case SDL_EVENT_KEY_DOWN:
         case SDL_EVENT_KEY_UP: {
+            log_sdl_key(e.key);
             if (e.key.repeat) break;   // the terminal does its own typematic
             HostKeyEvent ev;
             ev.hid_usage = uint32_t(e.key.scancode);
@@ -178,7 +239,9 @@ bool SdlFrontend::run(Application& app, const FrontendOptions& opts, std::string
         if (generation != seen_generation) {
             seen_generation = generation;
             dirty = true;
+            ++perf.wakes;
         }
+        perf.report(emu);
         int win_px_w = 0, win_px_h = 0;
         SDL_GetWindowSizeInPixels(s.window, &win_px_w, &win_px_h);
         if (win_px_w != s.win_px_w || win_px_h != s.win_px_h) {
@@ -189,7 +252,10 @@ bool SdlFrontend::run(Application& app, const FrontendOptions& opts, std::string
         if (!dirty) continue;
         dirty = false;
 
+        auto t0 = std::chrono::steady_clock::now();
         emu.with_machine([&](Machine& m) { render_presented(m, fb); });
+        perf.raster_ms += ms_since(t0);
+        ++perf.rasters;
 
         // Draw the tube at the window's real pixel size so the scan-line
         // structure is computed at the output resolution.
@@ -211,7 +277,12 @@ bool SdlFrontend::run(Application& app, const FrontendOptions& opts, std::string
             s.tex_h = out_h;
         }
         if (size_changed || content_changed) {
+            t0 = std::chrono::steady_clock::now();
             crt_render(fb, out_w, out_h, opts.crt, s.image);
+            const double crt_ms = ms_since(t0);
+            perf.crt_ms += crt_ms;
+            perf.crt_max_ms = std::max(perf.crt_max_ms, crt_ms);
+            ++perf.crt_renders;
             SDL_UpdateTexture(s.texture, nullptr, s.image.data(), out_w * 4);
             s.last_raster = fb.pixels;
             s.last_raster_w = fb.width;
@@ -226,6 +297,7 @@ bool SdlFrontend::run(Application& app, const FrontendOptions& opts, std::string
                             float(out_w) / scale_x, float(out_h) / scale_y};
         SDL_RenderTexture(s.renderer, s.texture, nullptr, &dst);
         SDL_RenderPresent(s.renderer);
+        ++perf.presents;
     }
     return true;
 }

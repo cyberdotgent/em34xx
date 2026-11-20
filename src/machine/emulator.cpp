@@ -165,6 +165,11 @@ void Emulator::thread_main() {
 
         StopEvent ev;
         bool first_slice = true;
+        // `--log perf=debug`: achieved speed and pacing sleeps.
+        auto report_start = wall_start;
+        uint64_t report_cycles = cycles_start;
+        double slept_ms = 0, oversleep_ms = 0;
+        unsigned sleeps = 0, resyncs = 0;
         for (;;) {
             const uint64_t slice = std::min(budget, kSliceInstructions);
             uint64_t cycles_now;
@@ -188,6 +193,22 @@ void Emulator::thread_main() {
                 ev.reason = StopEvent::Reason::StepDone;
                 break;
             }
+            if (log_enabled("perf", LogLevel::Debug)) {
+                const auto now = clock::now();
+                const double secs = std::chrono::duration<double>(now - report_start).count();
+                if (secs >= 2.0) {
+                    LOG_DEBUG("perf",
+                              "emulation: %.2f MHz over %.1f s (nominal %.2f MHz, speed %u%%); %u sleeps, "
+                              "%.0f ms asleep, %.2f ms average oversleep; %u resyncs",
+                              double(cycles_now - report_cycles) / secs / 1e6, secs, double(clock_hz) / 1e6,
+                              speed_percent_.load(), sleeps, slept_ms, sleeps ? oversleep_ms / sleeps : 0.0,
+                              resyncs);
+                    report_start = now;
+                    report_cycles = cycles_now;
+                    slept_ms = oversleep_ms = 0;
+                    sleeps = resyncs = 0;
+                }
+            }
             // Pace to the model's nominal clock.
             const unsigned pct = speed_percent_.load();
             if (pct != 0 && clock_hz != 0) {
@@ -196,11 +217,17 @@ void Emulator::thread_main() {
                                                      std::chrono::duration<double>(target_s));
                 const auto now = clock::now();
                 if (target > now) {
-                    std::this_thread::sleep_for(std::min<clock::duration>(target - now, std::chrono::milliseconds(50)));
+                    const auto want = std::min<clock::duration>(target - now, std::chrono::milliseconds(50));
+                    std::this_thread::sleep_for(want);
+                    const auto got = clock::now() - now;
+                    ++sleeps;
+                    slept_ms += std::chrono::duration<double, std::milli>(got).count();
+                    oversleep_ms += std::chrono::duration<double, std::milli>(got - want).count();
                 } else if (now - target > std::chrono::milliseconds(250)) {
                     // Too far behind (e.g. after a debugger pause): resync.
                     wall_start = now;
                     cycles_start = cycles_now;
+                    ++resyncs;
                 }
             }
         }

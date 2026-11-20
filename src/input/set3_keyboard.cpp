@@ -194,6 +194,7 @@ uint8_t Set3Keyboard::read_output() {
     const uint16_t v = out_.front();
     out_.pop_front();
     if (v & kKeyFlag) {
+        TN_LOG("input", Debug, "keyboard sends key byte %02X to the terminal", unsigned(v & 0xFF));
         if (key_bytes_) --key_bytes_;
         if (key_bytes_ == 0) overrun_ = false;
     }
@@ -213,6 +214,7 @@ void Set3Keyboard::clear_key_bytes() {
 }
 
 void Set3Keyboard::key_byte(uint8_t b) {
+    TN_LOG("input", Trace, "keyboard queues %02X (%zu key bytes waiting)", b, key_bytes_);
     if (overrun_) return;
     if (key_bytes_ >= kBufferLimit) {
         out_.push_back(uint16_t(kKeyFlag | kOverrun));
@@ -338,7 +340,21 @@ void Set3Keyboard::host_key(const HostKeyEvent& ev) {
                keyboard_type_name(type_));
 }
 
+namespace {
+const char* key_mode_name(uint8_t m) {
+    switch (m & 3) {
+    case 0: return "make-only";
+    case 1: return "typematic";
+    case 2: return "make/break";
+    default: return "typematic make/break";
+    }
+}
+} // namespace
+
 void Set3Keyboard::key(uint8_t code, bool pressed) {
+    TN_LOG("input", Debug, "terminal key %02X %s (%s%s%s)", code, pressed ? "make" : "break",
+           key_mode_name(modes_[code]), scanning_ ? "" : ", not scanning",
+           held_[code] == pressed ? ", already in that state" : "");
     if (pressed) {
         if (held_[code]) return;  // host auto-repeat; the keyboard repeats itself
         held_[code] = true;
@@ -379,6 +395,7 @@ void Set3Keyboard::advance_us(uint64_t us) {
             return;
         }
         us -= repeat_wait_us_;
+        TN_LOG("input", Debug, "terminal key %02X typematic repeat", repeat_code_);
         key_byte(uint8_t(repeat_code_));
         repeat_wait_us_ = typematic_period_us();
     }

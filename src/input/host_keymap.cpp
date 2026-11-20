@@ -1,5 +1,6 @@
 #include "input/host_keymap.hpp"
 
+#include "util/log.hpp"
 #include "util/strings.hpp"
 
 #include <toml++/toml.hpp>
@@ -141,6 +142,15 @@ bool function_key(const std::string& n, std::array<TerminalStroke, 2>& to) {
 }
 
 constexpr uint8_t kTermMods[4] = {0x12, 0x59, 0x19, 0x39};
+
+const char* mod_action_name(ModAction a) {
+    switch (a) {
+    case ModAction::Keep: return "keep";
+    case ModAction::Press: return "press";
+    case ModAction::Release: return "release";
+    }
+    return "?";
+}
 
 int term_mod_index(uint8_t code) {
     for (int i = 0; i < 4; ++i)
@@ -625,6 +635,8 @@ bool HostKeymapEngine::host_key(KeyboardType type, uint32_t hid, bool pressed, c
         down_.erase(it);
         if (d.stroke.code == 0) return true;
         if (d.tap) {
+            TN_LOG("input", Debug, "keymap: HID %02X up, tap %s", hid,
+                   d.consumed ? "cancelled (another key was pressed meanwhile)" : "-> sending set-3 key");
             if (!d.consumed) {
                 press_stroke(d.stroke, false, emit);
                 release_stroke(d.stroke, false, emit);
@@ -635,8 +647,16 @@ bool HostKeymapEngine::host_key(KeyboardType type, uint32_t hid, bool pressed, c
         return true;
     }
 
-    if (down_.count(hid)) return true;   // host auto-repeat; the keyboard repeats itself
-    for (auto& kv : down_) kv.second.consumed = true;
+    if (down_.count(hid)) {
+        TN_LOG("input", Debug, "keymap: HID %02X down again without a release (host repeat), ignored", hid);
+        return true;   // host auto-repeat; the keyboard repeats itself
+    }
+    for (auto& kv : down_) {
+        if (kv.second.tap && !kv.second.consumed)
+            TN_LOG("input", Debug, "keymap: HID %02X cancels the tap of HID %02X (used as a modifier)", hid,
+                   kv.first);
+        kv.second.consumed = true;
+    }
     const uint8_t mods = host_mods_;     // the key's own modifier bit is not part of the match
     host_mods_ = uint8_t(host_mods_ | bit);
 
@@ -650,6 +670,10 @@ bool HostKeymapEngine::host_key(KeyboardType type, uint32_t hid, bool pressed, c
         d.tap = rule && rule->tap;
     }
     d.pass_mod = !d.tap && term_mod_index(d.stroke.code) >= 0;
+    TN_LOG("input", Debug, "keymap: HID %02X down, host mods %02X -> %s%s -> set-3 %02X shift %s alt %s%s", hid,
+           mods, rule ? rule->source.c_str() : "no rule", rule && rule->positional ? " (positional)" : "",
+           d.stroke.code, mod_action_name(d.stroke.shift), mod_action_name(d.stroke.alt),
+           d.tap ? ", tap: sent on release if used alone" : "");
     down_[hid] = d;
     if (d.stroke.code == 0) return rule != nullptr;
     if (!d.tap) press_stroke(d.stroke, d.pass_mod, emit);
