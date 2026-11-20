@@ -53,7 +53,7 @@ suffixes (hypothesis: a 3477-compatibility identity).
 | U10 | National, IBM 33G2729 | Unknown; possibly the serial EEPROM or a line interface (hypothesis). |
 | J1 | DE-15 with varistors RV1-RV4 and Q1 | Twinax port with surge protection (hypothesis). |
 | J2 | DB-25 | Parallel printer port. |
-| J6, J4 | Modular jacks with TDK filters | Keyboard, and a second serial device port (matches the second keyboard-style port at `20144-20146`; hypothesis). |
+| J6, J4 | Modular jacks with TDK filters | Keyboard, and the **pointing-device port**: a PS/2 mouse or a light pen (observed by the owner). This is the second keyboard-style serial port at `20144-20146`. |
 | J5, J7 | Card-edge and pin headers | CRT/power board connections. |
 
 The board's ROM label reads `54G0015`; the analysed dump is `54G0011`, so
@@ -219,6 +219,24 @@ The model maps the four good 64 KiB blocks at their linked segments
 (`A000`, `B000`, `E000`, `F000`) and leaves the others unmapped. This
 applies only when the known-bad dump is loaded; a good dump is mapped
 whole at `80000`.
+
+## Pointing device and the enhanced user interface (observed by the owner)
+
+The second port takes a **PS/2 mouse or a light pen**. With a mouse plugged
+in before power-on, the terminal shows a mouse pointer, has clickable
+hotspots, and menus can be driven with the mouse. The 5250 "enhanced"
+windowing elements (windows, selection fields, scroll bars and the like,
+sent by the host as Write Data Structured Field orders) also work with it.
+
+Consequences for the emulator:
+- the second port at `20144-20146` needs a PS/2 mouse device model
+  (standard PS/2 mouse protocol on the same serial interface as the
+  keyboard), fed from host mouse events; detection happens at power-on;
+- the `20145` bit 7 interrupt layout switch is probably tied to whether a
+  pointing device is present (hypothesis);
+- the TN5250 engine currently parses and skips Write Data Structured
+  Field; the enhanced interface needs it implemented, and the Query Reply
+  must only claim it for a terminal that supports it.
 
 ## Checklist for the complete dump
 
