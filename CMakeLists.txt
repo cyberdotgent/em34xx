@@ -54,6 +54,7 @@ add_library(tn34xx_core STATIC
   src/devices/ibm3477/i2c.cpp
   src/devices/ibm3477/keyboard_if.cpp
   src/devices/ibm3477/system.cpp
+  src/devices/ibm3477/twinax_engine.cpp
   src/host/host_config.cpp
   src/host/twinax_link.cpp
   src/host/wsc/device_commands.cpp

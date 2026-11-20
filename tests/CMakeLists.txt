@@ -13,6 +13,7 @@ add_executable(tn34xx_unit_tests
   test_display.cpp
   test_display3477.cpp
   test_3477.cpp
+  test_twinax_engine.cpp
   test_wsc.cpp
   fake_station.cpp
 )
