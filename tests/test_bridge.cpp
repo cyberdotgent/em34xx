@@ -416,4 +416,22 @@ TEST_CASE("tn5250 bridge: typing on the 122-key keyboard echoes and reaches the 
         return !recs.empty();
     }));
     CHECK(recs[0].data == Bytes{0x06, 0x37, 0xF1, 0x11, 0x06, 0x35, 0xC1, 0xC4});
+
+    // The password field (non-display): what is typed reaches the host but
+    // never the station's buffer.
+    server->push(framed_record(tn5250_test::signon_stream()));   // the panel again
+    REQUIRE(b.run_until([&] { return (f.indicators() & 0x02) == 0; }));
+    f.press(0x20);   // Field Advance -> password field
+    f.press(0x02);   // x
+    f.press(0x03);   // c
+    REQUIRE(b.run_until([&] { return f.cursor() == 6u * 80 + 54; }));
+    for (unsigned c = 52; c < 62; ++c) CHECK(f.cell(6, c) == 0x00);
+    f.press(0x68);
+    REQUIRE(b.run_until([&] {
+        recs = client_records(server->sent());
+        return recs.size() >= 2;
+    }));
+    const Bytes& d = recs[1].data;
+    const Bytes pw{0x11, 0x07, 0x35, 0xA7, 0x83};
+    CHECK(std::search(d.begin(), d.end(), pw.begin(), pw.end()) != d.end());
 }

@@ -16,7 +16,15 @@ void Tn5250DisplayAdapter::screen_snapshot(ScreenState& out) const {
     out.rows = unsigned(snap.rows);
     out.cols = unsigned(snap.cols);
     out.cells.resize(snap.cells.size());
-    for (size_t i = 0; i < snap.cells.size(); ++i) out.cells[i] = snap.cells[i].ch;
+    // The contents of a non-display field (a password) never go to the
+    // device: the station shows nothing there anyway, and this keeps them
+    // off the cable, out of the device's buffer and out of screenshots,
+    // whatever the terminal makes of the attribute. The engine keeps the
+    // real data for the reply to the host.
+    for (size_t i = 0; i < snap.cells.size(); ++i) {
+        const tn5250::Cell& c = snap.cells[i];
+        out.cells[i] = !c.is_attribute() && tn5250::attr_nondisplay(c.attr) ? uint8_t(0x00) : c.ch;
+    }
     out.cursor = unsigned(snap.cursor_row * snap.cols + snap.cursor_col);
     out.indicators = indicator_bits(snap.indicators);
     out.indicators_3477 = 0;
