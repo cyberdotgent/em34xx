@@ -441,7 +441,8 @@ The terminal then shows a blank screen with the cursor at the top left and
 the System Available symbol at the left of the status line. Keys reach the
 controller as scan codes in the second poll byte, one per poll, with the
 response level toggling (observed: host keys `a b c` on the 122-key
-keyboard arrive as `11`, `05`, `03`).
+keyboard arrive as `11`, `05`, `03`, the PAI fig. 105 codes; see
+docs/keyboard.md), and the controller echoes them on the local screen.
 
 ## Boot progress with real devices (no forced results)
 

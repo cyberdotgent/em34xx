@@ -11,6 +11,7 @@ add_executable(tn34xx_unit_tests
   test_util.cpp
   test_keyboard.cpp
   test_host_keymap.cpp
+  test_keyboard_e2e.cpp
   test_display.cpp
   test_display3477.cpp
   test_3477.cpp

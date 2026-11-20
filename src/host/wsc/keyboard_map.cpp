@@ -74,10 +74,9 @@ constexpr CharKey kEnhancedUs[] = {
     {0x7E, 0x6B, 0x6B, false},   // , (pad)
 };
 
-// 122-key typewriter keyboard, US. The 3477 reports the keyboard's set-3
-// make code as the 5250 scan code (see docs/keyboard.md, "5250 scan codes on
-// the cable"), so the typing block shares its codes with the Enhanced
-// keyboard. Differences: the backslash key sits left of Enter (53h, not 5Ch),
+// 122-key typewriter keyboard, US, keyed by key position (set-3 code; the
+// cable carries other codes, decoded by kTypewriterCable below). The typing
+// block shares its positions with the Enhanced keyboard. Differences: the backslash key sits left of Enter (53h, not 5Ch),
 // and the keypad has no '/' or '*'. US graphics as fig. 147 [hyp: the 122-key
 // US keytops carry the same CCSID 37 graphics].
 constexpr CharKey kTypewriterUs[] = {
@@ -178,7 +177,8 @@ bool alt_action(uint8_t scan, OperatorAction& out) {
 }
 
 
-// 122-key typewriter functions. Positions use the set-3 codes; legends are
+// 122-key typewriter functions, keyed by key position (the keyboard's set-3
+// code; the cable code is decoded to it first, see kTypewriterCable). Legends are
 // from the 3489 User's Guide (GA18-7492) key tables, which share this
 // keyboard, placed with a photo of the 1394324 keyboard and the TMK set-3
 // position map (docs/keyboard.md), and from the 3477 firmware's own
@@ -207,46 +207,56 @@ constexpr FnKey kTypewriterFunctions[] = {
     // Left-hand block.
     {0x05, K::Attn, F::None, 0, K::SysReq, F::None, 0},               // Attn / SysRq
     {0x0C, K::Function, F::EraseInput, 0, K::Function, F::EraseInput, 0},
-    {0x0B, K::Aid, F::None, 0xF3, K::Aid, F::None, 0xF3},             // Help (Alt: Hex)
+    {0x0B, K::Aid, F::None, 0xF3, K::Aid, F::None, 0xF3},             // Help (Alt: Hex, CMD 3Eh)
     {0x03, K::Aid, F::None, 0xF6, K::Aid, F::None, 0xF6},             // Print
     {0x09, K::Function, F::Record, 0, K::Function, F::Record, 0},       // Recrd (terminal-local)
     {0x0A, K::Function, F::Play, 0, K::Function, F::Play, 0},           // Play (terminal-local; Alt: Test)
-    // F1..F12 in the lower row (shift gives F13..F24), F13..F24 in the upper row.
-    {0x07, K::Aid, F::None, 0x31, K::Aid, F::None, 0xB1},
-    {0x0F, K::Aid, F::None, 0x32, K::Aid, F::None, 0xB2},
-    {0x17, K::Aid, F::None, 0x33, K::Aid, F::None, 0xB3},
-    {0x1F, K::Aid, F::None, 0x34, K::Aid, F::None, 0xB4},
-    {0x27, K::Aid, F::None, 0x35, K::Aid, F::None, 0xB5},
-    {0x2F, K::Aid, F::None, 0x36, K::Aid, F::None, 0xB6},
-    {0x37, K::Aid, F::None, 0x37, K::Aid, F::None, 0xB7},
-    {0x3F, K::Aid, F::None, 0x38, K::Aid, F::None, 0xB8},
-    {0x47, K::Aid, F::None, 0x39, K::Aid, F::None, 0xB9},
-    {0x4F, K::Aid, F::None, 0x3A, K::Aid, F::None, 0xBA},
-    {0x56, K::Aid, F::None, 0x3B, K::Aid, F::None, 0xBB},
-    {0x5E, K::Aid, F::None, 0x3C, K::Aid, F::None, 0xBC},
-    {0x08, K::Aid, F::None, 0xB1, K::Aid, F::None, 0xB1},
-    {0x10, K::Aid, F::None, 0xB2, K::Aid, F::None, 0xB2},
-    {0x18, K::Aid, F::None, 0xB3, K::Aid, F::None, 0xB3},
-    {0x20, K::Aid, F::None, 0xB4, K::Aid, F::None, 0xB4},
-    {0x28, K::Aid, F::None, 0xB5, K::Aid, F::None, 0xB5},
-    {0x30, K::Aid, F::None, 0xB6, K::Aid, F::None, 0xB6},
-    {0x38, K::Aid, F::None, 0xB7, K::Aid, F::None, 0xB7},
-    {0x40, K::Aid, F::None, 0xB8, K::Aid, F::None, 0xB8},
-    {0x48, K::Aid, F::None, 0xB9, K::Aid, F::None, 0xB9},
-    {0x50, K::Aid, F::None, 0xBA, K::Aid, F::None, 0xBA},
-    {0x57, K::Aid, F::None, 0xBB, K::Aid, F::None, 0xBB},
-    {0x5F, K::Aid, F::None, 0xBC, K::Aid, F::None, 0xBC},
 };
 
-// Front-of-key legends, entered with Alt held (3489 UG 4.2.1).
-bool typewriter_alt_action(uint8_t scan, OperatorAction& out) {
-    switch (scan) {
-    case 0x0B: out.kind = K::Function; out.function = F::Hex; return true;   // Help / Hex
-    case 0x0A: out.kind = K::Function; out.function = F::Test; return true;  // Play / Test
-    case 0x62: out.kind = K::Function; out.function = F::Home; return true;  // Rule / Home
-    case 0x06: out.kind = K::Aid; out.aid = 0xBD; return true;                // (blank) / Clear
-    default: return false;
-    }
+// 122-key typewriter keyboard on the cable: the terminal sends the 3180-2 /
+// 3196 scan codes [doc PAI fig. 105, key numbers placed by fig. 103; observed:
+// the 3477 sends exactly these for every position, docs/keyboard.md]. They are
+// 5251-compatible: one code per key, Shift as make/break codes 57h/56h (the
+// terminal synthesises them where a key needs a given shift state), Shift
+// Lock 54h, and a CMD prefix 6Fh instead of Alt and for F1-F24. This table
+// takes a code back to the key position (set-3 code) the legends are keyed by.
+struct CableKey {
+    uint8_t code;
+    uint8_t position;
+};
+
+constexpr CableKey kTypewriterCable[] = {
+    // Left-hand block (01 SetUp, 09 Record, 0A Play, and 03 Print when local
+    // printing is configured, are kept by the terminal).
+    {0x7C, 0x05}, {0x66, 0x04}, {0x6E, 0x03}, {0x78, 0x83}, {0x75, 0x06}, {0x67, 0x0C}, {0x7D, 0x0B},
+    // Typing block: digit row, then Q, A and Z rows.
+    {0x3E, 0x0E}, {0x31, 0x16}, {0x32, 0x1E}, {0x33, 0x26}, {0x34, 0x25}, {0x35, 0x2E}, {0x36, 0x36},
+    {0x37, 0x3D}, {0x38, 0x3E}, {0x39, 0x46}, {0x3A, 0x45}, {0x3B, 0x4E}, {0x3C, 0x55}, {0x3D, 0x66},
+    {0x20, 0x0D}, {0x21, 0x15}, {0x22, 0x1D}, {0x23, 0x24}, {0x24, 0x2D}, {0x25, 0x2C}, {0x26, 0x35},
+    {0x27, 0x3C}, {0x28, 0x43}, {0x29, 0x44}, {0x2A, 0x4D}, {0x2B, 0x54}, {0x2C, 0x5B}, {0x2D, 0x5A},
+    {0x11, 0x1C}, {0x12, 0x1B}, {0x13, 0x23}, {0x14, 0x2B}, {0x15, 0x34}, {0x16, 0x33}, {0x17, 0x3B},
+    {0x18, 0x42}, {0x19, 0x4B}, {0x1A, 0x4C}, {0x1B, 0x52}, {0x1C, 0x53},
+    {0x0E, 0x13}, {0x01, 0x1A}, {0x02, 0x22}, {0x03, 0x21}, {0x04, 0x2A}, {0x05, 0x32}, {0x06, 0x31},
+    {0x07, 0x3A}, {0x08, 0x41}, {0x09, 0x49}, {0x0A, 0x4A},
+    // Bottom row: Reset, space bar, Enter.
+    {0x7E, 0x11}, {0x0F, 0x29}, {0x68, 0x58},
+    // Editing and cursor block. 6Ch is Insert in lower shift and Delete in
+    // upper shift (decoded in translate()); 60h is Rule, kept by the terminal.
+    {0x4B, 0x67}, {0x4C, 0x6E}, {0x62, 0x6F}, {0x0C, 0x64},
+    {0x71, 0x63}, {0x72, 0x61}, {0x73, 0x6A}, {0x70, 0x60}, {0x60, 0x62},
+    // Numeric pad.
+    {0x1D, 0x76}, {0x1E, 0x77}, {0x4F, 0x7E}, {0x50, 0x84},
+    {0x47, 0x6C}, {0x48, 0x75}, {0x49, 0x7D}, {0x4E, 0x7C},
+    {0x44, 0x6B}, {0x45, 0x73}, {0x46, 0x74}, {0x55, 0x7B},
+    {0x41, 0x69}, {0x42, 0x72}, {0x43, 0x7A}, {0x4D, 0x79},
+    {0x40, 0x70}, {0x4A, 0x71},
+};
+
+uint8_t typewriter_position(uint8_t code, bool upper) {
+    if (code == 0x6C) return upper ? 0x6D : 0x65;   // Delete / Insert
+    for (const CableKey& k : kTypewriterCable)
+        if (k.code == code) return k.position;
+    return 0;
 }
 
 template <size_t N>
@@ -295,7 +305,7 @@ const char* key_function_name(KeyFunction f) {
 }
 
 void KeyboardMap::reset() {
-    lshift_ = rshift_ = alt_ = caps_ = false;
+    lshift_ = rshift_ = alt_ = caps_ = cmd_ = false;
 }
 
 bool KeyboardMap::translate(uint8_t scan, OperatorAction& out) {
@@ -309,16 +319,16 @@ bool KeyboardMap::translate(uint8_t scan, OperatorAction& out) {
     const uint8_t key = uint8_t(scan & 0x7F);
     out.scan = key;
 
+    if (!enhanced()) return translate_typewriter(key, brk, out);
+
     // Make/break keys (fig. 147 "MB"): shifts, Alt, Caps Lock.
     switch (key) {
     case 0x12: case 0x59:
         (key == 0x12 ? lshift_ : rshift_) = !brk;
-        // On the typewriter keyboard the Shift key releases Shift Lock.
-        if (!brk && !enhanced()) caps_ = false;
         return false;
     case 0x19: case 0x39: alt_ = !brk; return false;
-    case 0x14:   // Caps Lock (Enhanced, toggles) / Shift Lock (typewriter, sets)
-        if (!brk) caps_ = enhanced() ? !caps_ : true;
+    case 0x14:   // Caps Lock toggles
+        if (!brk) caps_ = !caps_;
         return false;
     default: break;
     }
@@ -326,30 +336,80 @@ bool KeyboardMap::translate(uint8_t scan, OperatorAction& out) {
 
     out.shift = shift();
     out.alt = alt_;
-    if (enhanced()) {
-        if (alt_ && alt_action(key, out)) return true;
-        if (lookup(kEnhancedFunctions, key, shift(), out)) return true;
-        for (const CharKey& c : kEnhancedUs) {
-            if (c.scan != key) continue;
-            const bool upper = c.letter ? (shift() != caps_) : shift();
-            out.kind = K::Character;
-            out.ebcdic = upper ? c.upper : c.lower;
-            return true;
-        }
-        return true;   // Unmapped
-    }
-
-    // Typewriter: Shift Lock holds the whole keyboard in upper shift.
-    const bool upper = shift() || caps_;
-    if (alt_ && typewriter_alt_action(key, out)) return true;
-    if (lookup(kTypewriterFunctions, key, upper, out)) return true;
-    for (const CharKey& c : kTypewriterUs) {
+    if (alt_ && alt_action(key, out)) return true;
+    if (lookup(kEnhancedFunctions, key, shift(), out)) return true;
+    for (const CharKey& c : kEnhancedUs) {
         if (c.scan != key) continue;
+        const bool upper = c.letter ? (shift() != caps_) : shift();
         out.kind = K::Character;
         out.ebcdic = upper ? c.upper : c.lower;
         return true;
     }
-    return true;   // Unmapped: blank keytops (02 04 06 6F 7B 76 77 7E 7F) and local keys
+    return true;   // Unmapped
+}
+
+bool KeyboardMap::translate_typewriter(uint8_t key, bool brk, OperatorAction& out) {
+    // Make/break keys [doc PAI fig. 105 "MB"]: left Shift 57h, right Shift
+    // 56h, Shift Lock 54h. Alt is not sent; it turns into the CMD prefix.
+    switch (key) {
+    case 0x57: case 0x56:
+        (key == 0x57 ? lshift_ : rshift_) = !brk;
+        if (!brk) caps_ = false;   // a Shift key releases Shift Lock
+        return false;
+    case 0x54:
+        if (!brk) caps_ = true;
+        return false;
+    default: break;
+    }
+    if (brk) return false;
+    if (key == 0x6F) {   // CMD: modifies the next key
+        cmd_ = true;
+        return false;
+    }
+    const bool cmd = cmd_;
+    cmd_ = false;
+    const bool upper = shift() || caps_;
+    out.shift = shift();
+    out.alt = cmd;
+
+    if (cmd) {
+        // CMD + top-row code: F1-F12, F13-F24 in upper shift [doc PAI fig.
+        // 105 keys 110-133, notes 3 and 4].
+        if (key >= 0x31 && key <= 0x3C) {
+            out.kind = K::Aid;
+            out.aid = uint8_t((upper ? 0xB1 : 0x31) + (key - 0x31));
+            return true;
+        }
+        switch (key) {
+        case 0x3E: out.kind = K::Function; out.function = F::Hex; return true;   // Alt+Help
+        case 0x3D:   // Alt+Clear (upper shift) / Alt+Test (lower shift)
+            if (upper) {
+                out.kind = K::Aid;
+                out.aid = 0xBD;
+            } else {
+                out.kind = K::Function;
+                out.function = F::Test;
+            }
+            return true;
+        case 0x51: return true;   // Alt + digit-row keys: no function (Unmapped)
+        default: break;
+        }
+    }
+    if (key == 0x6D) {   // Alt+Rule: Home [doc PAI fig. 105 key 83]
+        out.kind = K::Function;
+        out.function = F::Home;
+        return true;
+    }
+    const uint8_t pos = typewriter_position(key, upper);
+    if (!pos) return true;   // Unmapped
+    if (lookup(kTypewriterFunctions, pos, upper, out)) return true;
+    for (const CharKey& c : kTypewriterUs) {
+        if (c.scan != pos) continue;
+        out.kind = K::Character;
+        out.ebcdic = upper ? c.upper : c.lower;
+        return true;
+    }
+    return true;   // Unmapped: blank keytops (04 06 83 6F 76 77 7E 84 7B)
 }
 
 } // namespace wsc

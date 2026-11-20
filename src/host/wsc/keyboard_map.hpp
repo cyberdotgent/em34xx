@@ -1,13 +1,16 @@
 // Scan codes from poll responses -> operator actions.
 //
 // Turning scan codes into characters is the controller's job; the terminal
-// sends key positions [doc PAI 2.1]. On the 3477 the 5250 scan code on the
-// cable is the keyboard's own set-3 make code, bit 7 = break (docs/keyboard.md,
-// "5250 scan codes on the cable"). Two tables:
-//   - IBM Enhanced Keyboard (keyboard ID bit 80h set), typed in from the
-//     5250 Product Attachment Information (Oct 1989), fig. 147;
-//   - 122-key typewriter keyboard (keyboard ID 02h, 0Ah world trade), keyed
-//     by the same set-3 positions, legends from the 3489 User's Guide.
+// sends key positions [doc PAI 2.1]. What the cable carries depends on the
+// keyboard (docs/keyboard.md, "5250 scan codes on the cable"):
+//   - IBM Enhanced Keyboard (keyboard ID bit 80h set): the keyboard's set-3
+//     make code, bit 7 = break; table typed in from the 5250 Product
+//     Attachment Information (Oct 1989), fig. 147;
+//   - 122-key typewriter keyboard (keyboard ID 02h, 0Ah world trade): the
+//     3180-2/3196 codes of PAI fig. 105 (5251-compatible: Shift as make/break
+//     codes 57h/56h, Shift Lock 54h, a CMD prefix 6Fh for Alt and F1-F24).
+//     They are decoded back to key positions (set-3 codes), and the legends
+//     come from the 3489 User's Guide.
 // Both use US functions and US characters in EBCDIC CCSID 37; national
 // graphics are an extension point. Keys without a known legend come back as
 // OperatorAction::Kind::Unmapped with the raw scan code.
@@ -36,8 +39,10 @@ public:
     bool shift() const { return lshift_ || rshift_; }
     bool alt() const { return alt_; }
     bool caps_lock() const { return caps_; }   // Shift Lock on the typewriter keyboard
+    bool cmd_pending() const { return cmd_; }   // typewriter: CMD prefix awaiting its key
 
 private:
+    bool translate_typewriter(uint8_t key, bool brk, OperatorAction& out);
     bool enhanced() const { return (keyboard_id_ & 0x80) != 0; }
 
     uint8_t keyboard_id_;
@@ -45,6 +50,7 @@ private:
     bool rshift_ = false;
     bool alt_ = false;
     bool caps_ = false;
+    bool cmd_ = false;   // typewriter: CMD prefix (6Fh) seen
 };
 
 } // namespace wsc

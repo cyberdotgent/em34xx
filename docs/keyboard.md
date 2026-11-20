@@ -54,7 +54,7 @@ Host-to-keyboard commands implemented by `Set3Keyboard`:
 | `F9` | All keys make only | `FA` |
 | `FA` | All keys typematic/make/break | `FA` |
 | `FB` / `FC` / `FD` `xx...` | Set listed keys typematic / make/break / make only | `FA` for the command and for each code; the list ends at the next command byte (≥ `ED`) |
-| `FA` `xx...` (122-key) | Set listed keys typematic/make/break | as `FB` (terminal keyboard quirk, see below) |
+| `FA` `xx...` (122-key) | Set listed keys typematic (no break) | exactly as `FB` (terminal keyboard quirk, see below) |
 | `FE` | Resend | the last byte the host read |
 | `FF` | Reset | `FA`, then BAT `AA` (plus ID, see below) |
 
@@ -64,10 +64,14 @@ awaited starts a new command; parameters and key codes are all below `ED`.
 Observed on the 122-key 1390876 ([seasip][seasip-1390876]): `F2` returns
 `BF BF`; reset returns `AA` **followed by the two ID bytes**; `F0` is refused;
 `FA` behaves like `FB`; the keyboard has no LEDs but checks the `ED` parameter
-is 0–7. The 3477 firmware relies on the `FA` quirk: it sends `FA` followed
-by a list of key codes (observed, Offline Setup serial-number screen), so the
-122-key model takes a key list after `FA` and sets those keys
-typematic/make/break; the Enhanced model follows the IBM reference (all keys).
+is 0–7. The 3477 firmware relies on the `FA` quirk: it sends `FA 61 6A`
+(observed at every boot, after `FD 5A 58 11 7C` and an `FB` list of the
+editing and keypad keys), so the 122-key model takes a key list after `FA`
+and makes those keys typematic with no break code, exactly as `FB`
+(documented by seasip: "Behaves as FB"). The Enhanced model follows the IBM
+reference (all keys typematic/make/break). An earlier version set the listed
+keys typematic/make/break; the firmware then reported every tap of the
+horizontal cursor keys twice (once for the make, once for the break).
 The model follows the IBM reference for `F0` and, by default,
 appends the ID after `AA` for the 122-key type only
 (`Set3Keyboard::set_bat_sends_id`). Whether the terminals rely on this is
@@ -378,20 +382,53 @@ Two different code sets are involved, and they must not be confused:
   frame, one byte, bit 7 = break, 00h = no key, FFh = keyboard overrun
   (documented, PAI §2.4.3; `docs/twinax-bridge.md`).
 
-On the 3477 the second set is, for both keyboard types, the **set-3 make code
-of the key position** (observed in the firmware's keystroke path): the
-terminal does not translate positions. A break code `F0 xx` becomes `xx|80h`,
-and only the keys the terminal programs as make/break send one: both Shifts
-(`12`, `59`), Shift/Caps Lock (`14`) and both Alts (`19`, `39`). The only
-codes changed are the two set-3 codes above 7Fh: `83` (122-key left block,
-row 4 left) is reported as `02` and `84` (keypad top right) as `7F`. This is
-consistent with the PAI's Enhanced keyboard table (fig. 147), whose codes are
-the set-3 codes (F1 `07`, Enter `5A`, keypad minus `7F`).
+The 3477 translates between them, and **the cable code set depends on the
+keyboard** (observed, on the emulated firmware with every key position
+pressed, unshifted, with Shift and with Alt):
 
-The PAI's 3180-2/3196 122-key tables (figs. 103–106) list a different code
-set, 5251-11-compatible codes with CMD-key prefixes. The 3477 does **not**
-send those; the PAI says only that the 3197 and 3477 take the 3180-2-style
-keyboard (§14, §16).
+- **Enhanced keyboard** (keyboard ID bit 80h): the set-3 make code of the key
+  position, with bit 7 for a break; `83` is reported as `02` and `84` as
+  `7F`. This is the PAI's Enhanced keyboard table (fig. 147), whose codes are
+  the set-3 codes (F1 `07`, Enter `5A`, keypad minus `7F`).
+- **122-key typewriter keyboard** (keyboard ID `02h`/`0Ah`): the **3180-2 /
+  3196 codes of PAI fig. 105** (documented), placed by the key numbers of
+  fig. 103. They are 5251-compatible:
+  - one code per key position; letters are `11`–`1C` (A row), `21`–`2C`
+    (Q row), `01`–`0A` (Z row), the digit row `3E 31`–`3C 3D`;
+  - Shift is sent as make/break codes: left `57`/`D7`, right `56`/`D6`;
+    Shift Lock `54`/`D4`. Alt is **not** sent;
+  - **CMD prefix `6F`**: F1–F12 are `6F` + `31`–`3C` in lower shift, F13–F24
+    the same in upper shift; Alt+key is `6F` + the key's code (Alt+digit-row
+    keys give `6F 51`);
+  - where a key needs a shift state (F1–F12 lower, F13–F24 upper, Insert
+    lower, Delete upper: notes 1–4 of fig. 105), the terminal sends its own
+    `57`/`D7` around it; the restoring code may follow later, just before
+    the next key;
+  - Insert and Delete share `6C` (lower / upper shift); Alt+Rule is `6D`
+    (Home).
+
+So host keys `a b c` reach the controller as `11 05 03` (observed), and F1
+as `6F 31`. An earlier version of this page said the 3477 forwarded set-3
+codes for both keyboards: that holds only for the Enhanced keyboard. The
+firmware has a third mode that sends set-3 codes for the 122-key keyboard too
+(breaks as `F0 xx`); it is selected by a setup value (hypothesis: a setup
+option not yet identified) and is not the default.
+
+Observed cable codes per 122-key position (set-3 position → code):
+
+| Block | Codes |
+| --- | --- |
+| left block | `05`→`7C` Attn, `04`→`66`, `03`→`6E` Print, `83`→`78`, `06`→`75`, `0C`→`67` ErInp, `0B`→`7D` Help; `01` SetUp, `09` Record, `0A` Play are kept |
+| digit row | `0E`→`3E`, `16 1E 26 25 2E 36 3D 3E 46 45 4E 55`→`31`–`3C`, `66`→`3D` Backspace |
+| Q row | `0D`→`20` Field Advance, `15 … 5B`→`21`–`2C`, `5A`→`2D` Field Exit |
+| A row | `1C 1B 23 2B 34 33 3B 42 4B 4C 52 53`→`11`–`1C` |
+| Z row | `13`→`0E`, `1A 22 21 2A 32 31 3A 41 49 4A`→`01`–`0A` |
+| bottom | `11`→`7E` Reset, `29`→`0F` space, `58`→`68` Enter |
+| editing | `67`→`4B`, `6E`→`4C` Dup, `6F`→`62`, `64`→`0C` New Line, `65`→`6C` (lower), `6D`→`6C` (upper) |
+| cursor | `63`→`71`, `61`→`72`, `6A`→`73`, `60`→`70`; `62` Rule is kept (fig. 105: `60`) |
+| keypad | `76 77 7E 84`→`1D 1E 4F 50`; `6C 75 7D 7C`→`47 48 49 4E`; `6B 73 74 7B`→`44 45 46 55`; `69 72 7A 79`→`41 42 43 4D`; `70 71`→`40 4A` |
+| F keys | lower row `07 … 5E`→`6F` + `31`–`3C` (lower shift); upper row `08 … 5F`→`6F` + `31`–`3C` (upper shift) |
+| Alt | `6F` + the code; Alt+Help `6F 3E` (Hex), Alt+Play `6F 3D` lower (Test), Alt+`06` `6F 3D` upper (Clear) |
 
 The controller learns the layout from Read Device ID to the keyboard address
 (`2C`): `02h` typewriter (US), `0Ah` world trade typewriter, and bit 80h set
@@ -409,7 +446,9 @@ The terminal keeps some keys for **local functions** and never sends them
 
 ### 122-key typewriter table (`src/host/wsc/keyboard_map.cpp`)
 
-US functions and US graphics (EBCDIC CCSID 37). Sources, in order of weight:
+The controller decodes the fig. 105 stream back to key positions (tracking
+`57`/`56` shift, `54` Shift Lock and the `6F` CMD prefix, which sets the
+action's Alt flag), then looks the position up below. US functions and US graphics (EBCDIC CCSID 37). Sources, in order of weight:
 the 3489 User's Guide key tables (§4.2.2–4.2.8, which show this 122-key
 keyboard next to the Enhanced one, with the keys of each group marked in a
 layout diagram); a top-down photo of a genuine IBM 1394324 "5250 converged
@@ -436,7 +475,7 @@ Set-3 positions (TMK) with the 1394324 legends:
 
 | Codes | Key | Action |
 | --- | --- | --- |
-| `07 0F … 56 5E` | F1–F12 (lower row) | AID 31–3C; with Shift F13–F24 (B1–BC) |
+| `07 0F … 56 5E` | F1–F12 (lower row) | AID 31–3C (the terminal forces lower shift) |
 | `08 10 … 57 5F` | F13–F24 (upper row) | AID B1–BC |
 | typing block | as the Enhanced keyboard; `53` is `\ \|` (left of Enter) | characters |
 | `66` | Backspace | character backspace |
@@ -481,13 +520,15 @@ points; the 3489 User's Guide appendix I has the national layouts as figures
 
 - IBM, *5250 Information Display System to S/36, S/38, AS/400 System Units
   Product Attachment Information* (Oct 1989): §2.4.3 poll response, fig. 41
-  keyboard ID word, §12.2 3180-2 keyboards, §14/§16 3197 and 3477, fig. 147
+  keyboard ID word, §12.2 3180-2 keyboards (figs. 103 and 105: key numbers
+  and scan codes of the 122-key keyboard), §14/§16 3197 and 3477, fig. 147
   Enhanced keyboard scan codes.
 - IBM, *InfoWindow II 3489 User's Guide*, GA18-7492-00, §4.2 key functions
   for the 122-key and Enhanced keyboards (BOO shelf copy).
 - IBM, *5494 Remote Control Unit Functions Reference*, SC30-3533-04, topic 16
   keyboard functions (AID keys, signal keys, special control keys).
-- 3477 firmware (keystroke path, local-function keys), behaviour only.
+- 3477 firmware (keystroke path, local-function keys, cable codes per key
+  position), behaviour only, observed on the emulated terminal.
 - Sharktastica, IBM 1394324 directory entry and photo (5250 converged
   typewriter keyboard, UK):
   <https://sharktastica.co.uk/keyboard-directory/4kCIWLEW>,

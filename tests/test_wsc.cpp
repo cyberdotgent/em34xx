@@ -244,7 +244,7 @@ TEST_CASE("keyboard map: Enhanced keyboard, shift and caps lock") {
     REQUIRE(km.translate(0xFF, a));
     CHECK(a.kind == OperatorAction::Kind::Overrun);
     KeyboardMap typewriter(0x02);
-    REQUIRE(typewriter.translate(0x0B, a));   // Help on the typewriter keyboard
+    REQUIRE(typewriter.translate(0x7D, a));   // Help on the typewriter keyboard
     CHECK(a.aid == 0xF3);
     REQUIRE(km.translate(0x0B, a));           // not a key on the Enhanced keyboard
     CHECK(a.kind == OperatorAction::Kind::Unmapped);
@@ -279,110 +279,148 @@ constexpr KeyFunction N = KeyFunction::None;
 
 } // namespace
 
+// The 122-key typewriter keyboard arrives as the 3180-2/3196 codes of PAI
+// fig. 105 (docs/keyboard.md); the expected codes below are those the 3477
+// firmware was observed to send for each key position.
 TEST_CASE("keyboard map: 122-key typewriter, every position unshifted") {
     KeyboardMap km(0x02);
     REQUIRE_FALSE(km.enhanced_layout());
     const std::vector<Expect> rows = {
-        // Typing block, lower case.
-        {0x0E, AK::Character, 0x79, N}, {0x16, AK::Character, 0xF1, N}, {0x1E, AK::Character, 0xF2, N},
-        {0x26, AK::Character, 0xF3, N}, {0x25, AK::Character, 0xF4, N}, {0x2E, AK::Character, 0xF5, N},
-        {0x36, AK::Character, 0xF6, N}, {0x3D, AK::Character, 0xF7, N}, {0x3E, AK::Character, 0xF8, N},
-        {0x46, AK::Character, 0xF9, N}, {0x45, AK::Character, 0xF0, N}, {0x4E, AK::Character, 0x60, N},
-        {0x55, AK::Character, 0x7E, N},
-        {0x15, AK::Character, 0x98, N}, {0x1D, AK::Character, 0xA6, N}, {0x24, AK::Character, 0x85, N},
-        {0x2D, AK::Character, 0x99, N}, {0x2C, AK::Character, 0xA3, N}, {0x35, AK::Character, 0xA8, N},
-        {0x3C, AK::Character, 0xA4, N}, {0x43, AK::Character, 0x89, N}, {0x44, AK::Character, 0x96, N},
-        {0x4D, AK::Character, 0x97, N}, {0x54, AK::Character, 0xBA, N}, {0x5B, AK::Character, 0xBB, N},
-        {0x53, AK::Character, 0xE0, N},
-        {0x1C, AK::Character, 0x81, N}, {0x1B, AK::Character, 0xA2, N}, {0x23, AK::Character, 0x84, N},
-        {0x2B, AK::Character, 0x86, N}, {0x34, AK::Character, 0x87, N}, {0x33, AK::Character, 0x88, N},
-        {0x3B, AK::Character, 0x91, N}, {0x42, AK::Character, 0x92, N}, {0x4B, AK::Character, 0x93, N},
-        {0x4C, AK::Character, 0x5E, N}, {0x52, AK::Character, 0x7D, N},
-        {0x1A, AK::Character, 0xA9, N}, {0x22, AK::Character, 0xA7, N}, {0x21, AK::Character, 0x83, N},
-        {0x2A, AK::Character, 0xA5, N}, {0x32, AK::Character, 0x82, N}, {0x31, AK::Character, 0x95, N},
-        {0x3A, AK::Character, 0x94, N}, {0x41, AK::Character, 0x6B, N}, {0x49, AK::Character, 0x4B, N},
-        {0x4A, AK::Character, 0x61, N}, {0x29, AK::Character, 0x40, N},
+        // Digit row: ` 1 2 ... = then Backspace.
+        {0x3E, AK::Character, 0x79, N}, {0x31, AK::Character, 0xF1, N}, {0x32, AK::Character, 0xF2, N},
+        {0x33, AK::Character, 0xF3, N}, {0x34, AK::Character, 0xF4, N}, {0x35, AK::Character, 0xF5, N},
+        {0x36, AK::Character, 0xF6, N}, {0x37, AK::Character, 0xF7, N}, {0x38, AK::Character, 0xF8, N},
+        {0x39, AK::Character, 0xF9, N}, {0x3A, AK::Character, 0xF0, N}, {0x3B, AK::Character, 0x60, N},
+        {0x3C, AK::Character, 0x7E, N}, {0x3D, AK::Function, 0, KeyFunction::Backspace},
+        // Q row (after Field Advance 20h) and Field Exit 2Dh.
+        {0x20, AK::Function, 0, KeyFunction::Tab},
+        {0x21, AK::Character, 0x98, N}, {0x22, AK::Character, 0xA6, N}, {0x23, AK::Character, 0x85, N},
+        {0x24, AK::Character, 0x99, N}, {0x25, AK::Character, 0xA3, N}, {0x26, AK::Character, 0xA8, N},
+        {0x27, AK::Character, 0xA4, N}, {0x28, AK::Character, 0x89, N}, {0x29, AK::Character, 0x96, N},
+        {0x2A, AK::Character, 0x97, N}, {0x2B, AK::Character, 0xBA, N}, {0x2C, AK::Character, 0xBB, N},
+        {0x2D, AK::Function, 0, KeyFunction::FieldExit},
+        // A row, ending with backslash left of Field Exit.
+        {0x11, AK::Character, 0x81, N}, {0x12, AK::Character, 0xA2, N}, {0x13, AK::Character, 0x84, N},
+        {0x14, AK::Character, 0x86, N}, {0x15, AK::Character, 0x87, N}, {0x16, AK::Character, 0x88, N},
+        {0x17, AK::Character, 0x91, N}, {0x18, AK::Character, 0x92, N}, {0x19, AK::Character, 0x93, N},
+        {0x1A, AK::Character, 0x5E, N}, {0x1B, AK::Character, 0x7D, N}, {0x1C, AK::Character, 0xE0, N},
+        // Z row.
+        {0x01, AK::Character, 0xA9, N}, {0x02, AK::Character, 0xA7, N}, {0x03, AK::Character, 0x83, N},
+        {0x04, AK::Character, 0xA5, N}, {0x05, AK::Character, 0x82, N}, {0x06, AK::Character, 0x95, N},
+        {0x07, AK::Character, 0x94, N}, {0x08, AK::Character, 0x6B, N}, {0x09, AK::Character, 0x4B, N},
+        {0x0A, AK::Character, 0x61, N},
+        // Bottom row: Reset, space, Enter.
+        {0x7E, AK::Function, 0, KeyFunction::Reset}, {0x0F, AK::Character, 0x40, N}, {0x68, AK::Aid, 0xF1, N},
         // Numeric pad.
-        {0x6C, AK::Character, 0xF7, N}, {0x75, AK::Character, 0xF8, N}, {0x7D, AK::Character, 0xF9, N},
-        {0x6B, AK::Character, 0xF4, N}, {0x73, AK::Character, 0xF5, N}, {0x74, AK::Character, 0xF6, N},
-        {0x69, AK::Character, 0xF1, N}, {0x72, AK::Character, 0xF2, N}, {0x7A, AK::Character, 0xF3, N},
-        {0x70, AK::Character, 0xF0, N}, {0x71, AK::Character, 0x4B, N},
-        {0x7C, AK::Function, 0, KeyFunction::FieldMinus}, {0x79, AK::Function, 0, KeyFunction::FieldPlus},
-        // Editing and cursor keys.
-        {0x66, AK::Function, 0, KeyFunction::Backspace}, {0x0D, AK::Function, 0, KeyFunction::Tab},
-        {0x5A, AK::Function, 0, KeyFunction::FieldExit}, {0x58, AK::Aid, 0xF1, N},
-        {0x11, AK::Function, 0, KeyFunction::Reset}, {0x67, AK::Function, 0, KeyFunction::Backtab},
-        {0x6E, AK::Function, 0, KeyFunction::Dup}, {0x64, AK::Function, 0, KeyFunction::NewLine},
-        {0x65, AK::Function, 0, KeyFunction::Insert}, {0x6D, AK::Function, 0, KeyFunction::Delete}, {0x61, AK::Function, 0, KeyFunction::CursorLeft},
-        {0x6A, AK::Function, 0, KeyFunction::CursorRight}, {0x63, AK::Function, 0, KeyFunction::CursorUp},
-        {0x60, AK::Function, 0, KeyFunction::CursorDown},
+        {0x47, AK::Character, 0xF7, N}, {0x48, AK::Character, 0xF8, N}, {0x49, AK::Character, 0xF9, N},
+        {0x44, AK::Character, 0xF4, N}, {0x45, AK::Character, 0xF5, N}, {0x46, AK::Character, 0xF6, N},
+        {0x41, AK::Character, 0xF1, N}, {0x42, AK::Character, 0xF2, N}, {0x43, AK::Character, 0xF3, N},
+        {0x40, AK::Character, 0xF0, N}, {0x4A, AK::Character, 0x4B, N},
+        {0x4E, AK::Function, 0, KeyFunction::FieldMinus}, {0x4D, AK::Function, 0, KeyFunction::FieldPlus},
+        // Editing and cursor keys. 6Ch is Insert in lower shift.
+        {0x4B, AK::Function, 0, KeyFunction::Backtab}, {0x4C, AK::Function, 0, KeyFunction::Dup},
+        {0x0C, AK::Function, 0, KeyFunction::NewLine}, {0x6C, AK::Function, 0, KeyFunction::Insert},
+        {0x72, AK::Function, 0, KeyFunction::CursorLeft}, {0x73, AK::Function, 0, KeyFunction::CursorRight},
+        {0x71, AK::Function, 0, KeyFunction::CursorUp}, {0x70, AK::Function, 0, KeyFunction::CursorDown},
         // Left-hand block.
-        {0x05, AK::Attn, 0, N}, {0x0C, AK::Function, 0, KeyFunction::EraseInput},
-        {0x0B, AK::Aid, 0xF3, N}, {0x03, AK::Aid, 0xF6, N}, {0x09, AK::Function, 0, KeyFunction::Record},
-        {0x0A, AK::Function, 0, KeyFunction::Play},
-        // Blank keytops and terminal-local keys (Setup 01, Rule 62) stay unmapped.
-        {0x04, AK::Unmapped, 0, N}, {0x02, AK::Unmapped, 0, N}, {0x06, AK::Unmapped, 0, N},
-        {0x01, AK::Unmapped, 0, N}, {0x62, AK::Unmapped, 0, N}, {0x6F, AK::Unmapped, 0, N},
-        {0x76, AK::Unmapped, 0, N}, {0x77, AK::Unmapped, 0, N}, {0x7E, AK::Unmapped, 0, N},
-        {0x7F, AK::Unmapped, 0, N}, {0x7B, AK::Unmapped, 0, N},
+        {0x7C, AK::Attn, 0, N}, {0x67, AK::Function, 0, KeyFunction::EraseInput},
+        {0x7D, AK::Aid, 0xF3, N}, {0x6E, AK::Aid, 0xF6, N},
+        // Blank keytops and unknown codes stay unmapped.
+        {0x66, AK::Unmapped, 0, N}, {0x78, AK::Unmapped, 0, N}, {0x75, AK::Unmapped, 0, N},
+        {0x62, AK::Unmapped, 0, N}, {0x1D, AK::Unmapped, 0, N}, {0x1E, AK::Unmapped, 0, N},
+        {0x4F, AK::Unmapped, 0, N}, {0x50, AK::Unmapped, 0, N}, {0x55, AK::Unmapped, 0, N},
+        {0x7F, AK::Unmapped, 0, N},
     };
     check_layer(km, rows);
-    // F1..F12 in the lower row and F13..F24 in the upper row.
-    const uint8_t lower[12] = {0x07, 0x0F, 0x17, 0x1F, 0x27, 0x2F, 0x37, 0x3F, 0x47, 0x4F, 0x56, 0x5E};
-    const uint8_t upper[12] = {0x08, 0x10, 0x18, 0x20, 0x28, 0x30, 0x38, 0x40, 0x48, 0x50, 0x57, 0x5F};
-    for (int i = 0; i < 12; ++i) {
-        OperatorAction a;
-        REQUIRE(km.translate(lower[i], a));
-        CHECK(a.kind == AK::Aid);
-        CHECK(a.aid == 0x31 + i);
-        REQUIRE(km.translate(upper[i], a));
-        CHECK(a.kind == AK::Aid);
-        CHECK(a.aid == 0xB1 + i);
-    }
 }
 
-TEST_CASE("keyboard map: 122-key typewriter, shift, shift lock and alt layers") {
+TEST_CASE("keyboard map: 122-key typewriter, CMD prefix gives F1-F24 and Alt legends") {
+    KeyboardMap km(0x02);
+    OperatorAction a;
+    for (int i = 0; i < 12; ++i) {
+        CAPTURE(i);
+        // F1..F12: CMD, then the digit-row code in lower shift.
+        CHECK_FALSE(km.translate(0x6F, a));
+        CHECK(km.cmd_pending());
+        REQUIRE(km.translate(uint8_t(0x31 + i), a));
+        CHECK(a.kind == AK::Aid);
+        CHECK(a.aid == 0x31 + i);
+        CHECK_FALSE(km.cmd_pending());
+        // F13..F24 (upper row): CMD, the terminal's own shift make, the code.
+        CHECK_FALSE(km.translate(0x6F, a));
+        CHECK_FALSE(km.translate(0x57, a));
+        REQUIRE(km.translate(uint8_t(0x31 + i), a));
+        CHECK(a.aid == 0xB1 + i);
+        CHECK_FALSE(km.translate(0xD7, a));
+    }
+    // Alt+Help: Hex; Alt+Play: Test; Alt+(blank): Clear (upper shift).
+    km.translate(0x6F, a);
+    REQUIRE(km.translate(0x3E, a));
+    CHECK(a.function == KeyFunction::Hex);
+    km.translate(0x6F, a);
+    REQUIRE(km.translate(0x3D, a));
+    CHECK(a.function == KeyFunction::Test);
+    km.translate(0x6F, a);
+    km.translate(0x57, a);
+    REQUIRE(km.translate(0x3D, a));
+    CHECK(a.kind == AK::Aid);
+    CHECK(a.aid == 0xBD);
+    km.translate(0xD7, a);
+    // Alt+Rule: Home (6Dh, no prefix).
+    REQUIRE(km.translate(0x6D, a));
+    CHECK(a.function == KeyFunction::Home);
+    // Alt + a letter: the character, flagged alt; Alt + digit: nothing.
+    km.translate(0x6F, a);
+    REQUIRE(km.translate(0x11, a));
+    CHECK(a.kind == AK::Character);
+    CHECK(a.ebcdic == 0x81);
+    CHECK(a.alt);
+    km.translate(0x6F, a);
+    REQUIRE(km.translate(0x51, a));
+    CHECK(a.kind == AK::Unmapped);
+    // Without the prefix the digit-row codes are digits again.
+    REQUIRE(km.translate(0x31, a));
+    CHECK(a.ebcdic == 0xF1);
+    CHECK_FALSE(a.alt);
+}
+
+TEST_CASE("keyboard map: 122-key typewriter, shift and shift lock") {
     KeyboardMap km(0x0A);   // world trade: same positions, US graphics
     OperatorAction a;
-    CHECK_FALSE(km.translate(0x59, a));   // right shift make
+    CHECK_FALSE(km.translate(0x56, a));   // right shift make
     CHECK(km.shift());
     const std::vector<Expect> shifted = {
-        {0x16, AK::Character, 0x5A, N}, {0x1E, AK::Character, 0x7C, N}, {0x36, AK::Character, 0x5F, N},
-        {0x1C, AK::Character, 0xC1, N}, {0x53, AK::Character, 0x4F, N}, {0x4A, AK::Character, 0x6F, N},
-        {0x6C, AK::Character, 0xF7, N},
-        {0x0D, AK::Function, 0, KeyFunction::Backtab}, {0x5A, AK::Function, 0, KeyFunction::FieldExit},
-        {0x65, AK::Function, 0, KeyFunction::Insert}, {0x63, AK::Aid, 0xF5, N}, {0x60, AK::Aid, 0xF4, N},
-        {0x05, AK::SysReq, 0, N}, {0x07, AK::Aid, 0xB1, N}, {0x5E, AK::Aid, 0xBC, N},
+        {0x31, AK::Character, 0x5A, N}, {0x32, AK::Character, 0x7C, N}, {0x36, AK::Character, 0x5F, N},
+        {0x11, AK::Character, 0xC1, N}, {0x1C, AK::Character, 0x4F, N}, {0x0A, AK::Character, 0x6F, N},
+        {0x47, AK::Character, 0xF7, N},
+        {0x20, AK::Function, 0, KeyFunction::Backtab}, {0x2D, AK::Function, 0, KeyFunction::FieldExit},
+        {0x6C, AK::Function, 0, KeyFunction::Delete}, {0x71, AK::Aid, 0xF5, N}, {0x70, AK::Aid, 0xF4, N},
+        {0x7C, AK::SysReq, 0, N},
     };
     check_layer(km, shifted);
-    CHECK_FALSE(km.translate(0xD9, a));   // right shift break
+    CHECK_FALSE(km.translate(0xD6, a));   // right shift break
     CHECK_FALSE(km.shift());
 
-    // Shift Lock holds every key in upper shift until a Shift key is pressed.
-    CHECK_FALSE(km.translate(0x14, a));
-    CHECK_FALSE(km.translate(0x94, a));
-    CHECK(km.caps_lock());
-    REQUIRE(km.translate(0x16, a));
-    CHECK(a.ebcdic == 0x5A);
-    REQUIRE(km.translate(0x14, a) == false);   // pressing it again keeps the lock
-    CHECK(km.caps_lock());
-    CHECK_FALSE(km.translate(0x12, a));
-    CHECK_FALSE(km.caps_lock());
-    CHECK_FALSE(km.translate(0x92, a));
-    REQUIRE(km.translate(0x16, a));
-    CHECK(a.ebcdic == 0xF1);
+    // Delete: the terminal wraps 6Ch in its own shift make/break.
+    CHECK_FALSE(km.translate(0x57, a));
+    REQUIRE(km.translate(0x6C, a));
+    CHECK(a.function == KeyFunction::Delete);
+    CHECK_FALSE(km.translate(0xD7, a));
 
-    // Alt selects the front legends.
-    CHECK_FALSE(km.translate(0x19, a));
-    const std::vector<Expect> alt = {
-        {0x0B, AK::Function, 0, KeyFunction::Hex}, {0x0A, AK::Function, 0, KeyFunction::Test},
-        {0x62, AK::Function, 0, KeyFunction::Home}, {0x06, AK::Aid, 0xBD, N},
-    };
-    check_layer(km, alt);
-    REQUIRE(km.translate(0x1C, a));
-    CHECK(a.alt);
-    CHECK_FALSE(km.translate(0x99, a));
-    CHECK_FALSE(km.alt());
+    // Shift Lock (54h make, D4h break) holds every key in upper shift until
+    // a Shift key is pressed.
+    CHECK_FALSE(km.translate(0x54, a));
+    CHECK_FALSE(km.translate(0xD4, a));
+    CHECK(km.caps_lock());
+    REQUIRE(km.translate(0x31, a));
+    CHECK(a.ebcdic == 0x5A);
+    CHECK_FALSE(km.translate(0x54, a));   // pressing it again keeps the lock
+    CHECK(km.caps_lock());
+    CHECK_FALSE(km.translate(0x57, a));
+    CHECK_FALSE(km.caps_lock());
+    CHECK_FALSE(km.translate(0xD7, a));
+    REQUIRE(km.translate(0x31, a));
+    CHECK(a.ebcdic == 0xF1);
 }
 
 TEST_CASE("keyboard map: keyboard ID selects the layout") {
@@ -395,7 +433,7 @@ TEST_CASE("keyboard map: keyboard ID selects the layout") {
     REQUIRE(km.translate(0x05, a));            // Enhanced: no key at 05h
     CHECK(a.kind == AK::Unmapped);
     km.set_keyboard_id(0x02);
-    REQUIRE(km.translate(0x05, a));            // typewriter: Attn
+    REQUIRE(km.translate(0x7C, a));            // typewriter: Attn
     CHECK(a.kind == AK::Attn);
     // Caps Lock toggles on the Enhanced keyboard but only sets Shift Lock here.
     km.set_keyboard_id(0x82);
@@ -536,15 +574,20 @@ TEST_CASE("keystroke round trip with a 122-key typewriter keyboard") {
     REQUIRE(b.run_until([&] { return d.ready_count == 1; }));
     CHECK(b.host->station(0)->identity().keyboard_id == 0x02);
 
-    f.press(0x14);   // Shift Lock make
-    f.press(0x94);   // and break
-    f.press(0x16);   // 1 -> !
-    f.press(0x12);   // shift releases the lock
-    f.press(0x92);
+    // Cable codes of PAI fig. 105, as the 3477 sends them.
+    f.press(0x54);   // Shift Lock make
+    f.press(0xD4);   // and break
+    f.press(0x31);   // 1 -> !
+    f.press(0x57);   // shift releases the lock
+    f.press(0xD7);
     REQUIRE(b.run_until([&] { return d.actions.size() == 1; }));   // stay within the 7-key queue
-    f.press(0x53);   // backslash
-    f.press(0x0B);   // Help
-    f.press(0x08);   // F13 (upper row)
+    f.press(0x1C);   // backslash
+    f.press(0x7D);   // Help
+    REQUIRE(b.run_until([&] { return d.actions.size() == 3; }));
+    f.press(0x6F);   // F13 (upper row): CMD, shift, 31h
+    f.press(0x57);
+    f.press(0x31);
+    f.press(0xD7);
     REQUIRE(b.run_until([&] { return d.actions.size() == 4; }));
     CHECK(d.actions[0].ebcdic == 0x5A);
     CHECK(d.actions[1].ebcdic == 0xE0);

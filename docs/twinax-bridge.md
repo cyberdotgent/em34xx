@@ -225,9 +225,10 @@ Erase Input, Reset), an AID (Enter, F1-F24, Roll, Print, Help, Clear) or a
 signal (Attn, Sys Req). The engine then applies FR ch. 16.
 
 The table for the **IBM Enhanced keyboard** is typed in from PAI fig. 147
-(US). The **122-key typewriter keyboard** (PAI fig. 105, 3180-2/3197) and
-national layouts are not typed in yet: their keys reach the engine as
-"unmapped" with the raw scan code.
+(US). The **122-key typewriter keyboard** sends the 3180-2/3196 codes of PAI
+fig. 105 (Shift as make/break codes, a CMD prefix `6F` for Alt and F1-F24);
+the controller decodes them to key positions (docs/keyboard.md, "5250 scan
+codes on the cable"). National layouts are not typed in yet.
 
 ## The controller without a host session
 
