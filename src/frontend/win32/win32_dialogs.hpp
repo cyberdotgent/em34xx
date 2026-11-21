@@ -25,8 +25,12 @@ namespace win32 {
 // (always true without one).
 bool rom_manager_dialog(HWND owner, const UserDirs& dirs, const Model* required);
 
-// Edit > Settings. `restart_needed` when a change applies at the next start.
-bool settings_dialog(HWND owner, const UserDirs& dirs, AppSettings& s, bool& restart_needed);
+// Edit > Settings. The caller applies the changes (the CRT type may need a
+// power cycle and asks first).
+bool settings_dialog(HWND owner, const UserDirs& dirs, AppSettings& s);
+
+// The CRT type as the Settings dialog shows it ("Paper white", "Colour").
+const char* subtype_label(DisplaySubtype d);
 
 enum class ProfileEditMode {
     Connect,   // OK button says "Connect"

@@ -19,6 +19,7 @@
 
 #include <algorithm>
 #include <atomic>
+#include <cctype>
 #include <chrono>
 #include <condition_variable>
 #include <deque>
@@ -38,6 +39,7 @@ constexpr UINT WM_APP_TITLE = WM_APP + 11;     // set_title / set_status
 constexpr UINT WM_APP_QUIT = WM_APP + 12;      // request_quit
 constexpr UINT WM_APP_TRUST = WM_APP + 13;     // a TLS trust decision is wanted
 constexpr UINT WM_APP_HOLD = WM_APP + 14;      // close one station's session (wParam)
+constexpr UINT WM_APP_STARTUP = WM_APP + 15;   // the window is up: offer the profiles
 #ifndef WM_DPICHANGED
 constexpr UINT WM_DPICHANGED = 0x02E0;
 #endif
@@ -201,7 +203,9 @@ private:
     void update_status();
     void update_ui_state();
 
-    void connect_profile(const Profile& p);
+    // Power-cycle the terminal (unless it was just rebuilt), then connect.
+    void connect_profile(const Profile& p, bool power_cycle = true);
+    void change_display_subtype(DisplaySubtype to);
     void open_profile_file(const std::string& path);
     bool save_current(bool save_as);
     bool confirm_discard();
@@ -663,11 +667,11 @@ void Win32Frontend::update_ui_state() {
 // ---------------------------------------------------------------------------
 // Profiles and connections
 
-void Win32Frontend::connect_profile(const Profile& p) {
+void Win32Frontend::connect_profile(const Profile& p, bool power_cycle) {
     HWND h = hwnd_.load();
     if (p.model != model_name_) {
         error_box(h, "This profile is for the IBM " + p.model + "; the emulator runs an IBM " + model_name_ +
-                         ". Change the model in Settings and start em34xxw again.");
+                         "; other models cannot run in this build yet.");
         return;
     }
     AppConfig cfg;
@@ -677,12 +681,58 @@ void Win32Frontend::connect_profile(const Profile& p) {
         return;
     }
     trust_->cancel_all();
+    release_keys();
     cur_.accepted_once = false;
-    if (!app_->host_link().connect(cfg, message, error)) {
+    // Like switching the terminal on: the running sessions close, the
+    // terminal runs its power-on self test, and the controller brings the
+    // sessions up once it answers the polls.
+    const bool ok = power_cycle ? app_->connect_after_power_cycle(cfg, message, error)
+                                : app_->host_link().connect(cfg, message, error);
+    if (!ok) {
         error_box(h, error);
+        update_ui_state();
         return;
     }
     LOG_INFO("tn5250", "%s", trim(message).c_str());
+    update_ui_state();
+}
+
+// Edit > Settings changed the CRT type. Green, amber (and paper-white where
+// the model's straps do not follow it) only change the picture; a change the
+// firmware or the host can see (colour: the device type; 3477 paper-white:
+// the display-type straps) rebuilds and power-cycles the terminal and
+// reconnects, after asking.
+void Win32Frontend::change_display_subtype(DisplaySubtype to) {
+    HWND h = hwnd_.load();
+    const DisplaySubtype from = settings().display;
+    if (app_->display_change_needs_power_cycle(to)) {
+        std::string label = subtype_label(to);
+        if (!label.empty()) label[0] = char(std::tolower(static_cast<unsigned char>(label[0])));
+        if (message_box(h, string_with(IDS_CRT_RESET_CONFIRM, label), MB_YESNO | MB_ICONQUESTION) != IDYES) {
+            settings().display = from;   // keep the old setting
+            return;
+        }
+        const bool was_connected = app_->host_link().controller_kind() == "tn5250";
+        trust_->cancel_all();
+        release_keys();
+        std::string error;
+        if (!app_->set_display_subtype(to, error)) {
+            settings().display = from;
+            error_box(h, "Cannot change the CRT type: " + error);
+            update_ui_state();
+            return;
+        }
+        settings().display = to;
+        if (was_connected && cur_.active) connect_profile(cur_.p, false);   // just rebuilt: already powering on
+    } else {
+        std::string error;
+        app_->set_display_subtype(to, error);
+        settings().display = to;
+    }
+    crt_.invalidate();
+    dirty_ = true;
+    schedule_render();
+    InvalidateRect(h, nullptr, FALSE);
     update_ui_state();
 }
 
@@ -817,16 +867,18 @@ void Win32Frontend::edit_settings() {
     HWND h = hwnd_.load();
     release_keys();
     AppSettings s = settings();
-    bool restart = false;
-    if (!settings_dialog(h, dirs(), s, restart)) return;
+    if (!settings_dialog(h, dirs(), s)) return;
     const bool crt_changed = s.crt != settings().crt;
     const bool speed_changed = s.speed_percent != settings().speed_percent;
+    const DisplaySubtype display = s.display;
     s.window = settings().window;
     s.zoom = settings().zoom;
+    s.display = settings().display;   // change_display_subtype() decides
     settings() = s;
+    if (speed_changed) app_->set_speed_percent(s.speed_percent);
+    if (display != settings().display) change_display_subtype(display);
     std::string error;
     if (!save_settings(dirs().settings_file(), settings(), error)) error_box(h, error);
-    if (speed_changed) app_->set_speed_percent(s.speed_percent);
     if (crt_changed) {
         crt_params_.enabled = s.crt;
         CrtParams p = crt_params_;
@@ -836,8 +888,6 @@ void Win32Frontend::edit_settings() {
         schedule_render();
         InvalidateRect(h, nullptr, FALSE);
     }
-    if (restart) MessageBoxW(h, load_string(IDS_RESTART_NEEDED).c_str(), load_string(IDS_APP_TITLE).c_str(),
-                             MB_OK | MB_ICONINFORMATION);
 }
 
 void Win32Frontend::command(int id) {
@@ -967,6 +1017,11 @@ LRESULT Win32Frontend::handle(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
         update_status();
         return 0;
     }
+    case WM_APP_STARTUP:
+        // No profile on the command line: offer the profiles, modal over
+        // the main window. Cancel leaves the terminal idle.
+        if (!quit_.load()) command(ID_FILE_PROFILES);
+        return 0;
     case WM_APP_QUIT:
         cur_.modified = false;   // asked to end: no questions
         DestroyWindow(hwnd);
@@ -1053,6 +1108,10 @@ bool Win32Frontend::run(Application& app, const FrontendOptions& opts, std::stri
     base_w_ = std::max(1, fb_.presented_width());
     base_h_ = std::max(1, fb_.presented_height());
 
+    install_dialog_centring();
+    struct Unhook {
+        ~Unhook() { remove_dialog_centring(); }
+    } unhook;
     if (!create_window(error)) {
         error_box(nullptr, error);
         return false;
@@ -1084,6 +1143,7 @@ bool Win32Frontend::run(Application& app, const FrontendOptions& opts, std::stri
     UpdateWindow(h);
     SetTimer(h, kTimerStatus, 500, nullptr);
     if (!launch_.profile_path.empty()) open_profile_file(launch_.profile_path);
+    else PostMessageW(h, WM_APP_STARTUP, 0, 0);   // once the window has painted
 
     MSG msg;
     while (GetMessageW(&msg, nullptr, 0, 0) > 0) {

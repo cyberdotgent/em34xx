@@ -98,7 +98,6 @@ BEGIN
     GROUPBOX        "Display", -1, 7, 7, 266, 52
     LTEXT           "&CRT type:", -1, 15, 21, 60, 8
     COMBOBOX        IDC_SET_SUBTYPE, 80, 19, 110, 80, CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
-    LTEXT           "(next start)", -1, 196, 21, 70, 8
     AUTOCHECKBOX    "CRT scan-line &rendering", IDC_SET_CRT, 15, 39, 150, 10
     GROUPBOX        "Emulation", -1, 7, 63, 266, 30
     LTEXT           "&Speed:", -1, 15, 77, 60, 8
@@ -278,7 +277,7 @@ BEGIN
     IDS_ASSOC_DONE       ".em34xx files now open with em34xxw."
     IDS_SAVE_CHANGES     "Save the changes to the profile \"%s\"?"
     IDS_DELETE_CONFIRM   "Delete the profile \"%s\"?"
-    IDS_RESTART_NEEDED   "The new CRT type takes effect when em34xxw is started again."
+    IDS_CRT_RESET_CONFIRM "Changing to %s resets the terminal and reconnects the sessions. Continue?"
     IDS_FILTER_ROMS      "ROM images (*.bin;*.rom)|*.bin;*.rom|All files (*.*)|*.*|"
     IDS_FILE_TYPE_NAME   "em34xx connection profile"
 END

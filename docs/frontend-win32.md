@@ -47,6 +47,31 @@ with `GetProcAddress` and fall back to the system DPI.
    spec, e.g. `info,wsc=debug,tn5250=debug,input=debug` to see each key,
    the scan code the controller decodes and each record sent to the host
    (docs/keyboard.md, "Diagnosing input").
+7. The main window opens. With a profile on the command line, that
+   profile connects (below); otherwise **Connect to Profile** (the profile
+   manager) opens at once, modal over the main window and centred on it.
+   Close/Cancel leaves the terminal idle and not connected.
+
+## Connecting: power cycle first
+
+Every way of connecting (Connect to Profile, Connect..., Edit Profile's
+OK, a profile on the command line) goes through
+`Application::connect_after_power_cycle()`: the TN5250 sessions that run
+are closed (any waiting trust prompt is answered Stop), the terminal is
+reset as at power-on and runs its POST, and the bridge is put on the line.
+While POST runs the terminal does not answer polls: the controller keeps
+the station absent and probes it (`docs/twinax-bridge.md`); once the
+terminal answers, it is identified and the session's screen is written, so
+the sign-on screen follows POST with no manual step (observed with the
+3477 ROMs against pub400.com:23, below).
+
+## Dialogs
+
+Every dialog and message box is centred on its owner (the main window, or
+the dialog that opened it), kept inside that monitor's work area: a
+thread-local `WH_CBT` hook (`install_dialog_centring()`) moves each
+`#32770` window once, when it is first activated. The first-start ROM
+dialog has no owner and stays centred on the screen (`DS_CENTER`).
 
 ## The user folder
 
@@ -78,7 +103,7 @@ Global, not per profile (`config/settings.hpp`):
 ```toml
 model = "3477"
 [display]
-subtype = "green"        # CRT type: green, amber, paperwhite, color (next start)
+subtype = "green"        # CRT type: green, amber, paperwhite, color (at once, below)
 crt = true               # scan-line rendering (immediately)
 [emulator]
 speed = 100              # percent; 0 = unthrottled (immediately)
@@ -92,6 +117,22 @@ width = 1099
 height = 925
 maximized = false
 ```
+
+### Applying changes
+
+| Setting | Applies |
+| --- | --- |
+| CRT type green <-> amber | at once, picture only (the phosphor colour in `render_presented`); no reset, the sessions stay up |
+| CRT type to or from colour | asks "Changing to colour resets the terminal and reconnects the sessions. Continue?"; Yes: the sessions close, the machine is rebuilt with the new subtype and powered on (POST), and the current profile reconnects (the host now sees `IBM-3477-FC`); No keeps the old setting |
+| CRT type to or from paper-white (3477) | the same question: paper-white sets the display-type straps to 0E (type 5, FW0) instead of 0C (hypothesis, `ibm3477_default_straps`), which the firmware reads at power-on |
+| CRT rendering, speed | at once |
+| TLS minimum | at the next connect |
+| model | not offered: only the 3477 is runnable. A profile for another model is refused with a message; when a second model becomes runnable, switching it needs the same rebuild (and new ROMs, sessions limits and title) |
+
+Which subtype changes need the rebuild is the model's decision
+(`Model::display_change_needs_power_cycle()`): by default monochrome <->
+colour (the device type the bridge announces); the 3477 adds any change of
+its derived straps (none when `--straps` is given).
 
 Unknown keys are ignored and missing ones take defaults. Files are written
 to a temporary name and renamed over the old one.
@@ -139,7 +180,7 @@ message.
 
 | Menu | Item | Toolbar | What |
 | --- | --- | --- | --- |
-| File | Connect to Profile... (Ctrl+Shift+O) | yes | the profile manager: the profiles in `profiles\` with Connect, New..., Edit..., Rename..., Copy, Delete |
+| File | Connect to Profile... (Ctrl+Shift+O) | yes | the profile manager: the profiles in `profiles\` with Connect, New..., Edit..., Rename..., Copy, Delete; also shown at start without a command-line profile |
 | File | Connect... (Ctrl+Shift+N) | yes | the profile editor for a new, unsaved profile; connecting makes the title "Untitled Profile*" |
 | File | Edit Profile... | | the current profile in the editor; OK reconnects with it (marked `*` when changed) |
 | File | Save (Ctrl+Shift+S) | yes | save the current profile; on an untitled one, Save As |
@@ -147,10 +188,10 @@ message.
 | File | Disconnect (Ctrl+Shift+D) | yes | take the TN5250 bridge off the line |
 | File | Exit | | asks to save an unsaved or changed profile |
 | Edit | Keymap... | yes | the keymap editor |
-| Edit | Settings... | yes | CRT type, CRT rendering, speed, default TLS minimum, ROM images, file association |
+| Edit | Settings... | yes | CRT type, CRT rendering, speed, default TLS minimum, ROM images, file association (see "Applying changes") |
 | View | Zoom > 1x / 1.5x / 2x | | radio items; the picture area becomes the presented frame times the zoom times the DPI scale (shrunk to the work area if it does not fit); manual resizing stays possible and choosing a zoom snaps back. Saved in settings.toml |
 | Terminal | Attn, SysRq, Reset | yes (text buttons) | press the terminal's own key through the keyboard model (`Machine::terminal_key()`, set-3 position with the Shift/Alt its legend needs), so the firmware and the controller see the real key |
-| Terminal | Power Cycle | | `Application::power_on()` |
+| Terminal | Power Cycle | | `Application::power_on()` (the sessions stay; the controller rediscovers the terminal after POST) |
 | Help | About... | | version, user folder, TLS backend, project page, third-party notices |
 
 The window title is `<profile>[*] - IBM 3477 - em34xx`; `*` marks a
@@ -280,6 +321,16 @@ composite them. Observed (November 2026, wine 9.0, x86 and x64 builds):
 - View > Zoom at 96 dpi: picture 1091x818, 1637x1227, 2182x1636; at
   144 dpi, 1x gives 1637x1227 and the 24 px toolbar; dialogs scale.
 - The file association, in the wine prefix's registry only.
+- Start-up (x64, wine 9.0, Xvfb 1280x1000, main window at 180,60): without
+  a profile, Connect to Profile opens centred on the main window (dialog
+  centre = window centre) and the main window is disabled (its menu does
+  not open); Connect on PUB400 (pub400.com:23) shows the POST test
+  pattern, then the sign-on screen. A profile on the command line skips
+  the dialog and connects (POST, then sign-on).
+- Settings, green -> amber: the picture turns amber at once, the same
+  session (same QPADEVxxxx) stays. Amber -> colour: the question (centred
+  on the main window); Yes rebuilds (POST in colour), reconnects as
+  `IBM-3477-FC` and shows the sign-on screen in colour.
 
 Not tested: real Windows 7/10/11, `WM_DPICHANGED` between monitors, a
 non-ASCII user folder.
@@ -287,8 +338,8 @@ non-ASCII user folder.
 ## Known gaps
 
 - Sound: no `AudioSink` yet (the alarm is silent).
-- The CRT type (display subtype) and the model apply at the next start;
-  a profile for another model asks for a restart.
+- The model cannot be switched (one runnable model); a profile for another
+  model is refused.
 - Printer sessions are not offered (the bridge has only a placeholder).
 - No per-profile keymap (by design: one global keymap).
 

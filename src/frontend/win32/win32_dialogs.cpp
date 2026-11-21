@@ -81,6 +81,8 @@ int dlu_x(HWND dlg, int dlu) {
     return r.right;
 }
 
+} // namespace
+
 const char* subtype_label(DisplaySubtype d) {
     switch (d) {
     case DisplaySubtype::Green: return "Green";
@@ -90,6 +92,9 @@ const char* subtype_label(DisplaySubtype d) {
     }
     return "?";
 }
+
+namespace {
+
 const DisplaySubtype kSubtypes[] = {DisplaySubtype::Green, DisplaySubtype::Amber, DisplaySubtype::PaperWhite,
                                     DisplaySubtype::Color};
 const unsigned kSpeeds[] = {25, 50, 100, 200, 400, 0};
@@ -236,7 +241,6 @@ namespace {
 struct SettingsDlg {
     const UserDirs* dirs;
     AppSettings s;
-    bool restart = false;
 };
 
 INT_PTR CALLBACK settings_proc(HWND dlg, UINT msg, WPARAM wp, LPARAM lp) {
@@ -281,10 +285,7 @@ INT_PTR CALLBACK settings_proc(HWND dlg, UINT msg, WPARAM wp, LPARAM lp) {
         }
         case IDOK: {
             const int st = combo_sel(dlg, IDC_SET_SUBTYPE);
-            if (st >= 0 && st < 4 && kSubtypes[st] != d->s.display) {
-                d->s.display = kSubtypes[st];
-                d->restart = true;
-            }
+            if (st >= 0 && st < 4) d->s.display = kSubtypes[st];
             d->s.crt = IsDlgButtonChecked(dlg, IDC_SET_CRT) == BST_CHECKED;
             const int sp = combo_sel(dlg, IDC_SET_SPEED);
             if (sp >= 0 && sp < int(sizeof kSpeeds / sizeof kSpeeds[0])) d->s.speed_percent = kSpeeds[sp];
@@ -305,13 +306,12 @@ INT_PTR CALLBACK settings_proc(HWND dlg, UINT msg, WPARAM wp, LPARAM lp) {
 
 } // namespace
 
-bool settings_dialog(HWND owner, const UserDirs& dirs, AppSettings& s, bool& restart_needed) {
-    SettingsDlg d{&dirs, s, false};
+bool settings_dialog(HWND owner, const UserDirs& dirs, AppSettings& s) {
+    SettingsDlg d{&dirs, s};
     if (DialogBoxParamW(instance(), MAKEINTRESOURCEW(IDD_SETTINGS), owner, settings_proc,
                         reinterpret_cast<LPARAM>(&d)) != IDOK)
         return false;
     s = d.s;
-    restart_needed = d.restart;
     return true;
 }
 

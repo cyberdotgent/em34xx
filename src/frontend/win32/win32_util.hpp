@@ -46,6 +46,14 @@ std::wstring load_string(UINT id);
 // A string-table entry with its "%s" replaced by `arg`, as UTF-8.
 std::string string_with(UINT id, const std::string& arg);
 int message_box(HWND owner, const std::string& text, UINT flags);
+// Centre a window on its owner (when the owner is visible), kept inside the
+// work area of the owner's monitor.
+void center_on_owner(HWND hwnd);
+// While installed (on the UI thread), every dialog box and message box
+// (window class #32770) is centred on its owner once, when it is first
+// activated. DS_CENTER alone centres on the monitor, not the owner.
+void install_dialog_centring();
+void remove_dialog_centring();
 void error_box(HWND owner, const std::string& text);
 // Common open-file dialog with multiple selection; UTF-8 paths.
 std::vector<std::string> open_files_dialog(HWND owner, const std::wstring& title, const std::wstring& filter_pipes);

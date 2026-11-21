@@ -4,7 +4,10 @@
 #include <commdlg.h>
 #include <shlobj.h>
 
+#include <algorithm>
 #include <array>
+#include <cwchar>
+#include <set>
 
 namespace em34xx {
 namespace win32 {
@@ -179,6 +182,53 @@ std::string string_with(UINT id, const std::string& arg) {
 
 int message_box(HWND owner, const std::string& text, UINT flags) {
     return MessageBoxW(owner, widen(text).c_str(), load_string(4000 /* IDS_APP_TITLE */).c_str(), flags);
+}
+
+void center_on_owner(HWND hwnd) {
+    HWND owner = GetWindow(hwnd, GW_OWNER);
+    if (!owner || !IsWindowVisible(owner) || IsIconic(owner)) return;
+    RECT o, r;
+    if (!GetWindowRect(owner, &o) || !GetWindowRect(hwnd, &r)) return;
+    const int w = r.right - r.left, h = r.bottom - r.top;
+    int x = o.left + ((o.right - o.left) - w) / 2;
+    int y = o.top + ((o.bottom - o.top) - h) / 2;
+    MONITORINFO mi;
+    mi.cbSize = sizeof mi;
+    if (GetMonitorInfoW(MonitorFromWindow(owner, MONITOR_DEFAULTTONEAREST), &mi)) {
+        const RECT& wa = mi.rcWork;
+        x = std::max(int(wa.left), std::min(x, int(wa.right) - w));
+        y = std::max(int(wa.top), std::min(y, int(wa.bottom) - h));
+    }
+    SetWindowPos(hwnd, nullptr, x, y, 0, 0, SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE);
+}
+
+namespace {
+
+HHOOK g_cbt_hook = nullptr;
+std::set<HWND> g_centred;   // dialogs already centred (a later activation must not move them back)
+
+LRESULT CALLBACK centring_hook(int code, WPARAM wp, LPARAM lp) {
+    if (code == HCBT_ACTIVATE) {
+        HWND w = reinterpret_cast<HWND>(wp);
+        wchar_t cls[16] = {};
+        if (GetClassNameW(w, cls, 16) > 0 && std::wcscmp(cls, L"#32770") == 0 && g_centred.insert(w).second)
+            center_on_owner(w);
+    } else if (code == HCBT_DESTROYWND) {
+        g_centred.erase(reinterpret_cast<HWND>(wp));
+    }
+    return CallNextHookEx(g_cbt_hook, code, wp, lp);
+}
+
+} // namespace
+
+void install_dialog_centring() {
+    if (!g_cbt_hook) g_cbt_hook = SetWindowsHookExW(WH_CBT, centring_hook, nullptr, GetCurrentThreadId());
+}
+
+void remove_dialog_centring() {
+    if (g_cbt_hook) UnhookWindowsHookEx(g_cbt_hook);
+    g_cbt_hook = nullptr;
+    g_centred.clear();
 }
 
 void error_box(HWND owner, const std::string& text) { message_box(owner, text, MB_OK | MB_ICONERROR); }
