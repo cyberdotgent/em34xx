@@ -72,6 +72,8 @@ public:
     std::string controller_kind() const;
     // Multi-line description of the controller and its sessions.
     std::string status() const;
+    // The sessions behind the stations (empty without a TN5250 bridge).
+    std::vector<TwinaxSessionStatus> sessions() const;
 
 private:
     Emulator& emu_;

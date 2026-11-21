@@ -121,3 +121,13 @@ std::string HostLink::status() const {
 }
 
 } // namespace tn34xx
+
+namespace tn34xx {
+
+std::vector<TwinaxSessionStatus> HostLink::sessions() const {
+    return emu_.with_machine([](Machine& m) {
+        return m.twinax_host() ? m.twinax_host()->session_status() : std::vector<TwinaxSessionStatus>();
+    });
+}
+
+} // namespace tn34xx

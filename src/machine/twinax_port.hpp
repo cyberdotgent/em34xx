@@ -66,6 +66,18 @@ inline uint8_t twinax_message_station(const TwinaxMessage& msg) {
 //     time moves on while the line is idle, so controller timers (poll
 //     cadence, busy timeouts, the terminal's 200 ms System Available window)
 //     follow emulated time, not wall time.
+// One host session behind a station address, for a status bar.
+struct TwinaxSessionStatus {
+    unsigned address = 0;
+    bool printer = false;
+    std::string state;        // "connecting", "ready", "failed", "disconnected"...
+    bool connected = false;   // session up (the cable is plugged)
+    bool held = false;        // closed by the user, no reconnect
+    std::string peer;         // "host:port"
+    bool tls = false;
+    std::string error;        // last error, if any
+};
+
 // Several station addresses (dual-session terminals, a printer session) share
 // one host: the host addresses each message to one of them.
 class TwinaxHost {
@@ -88,6 +100,8 @@ public:
     // Close the host session behind one station address and keep it closed
     // (monitor `disconnect N`). False if this host has no such session.
     virtual bool disconnect_station(unsigned address) { (void)address; return false; }
+    // The host sessions behind the stations, if this host has any.
+    virtual std::vector<TwinaxSessionStatus> session_status() const { return {}; }
 };
 
 // No controller attached: the line is silent.

@@ -102,6 +102,7 @@ public:
     const StationConfig& station() const { return station_; }
     const Tn5250Config& config() const { return cfg_; }
     tn5250::Client* client() { return client_.get(); }
+    const tn5250::Client* client() const { return client_.get(); }
     bool connected() const;       // session negotiated: the cable is plugged
     bool online() const { return online_; }
     unsigned sessions_started() const { return starts_; }
@@ -175,6 +176,7 @@ public:
     void advance(uint64_t emu_ns) override;
     std::string describe() const override;
     bool disconnect_station(unsigned address) override { return address < 8 && hold(uint8_t(address)); }
+    std::vector<TwinaxSessionStatus> session_status() const override;
 
     LinkScheduler& scheduler() { return sched_; }
     DisplayStationPort* display(uint8_t address);

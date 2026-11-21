@@ -488,3 +488,38 @@ TEST_CASE("tn5250 bridge: the first paint of a long run arrives whole by Activat
     CHECK(f.activate_writes() >= 1);
     CHECK(f.device_id_reads() == 1);
 }
+
+TEST_CASE("tn5250 bridge: session status for a status bar") {
+    TwinaxConfig tw;
+    tw.host = TwinaxHostKind::Tn5250;
+    tw.stations = {StationConfig{0, StationType::Display, "", ""}, StationConfig{1, StationType::Printer, "", ""}};
+    Tn5250Config tn;
+    tn.host = "status.example";
+    tn.port = 2323;
+    wsc::BridgeOptions opt;
+    opt.reconnect = false;
+    opt.transport = [](const StationConfig&, std::string& error) -> std::unique_ptr<tn5250::Transport> {
+        error = "no network in this test";
+        return nullptr;
+    };
+    std::string err;
+    auto bridge = wsc::make_tn5250_bridge(tw, tn, opt, err);
+    REQUIRE(bridge);
+    std::vector<TwinaxSessionStatus> st;
+    for (int i = 0; i < 200; ++i) {
+        st = bridge->session_status();
+        REQUIRE(st.size() == 2);
+        if (st[0].state == "failed") break;
+        std::this_thread::sleep_for(std::chrono::milliseconds(5));
+    }
+    CHECK(st[0].address == 0);
+    CHECK_FALSE(st[0].printer);
+    CHECK(st[0].peer == "status.example:2323");
+    CHECK(st[0].state == "failed");
+    CHECK(st[0].error.find("no network") != std::string::npos);
+    CHECK_FALSE(st[0].connected);
+    CHECK(st[1].printer);
+    REQUIRE(bridge->disconnect_station(0));
+    CHECK(bridge->session_status()[0].state == "disconnected");
+    CHECK(bridge->session_status()[0].held);
+}

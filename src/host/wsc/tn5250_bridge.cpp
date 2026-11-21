@@ -260,6 +260,30 @@ std::string Tn5250Bridge::describe() const {
     return out;
 }
 
+std::vector<TwinaxSessionStatus> Tn5250Bridge::session_status() const {
+    std::vector<TwinaxSessionStatus> out;
+    for (const auto& d : displays_) {
+        TwinaxSessionStatus st;
+        st.address = d->station().address;
+        const tn5250::Client* c = d->client();
+        st.connected = d->connected();
+        st.held = d->held();
+        st.state = d->held() ? "disconnected" : tn5250::conn_state_name(c->state());
+        st.peer = format("%s:%u", d->config().host.c_str(), d->config().port);
+        st.tls = d->config().tls;
+        st.error = c->last_error();
+        out.push_back(st);
+    }
+    for (const auto& p : printers_) {
+        TwinaxSessionStatus st;
+        st.address = p.first;
+        st.printer = true;
+        st.state = p.second->ready() ? "on line (no session)" : "not on line";
+        out.push_back(st);
+    }
+    return out;
+}
+
 std::unique_ptr<TwinaxHost> make_tn5250_bridge(const TwinaxConfig& twinax, const Tn5250Config& tn5250,
                                                BridgeOptions opt, std::string& error) {
     error = twinax.validate();
