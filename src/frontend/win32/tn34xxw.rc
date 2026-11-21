@@ -1,0 +1,309 @@
+// tn34xxw resources: icons, toolbar images, menu, accelerators, dialogs,
+// strings, version information and the application manifest.
+// Built with windres (MinGW-w64). Dialog units throughout.
+#include <windows.h>
+#include <commctrl.h>
+#include "resource.h"
+
+#pragma code_page(65001)
+LANGUAGE LANG_ENGLISH, SUBLANG_ENGLISH_US
+
+// --- Manifest: Common Controls 6 (visual styles), DPI awareness, OS GUIDs --
+1 24 "tn34xxw.manifest"
+
+// --- Icons and bitmaps (tools/gen_win32_assets.py) ---------------------------
+IDI_APP     ICON "res/tn34xxw.ico"
+IDI_PROFILE ICON "res/profile.ico"
+IDB_TOOLBAR16 BITMAP "res/toolbar16.bmp"
+IDB_TOOLBAR24 BITMAP "res/toolbar24.bmp"
+IDB_TOOLBAR32 BITMAP "res/toolbar32.bmp"
+
+// --- Menu ---------------------------------------------------------------------
+IDR_MAINMENU MENU
+BEGIN
+    POPUP "&File"
+    BEGIN
+        MENUITEM "Connect to &Profile...\tCtrl+Shift+O", ID_FILE_PROFILES
+        MENUITEM "&Connect...\tCtrl+Shift+N",            ID_FILE_CONNECT
+        MENUITEM "&Edit Profile...",                     ID_FILE_EDIT_PROFILE
+        MENUITEM SEPARATOR
+        MENUITEM "&Save\tCtrl+Shift+S",                  ID_FILE_SAVE
+        MENUITEM "Save &As...",                          ID_FILE_SAVE_AS
+        MENUITEM SEPARATOR
+        MENUITEM "&Disconnect\tCtrl+Shift+D",            ID_FILE_DISCONNECT
+        MENUITEM SEPARATOR
+        MENUITEM "E&xit",                                ID_FILE_EXIT
+    END
+    POPUP "&Edit"
+    BEGIN
+        MENUITEM "&Keymap...",                           ID_EDIT_KEYMAP
+        MENUITEM "&Settings...",                         ID_EDIT_SETTINGS
+    END
+    POPUP "&View"
+    BEGIN
+        POPUP "&Zoom"
+        BEGIN
+            MENUITEM "&1x",                              ID_VIEW_ZOOM_100
+            MENUITEM "1&.5x",                            ID_VIEW_ZOOM_150
+            MENUITEM "&2x",                              ID_VIEW_ZOOM_200
+        END
+    END
+    POPUP "&Terminal"
+    BEGIN
+        MENUITEM "&Attn",                                ID_TERM_ATTN
+        MENUITEM "&SysRq",                               ID_TERM_SYSRQ
+        MENUITEM "&Reset",                               ID_TERM_RESET
+        MENUITEM SEPARATOR
+        MENUITEM "&Power Cycle",                         ID_TERM_POWER_CYCLE
+    END
+    POPUP "&Help"
+    BEGIN
+        MENUITEM "&About tn34xxw...",                    ID_HELP_ABOUT
+    END
+END
+
+// Ctrl+Shift combinations only: every other key belongs to the terminal.
+IDR_ACCEL ACCELERATORS
+BEGIN
+    "O", ID_FILE_PROFILES,   VIRTKEY, CONTROL, SHIFT
+    "N", ID_FILE_CONNECT,    VIRTKEY, CONTROL, SHIFT
+    "S", ID_FILE_SAVE,       VIRTKEY, CONTROL, SHIFT
+    "D", ID_FILE_DISCONNECT, VIRTKEY, CONTROL, SHIFT
+END
+
+// --- Dialogs --------------------------------------------------------------------
+IDD_ROMS DIALOGEX 0, 0, 380, 222
+STYLE DS_SHELLFONT | DS_MODALFRAME | DS_CENTER | WS_POPUP | WS_CAPTION | WS_SYSMENU
+CAPTION "ROM Images"
+FONT 8, "MS Shell Dlg", 400, 0, 1
+BEGIN
+    LTEXT           "The emulator runs the terminal's own firmware. ROM images are not included: dump them from your terminal and import them here. They are checked by SHA-256.", IDC_STATIC_TEXT, 7, 7, 366, 18
+    LTEXT           "Folder:", -1, 7, 30, 26, 8
+    EDITTEXT        IDC_ROM_FOLDER, 35, 28, 338, 12, ES_AUTOHSCROLL | ES_READONLY
+    CONTROL         "", IDC_ROM_LIST, "SysListView32", LVS_REPORT | LVS_SINGLESEL | LVS_SHOWSELALWAYS | WS_BORDER | WS_TABSTOP, 7, 45, 366, 128
+    LTEXT           "", IDC_ROM_SUMMARY, 7, 177, 366, 18
+    PUSHBUTTON      "&Import...", IDC_ROM_IMPORT, 7, 201, 60, 14
+    PUSHBUTTON      "&Remove", IDC_ROM_REMOVE, 71, 201, 60, 14
+    PUSHBUTTON      "Re-&check", IDC_ROM_RECHECK, 135, 201, 60, 14
+    DEFPUSHBUTTON   "Close", IDOK, 313, 201, 60, 14
+END
+
+IDD_SETTINGS DIALOGEX 0, 0, 280, 214
+STYLE DS_SHELLFONT | DS_MODALFRAME | DS_CENTER | WS_POPUP | WS_CAPTION | WS_SYSMENU
+CAPTION "Settings"
+FONT 8, "MS Shell Dlg", 400, 0, 1
+BEGIN
+    GROUPBOX        "Display", -1, 7, 7, 266, 52
+    LTEXT           "&CRT type:", -1, 15, 21, 60, 8
+    COMBOBOX        IDC_SET_SUBTYPE, 80, 19, 110, 80, CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
+    LTEXT           "(next start)", -1, 196, 21, 70, 8
+    AUTOCHECKBOX    "CRT scan-line &rendering", IDC_SET_CRT, 15, 39, 150, 10
+    GROUPBOX        "Emulation", -1, 7, 63, 266, 30
+    LTEXT           "&Speed:", -1, 15, 77, 60, 8
+    COMBOBOX        IDC_SET_SPEED, 80, 75, 110, 80, CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
+    GROUPBOX        "TLS", -1, 7, 97, 266, 30
+    LTEXT           "Default &minimum:", -1, 15, 111, 62, 8
+    COMBOBOX        IDC_SET_TLSMIN, 80, 109, 110, 80, CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
+    GROUPBOX        "Files", -1, 7, 131, 266, 54
+    LTEXT           "", IDC_SET_FOLDER, 15, 143, 252, 16
+    PUSHBUTTON      "&ROM Images...", IDC_SET_ROMS, 15, 163, 80, 14
+    PUSHBUTTON      "Open .tn34xx files with &tn34xxw...", IDC_SET_ASSOC, 101, 163, 140, 14
+    DEFPUSHBUTTON   "OK", IDOK, 159, 193, 54, 14
+    PUSHBUTTON      "Cancel", IDCANCEL, 219, 193, 54, 14
+END
+
+IDD_PROFILES DIALOGEX 0, 0, 260, 170
+STYLE DS_SHELLFONT | DS_MODALFRAME | DS_CENTER | WS_POPUP | WS_CAPTION | WS_SYSMENU
+CAPTION "Connect to Profile"
+FONT 8, "MS Shell Dlg", 400, 0, 1
+BEGIN
+    LTEXT           "&Profiles:", -1, 7, 7, 120, 8
+    LISTBOX         IDC_PROF_LIST, 7, 18, 180, 145, LBS_NOTIFY | LBS_NOINTEGRALHEIGHT | WS_VSCROLL | WS_BORDER | WS_TABSTOP
+    DEFPUSHBUTTON   "&Connect", IDC_PROF_CONNECT, 195, 18, 58, 14
+    PUSHBUTTON      "&New...", IDC_PROF_NEW, 195, 42, 58, 14
+    PUSHBUTTON      "&Edit...", IDC_PROF_EDIT, 195, 60, 58, 14
+    PUSHBUTTON      "&Rename...", IDC_PROF_RENAME, 195, 78, 58, 14
+    PUSHBUTTON      "C&opy", IDC_PROF_COPY, 195, 96, 58, 14
+    PUSHBUTTON      "&Delete", IDC_PROF_DELETE, 195, 114, 58, 14
+    PUSHBUTTON      "Close", IDCANCEL, 195, 149, 58, 14
+END
+
+IDD_NAME DIALOGEX 0, 0, 220, 66
+STYLE DS_SHELLFONT | DS_MODALFRAME | DS_CENTER | WS_POPUP | WS_CAPTION | WS_SYSMENU
+CAPTION "Profile Name"
+FONT 8, "MS Shell Dlg", 400, 0, 1
+BEGIN
+    LTEXT           "&Name:", IDC_NAME_PROMPT, 7, 9, 200, 8
+    EDITTEXT        IDC_NAME_EDIT, 7, 20, 206, 13, ES_AUTOHSCROLL
+    DEFPUSHBUTTON   "OK", IDOK, 99, 45, 54, 14
+    PUSHBUTTON      "Cancel", IDCANCEL, 159, 45, 54, 14
+END
+
+IDD_PROFILE DIALOGEX 0, 0, 290, 196
+STYLE DS_SHELLFONT | DS_MODALFRAME | DS_CENTER | WS_POPUP | WS_CAPTION | WS_SYSMENU
+CAPTION "Connection Profile"
+FONT 8, "MS Shell Dlg", 400, 0, 1
+BEGIN
+    LTEXT           "&Terminal type:", -1, 7, 9, 60, 8
+    COMBOBOX        IDC_PE_MODEL, 72, 7, 120, 80, CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
+    GROUPBOX        "Session 1", -1, 7, 26, 276, 46
+    LTEXT           "&Host:", -1, 15, 40, 30, 8
+    EDITTEXT        IDC_PE_HOST1, 50, 38, 150, 13, ES_AUTOHSCROLL
+    LTEXT           "Port:", -1, 208, 40, 20, 8
+    EDITTEXT        IDC_PE_PORT1, 232, 38, 42, 13, ES_NUMBER
+    LTEXT           "De&vice:", -1, 15, 56, 30, 8
+    EDITTEXT        IDC_PE_DEV1, 50, 54, 80, 13, ES_AUTOHSCROLL | ES_UPPERCASE
+    LTEXT           "(optional)", -1, 136, 56, 60, 8
+    GROUPBOX        "Session 2 (optional: leave the host empty)", -1, 7, 76, 276, 46
+    LTEXT           "H&ost:", -1, 15, 90, 30, 8
+    EDITTEXT        IDC_PE_HOST2, 50, 88, 150, 13, ES_AUTOHSCROLL
+    LTEXT           "Port:", -1, 208, 90, 20, 8
+    EDITTEXT        IDC_PE_PORT2, 232, 88, 42, 13, ES_NUMBER
+    LTEXT           "Devi&ce:", -1, 15, 106, 30, 8
+    EDITTEXT        IDC_PE_DEV2, 50, 104, 80, 13, ES_AUTOHSCROLL | ES_UPPERCASE
+    GROUPBOX        "Security", -1, 7, 126, 276, 42
+    AUTOCHECKBOX    "&Enable TLS", IDC_PE_TLS, 15, 139, 80, 10
+    PUSHBUTTON      "TLS &Settings...", IDC_PE_TLS_SETTINGS, 199, 137, 76, 14
+    LTEXT           "", IDC_PE_TLS_SUMMARY, 15, 153, 260, 10
+    DEFPUSHBUTTON   "Connect", IDOK, 169, 175, 54, 14
+    PUSHBUTTON      "Cancel", IDCANCEL, 229, 175, 54, 14
+END
+
+IDD_TLS DIALOGEX 0, 0, 300, 220
+STYLE DS_SHELLFONT | DS_MODALFRAME | DS_CENTER | WS_POPUP | WS_CAPTION | WS_SYSMENU
+CAPTION "TLS Settings"
+FONT 8, "MS Shell Dlg", 400, 0, 1
+BEGIN
+    GROUPBOX        "Server certificate", -1, 7, 7, 286, 160
+    AUTORADIOBUTTON "&Verify normally (trusted certificate authorities, host name)", IDC_TLS_SYSTEM, 15, 20, 270, 10, WS_GROUP | WS_TABSTOP
+    AUTORADIOBUTTON "Accept &all certificates (insecure)", IDC_TLS_ANY, 15, 33, 270, 10
+    AUTORADIOBUTTON "Accept only the certificate with this SHA-256 &hash:", IDC_TLS_HASH, 15, 46, 270, 10
+    EDITTEXT        IDC_TLS_HASH_EDIT, 27, 59, 258, 13, ES_AUTOHSCROLL | WS_GROUP
+    PUSHBUTTON      "&Fetch", IDC_TLS_FETCH, 27, 76, 54, 14
+    LTEXT           "", IDC_TLS_FETCH_HOST, 87, 79, 198, 8
+    EDITTEXT        IDC_TLS_CERT, 27, 94, 258, 66, ES_MULTILINE | ES_READONLY | ES_AUTOVSCROLL | WS_VSCROLL
+    LTEXT           "&Minimum version:", -1, 7, 178, 62, 8
+    COMBOBOX        IDC_TLS_MINVER, 72, 176, 110, 80, CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
+    DEFPUSHBUTTON   "OK", IDOK, 179, 199, 54, 14
+    PUSHBUTTON      "Cancel", IDCANCEL, 239, 199, 54, 14
+END
+
+IDD_TRUST DIALOGEX 0, 0, 320, 190
+STYLE DS_SHELLFONT | DS_MODALFRAME | DS_CENTER | WS_POPUP | WS_CAPTION | WS_SYSMENU
+CAPTION "Untrusted Certificate"
+FONT 8, "MS Shell Dlg", 400, 0, 1
+BEGIN
+    ICON            "", IDC_TRUST_ICON, 7, 7, 21, 20, SS_ICON
+    LTEXT           "", IDC_TRUST_TEXT, 36, 7, 277, 34
+    EDITTEXT        IDC_TRUST_DETAILS, 7, 45, 306, 116, ES_MULTILINE | ES_READONLY | ES_AUTOVSCROLL | WS_VSCROLL
+    PUSHBUTTON      "&Trust Permanently", IDC_TRUST_ALWAYS, 7, 169, 80, 14
+    PUSHBUTTON      "&Connect", IDC_TRUST_ONCE, 199, 169, 54, 14
+    DEFPUSHBUTTON   "&Stop", IDCANCEL, 259, 169, 54, 14
+END
+
+IDD_KEYMAP DIALOGEX 0, 0, 380, 240
+STYLE DS_SHELLFONT | DS_MODALFRAME | DS_CENTER | WS_POPUP | WS_CAPTION | WS_SYSMENU
+CAPTION "Keymap"
+FONT 8, "MS Shell Dlg", 400, 0, 1
+BEGIN
+    LTEXT           "PC keys and the terminal keys they press. The keymap is the same for every profile.", -1, 7, 7, 366, 8
+    CONTROL         "", IDC_KM_LIST, "SysListView32", LVS_REPORT | LVS_SINGLESEL | LVS_SHOWSELALWAYS | WS_BORDER | WS_TABSTOP, 7, 19, 300, 182
+    PUSHBUTTON      "&Add...", IDC_KM_ADD, 313, 19, 60, 14
+    PUSHBUTTON      "&Edit...", IDC_KM_EDIT, 313, 37, 60, 14
+    PUSHBUTTON      "&Remove", IDC_KM_REMOVE, 313, 55, 60, 14
+    PUSHBUTTON      "Reset to &Default (PCOMM)", IDC_KM_RESET, 313, 85, 60, 28, BS_MULTILINE
+    LTEXT           "", IDC_KM_BASE, 7, 204, 366, 16
+    DEFPUSHBUTTON   "OK", IDOK, 259, 222, 54, 14
+    PUSHBUTTON      "Cancel", IDCANCEL, 319, 222, 54, 14
+END
+
+IDD_KEYMAP_ENTRY DIALOGEX 0, 0, 260, 170
+STYLE DS_SHELLFONT | DS_MODALFRAME | DS_CENTER | WS_POPUP | WS_CAPTION | WS_SYSMENU
+CAPTION "Key Mapping"
+FONT 8, "MS Shell Dlg", 400, 0, 1
+BEGIN
+    LTEXT           "Click the box and &press the PC key (with its modifiers):", -1, 7, 7, 246, 8
+    EDITTEXT        IDC_KE_CAPTURE, 7, 18, 246, 13, ES_READONLY | ES_CENTER
+    LTEXT           "PC &key:", -1, 7, 40, 50, 8
+    COMBOBOX        IDC_KE_HOST, 62, 38, 110, 120, CBS_DROPDOWN | CBS_AUTOHSCROLL | WS_VSCROLL | WS_TABSTOP
+    LTEXT           "Modifiers:", -1, 7, 58, 50, 8
+    AUTOCHECKBOX    "&Shift", IDC_KE_SHIFT, 62, 57, 40, 10
+    AUTOCHECKBOX    "&Ctrl", IDC_KE_CTRL, 104, 57, 40, 10
+    AUTOCHECKBOX    "&Alt", IDC_KE_ALT, 146, 57, 40, 10
+    AUTOCHECKBOX    "Ignore &others", IDC_KE_ANY, 188, 57, 65, 10
+    LTEXT           "&Terminal key:", -1, 7, 78, 50, 8
+    COMBOBOX        IDC_KE_TO, 62, 76, 110, 160, CBS_DROPDOWN | CBS_AUTOHSCROLL | WS_VSCROLL | WS_TABSTOP
+    LTEXT           "K&eyboard:", -1, 7, 96, 50, 8
+    COMBOBOX        IDC_KE_KEYBOARD, 62, 94, 110, 80, CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
+    AUTOCHECKBOX    "Send on release when pressed alone (&tap)", IDC_KE_TAP, 62, 113, 190, 10
+    LTEXT           "Terminal keys are named as in keymap files (attn, sysrq, reset, enter, fieldexit, f1..f24, ...), or a set-3 code such as 0x5A, none or positional.", -1, 7, 128, 246, 18
+    DEFPUSHBUTTON   "OK", IDOK, 139, 151, 54, 14
+    PUSHBUTTON      "Cancel", IDCANCEL, 199, 151, 54, 14
+END
+
+IDD_ABOUT DIALOGEX 0, 0, 240, 100
+STYLE DS_SHELLFONT | DS_MODALFRAME | DS_CENTER | WS_POPUP | WS_CAPTION | WS_SYSMENU
+CAPTION "About tn34xxw"
+FONT 8, "MS Shell Dlg", 400, 0, 1
+BEGIN
+    ICON            IDI_APP, -1, 7, 7, 21, 20
+    LTEXT           "", IDC_ABOUT_TEXT, 36, 7, 197, 66
+    DEFPUSHBUTTON   "OK", IDOK, 179, 79, 54, 14
+END
+
+// --- Strings ------------------------------------------------------------------
+STRINGTABLE
+BEGIN
+    IDS_APP_TITLE        "tn34xx"
+    IDS_UNTITLED         "Untitled Profile"
+    IDS_TB_PROFILES      "Connect to Profile"
+    IDS_TB_CONNECT       "Connect"
+    IDS_TB_SAVE          "Save Profile"
+    IDS_TB_DISCONNECT    "Disconnect"
+    IDS_TB_SETTINGS      "Settings"
+    IDS_TB_KEYMAP        "Keymap"
+    IDS_TB_ATTN          "Attn"
+    IDS_TB_SYSRQ         "SysRq"
+    IDS_TB_RESET         "Reset"
+    IDS_NOT_CONNECTED    "not connected"
+    IDS_NO_PROFILE       "no profile"
+    IDS_TLS_OFF          "TLS off"
+    IDS_ROMS_MISSING     "The ROM images the terminal needs are missing or damaged. Import them to continue."
+    IDS_ASSOC_CONFIRM    "Open .tn34xx profile files with this copy of tn34xxw when you double-click them?\n\nThis writes file-type entries for your user account only (HKEY_CURRENT_USER\\Software\\Classes)."
+    IDS_ASSOC_DONE       ".tn34xx files now open with tn34xxw."
+    IDS_SAVE_CHANGES     "Save the changes to the profile \"%s\"?"
+    IDS_DELETE_CONFIRM   "Delete the profile \"%s\"?"
+    IDS_RESTART_NEEDED   "The new CRT type takes effect when tn34xxw is started again."
+    IDS_FILTER_ROMS      "ROM images (*.bin;*.rom)|*.bin;*.rom|All files (*.*)|*.*|"
+    IDS_FILE_TYPE_NAME   "tn34xx connection profile"
+END
+
+// --- Version ------------------------------------------------------------------
+VS_VERSION_INFO VERSIONINFO
+FILEVERSION     0, 0, 0, 0
+PRODUCTVERSION  0, 0, 0, 0
+FILEFLAGSMASK   VS_FFI_FILEFLAGSMASK
+FILEFLAGS       0
+FILEOS          VOS_NT_WINDOWS32
+FILETYPE        VFT_APP
+FILESUBTYPE     0
+BEGIN
+    BLOCK "StringFileInfo"
+    BEGIN
+        BLOCK "040904B0"
+        BEGIN
+            VALUE "CompanyName",      "tn34xx project"
+            VALUE "FileDescription",  "tn34xxw - IBM 34xx twinax terminal emulator"
+            VALUE "FileVersion",      "0.0.0"
+            VALUE "InternalName",     "tn34xxw"
+            VALUE "LegalCopyright",   "tn34xx contributors"
+            VALUE "OriginalFilename", "tn34xxw.exe"
+            VALUE "ProductName",      "tn34xx"
+            VALUE "ProductVersion",   "0.0.0"
+        END
+    END
+    BLOCK "VarFileInfo"
+    BEGIN
+        VALUE "Translation", 0x0409, 1200
+    END
+END

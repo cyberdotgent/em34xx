@@ -18,12 +18,13 @@ set(allowed_host ${emu} host tn5250/session_api.hpp)
 set(allowed_tn5250 ${emu} net host tn5250)
 set(allowed_bridge ${emu} host tn5250)
 set(allowed_present ${emu} present)
-# Front ends see the runtime (Application, HostLink) but never the tooling.
-set(allowed_frontend ${emu} present frontend app config host)
 # The runtime: everything an end-user GUI build links. No monitor, no GDB.
 set(app_layer ${emu} input devices models host tn5250 present config app)
 set(allowed_config ${app_layer})
 set(allowed_app ${app_layer} frontend/frontend.hpp)
+# Front ends see the runtime (Application, HostLink, everything it links:
+# models, input, the TN5250 client) but never the tooling.
+set(allowed_frontend ${app_layer} frontend)
 # Developer tooling (tn34xx_devtools): may use everything but front ends.
 set(devtools_layer ${app_layer} net monitor gdb devtools)
 set(allowed_monitor ${devtools_layer})

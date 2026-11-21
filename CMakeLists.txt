@@ -51,8 +51,8 @@ endif()
 # Front ends: each is its own executable, configured only where it applies.
 #   TN34XX_FRONTEND_SDL  AUTO (default): build `tn34xx` when SDL3 is found
 #                        ON: fail configuration without SDL3;  OFF: skip it
-# (Future: a Win32 `tn34xxw` only on WIN32, a Cocoa `tn34xx.app` only on APPLE;
-# see docs/architecture.md and the stub at the end of this file.)
+# The Win32 `tn34xxw` is built on WIN32 only; a Cocoa `tn34xx.app` (APPLE)
+# is still a stub at the end of this file (docs/architecture.md).
 set(TN34XX_FRONTEND_SDL AUTO CACHE STRING "SDL3 front end (tn34xx): AUTO, ON or OFF")
 set_property(CACHE TN34XX_FRONTEND_SDL PROPERTY STRINGS AUTO ON OFF)
 string(TOUPPER "${TN34XX_FRONTEND_SDL}" _tn34xx_sdl)
@@ -74,7 +74,7 @@ message(STATUS "SDL3 front end (tn34xx): ${TN34XX_HAVE_SDL}")
 # Executable names, one variable per target so they can change in one place.
 set(TN34XX_EXE_SDL tn34xx)                 # SDL3 window + developer tooling
 set(TN34XX_EXE_HEADLESS tn34xx-headless)   # no window, monitor on stdin/stdout
-set(TN34XX_EXE_WIN32 tn34xxw)              # future native Win32 GUI (end-user)
+set(TN34XX_EXE_WIN32 tn34xxw)              # native Win32 GUI (end-user), WIN32 only
 set(TN34XX_EXE_COCOA tn34xx)               # future Cocoa GUI, bundled as tn34xx.app
 find_package(replxx CONFIG REQUIRED)
 find_package(tomlplusplus CONFIG REQUIRED)
@@ -103,6 +103,7 @@ endif()
 #   tn34xx_runtime   config, Application, HostLink             -> machines, bridge, present
 #   tn34xx_devtools  monitor, console (replxx), GDB stub, probes -> runtime, net
 #   tn34xx_frontend_sdl  SDL3 front end                        -> runtime
+#   tn34xx_frontend_win32  Win32 front end (WIN32 only)        -> runtime
 #
 # End-user GUI executables link tn34xx_runtime plus their front end only;
 # tn34xx (SDL) and tn34xx-headless also link tn34xx_devtools.
@@ -249,15 +250,36 @@ if(TN34XX_HAVE_SDL)
 endif()
 
 # Native end-user front ends link tn34xx_runtime and their own front-end
-# library only, never tn34xx_devtools (docs/architecture.md). Not written
-# yet; the targets will look like this:
+# library only, never tn34xx_devtools (docs/architecture.md).
 #
-# if(WIN32)
-#   tn34xx_library(tn34xx_frontend_win32 src/frontend/win32/win32_frontend.cpp)
-#   target_link_libraries(tn34xx_frontend_win32 PUBLIC tn34xx_runtime PRIVATE user32 gdi32)
-#   add_executable(${TN34XX_EXE_WIN32} WIN32 src/main_win32.cpp)
-#   target_link_libraries(${TN34XX_EXE_WIN32} PRIVATE tn34xx_frontend_win32)
-# endif()
+# tn34xxw: the Win32 GUI (GUI subsystem, resources from tn34xxw.rc built by
+# windres; docs/frontend-win32.md).
+if(WIN32)
+  enable_language(RC)
+  tn34xx_library(tn34xx_frontend_win32
+    src/frontend/win32/win32_frontend.cpp
+    src/frontend/win32/win32_dialogs.cpp
+    src/frontend/win32/win32_util.cpp
+  )
+  target_link_libraries(tn34xx_frontend_win32 PUBLIC tn34xx_runtime
+    PRIVATE comctl32 comdlg32 shell32 gdi32 user32 advapi32)
+  # Unicode (W) APIs throughout; the generic macros map to them too.
+  target_compile_definitions(tn34xx_frontend_win32 PUBLIC UNICODE _UNICODE)
+  add_executable(${TN34XX_EXE_WIN32} WIN32 src/main_win32.cpp src/frontend/win32/tn34xxw.rc)
+  target_link_libraries(${TN34XX_EXE_WIN32} PRIVATE tn34xx_frontend_win32 tn34xx_warnings)
+  # The resource script includes resource.h and the files under res/.
+  set_property(SOURCE src/frontend/win32/tn34xxw.rc APPEND PROPERTY OBJECT_DEPENDS
+    ${PROJECT_SOURCE_DIR}/src/frontend/win32/resource.h
+    ${PROJECT_SOURCE_DIR}/src/frontend/win32/tn34xxw.manifest
+    ${PROJECT_SOURCE_DIR}/src/frontend/win32/res/tn34xxw.ico
+    ${PROJECT_SOURCE_DIR}/src/frontend/win32/res/profile.ico
+    ${PROJECT_SOURCE_DIR}/src/frontend/win32/res/toolbar16.bmp
+    ${PROJECT_SOURCE_DIR}/src/frontend/win32/res/toolbar24.bmp
+    ${PROJECT_SOURCE_DIR}/src/frontend/win32/res/toolbar32.bmp)
+endif()
+
+# Not written yet: a Cocoa tn34xx.app, which will look like this:
+#
 # if(APPLE)
 #   enable_language(OBJCXX)
 #   tn34xx_library(tn34xx_frontend_cocoa src/frontend/cocoa/cocoa_frontend.mm)
