@@ -5,7 +5,30 @@
 
 #include <cstdio>
 
+#ifdef _WIN32
+#include <windows.h>
+#endif
+
 namespace tn34xx {
+
+namespace {
+// fopen with a UTF-8 path, also on Windows (where fopen takes the ANSI
+// code page).
+FILE* open_utf8(const std::string& path, const char* mode) {
+#ifdef _WIN32
+    auto widen = [](const std::string& s) {
+        const int n = MultiByteToWideChar(CP_UTF8, 0, s.c_str(), -1, nullptr, 0);
+        std::wstring w(size_t(n > 0 ? n : 1), L'\0');
+        if (n > 0) MultiByteToWideChar(CP_UTF8, 0, s.c_str(), -1, &w[0], n);
+        return w;
+    };
+    FILE* f = _wfopen(widen(path).c_str(), widen(mode).c_str());
+    return f ? f : std::fopen(path.c_str(), mode);
+#else
+    return std::fopen(path.c_str(), mode);
+#endif
+}
+} // namespace
 
 const char* rom_verdict_name(LoadedRom::Verdict v) {
     switch (v) {
@@ -17,7 +40,7 @@ const char* rom_verdict_name(LoadedRom::Verdict v) {
 }
 
 bool read_file(const std::string& path, std::vector<uint8_t>& out) {
-    FILE* f = std::fopen(path.c_str(), "rb");
+    FILE* f = open_utf8(path, "rb");
     if (!f) return false;
     out.clear();
     uint8_t buf[65536];
@@ -66,6 +89,52 @@ bool load_roms(const std::string& dir, const std::vector<RomSpec>& specs,
         out.push_back(std::move(rom));
     }
     return true;
+}
+
+const char* rom_file_state_name(RomFileStatus::State s) {
+    switch (s) {
+    case RomFileStatus::State::Missing: return "missing";
+    case RomFileStatus::State::Unreadable: return "unreadable";
+    case RomFileStatus::State::WrongSize: return "wrong size";
+    case RomFileStatus::State::KnownBad: return "bad dump";
+    case RomFileStatus::State::UnknownHash: return "unknown hash";
+    case RomFileStatus::State::Good: return "present";
+    }
+    return "?";
+}
+
+RomFileStatus check_rom_file(const std::string& dir, const RomSpec& spec, const std::vector<KnownBadRom>& known_bad) {
+    RomFileStatus st;
+    const std::string path = dir.empty() ? spec.file : dir + "/" + spec.file;
+    FILE* f = open_utf8(path, "rb");
+    if (!f) return st;   // Missing
+    std::fclose(f);
+    std::vector<uint8_t> data;
+    if (!read_file(path, data)) {
+        st.state = RomFileStatus::State::Unreadable;
+        return st;
+    }
+    st.sha256 = sha256_hex(data.data(), data.size());
+    if (data.size() != spec.size) {
+        st.state = RomFileStatus::State::WrongSize;
+        st.note = format("%zu bytes, expected %u", data.size(), spec.size);
+        return st;
+    }
+    st.state = !spec.sha256.empty() && st.sha256 == spec.sha256 ? RomFileStatus::State::Good
+                                                                 : RomFileStatus::State::UnknownHash;
+    for (const KnownBadRom& bad : known_bad)
+        if (bad.sha256 == st.sha256 && (bad.file.empty() || bad.file == spec.file)) {
+            st.state = RomFileStatus::State::KnownBad;
+            st.note = bad.reason;
+        }
+    return st;
+}
+
+const RomSpec* rom_spec_for_data(const std::vector<RomSpec>& specs, const std::vector<uint8_t>& data) {
+    const std::string hash = sha256_hex(data.data(), data.size());
+    for (const RomSpec& s : specs)
+        if (!s.sha256.empty() && s.size == data.size() && s.sha256 == hash) return &s;
+    return nullptr;
 }
 
 } // namespace tn34xx

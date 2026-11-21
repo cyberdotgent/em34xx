@@ -117,6 +117,46 @@ bool terminal_target_from_name(const std::string& name, std::array<TerminalStrok
 // Every terminal function name, for documentation and tests.
 std::vector<std::string> terminal_function_names();
 
+// --- Keymap files as text (for editors) ----------------------------------
+//
+// A keymap file kept as written: what a keymap editor shows and saves. The
+// fields hold the file's own spellings (parse_keymap() resolves them).
+
+struct KeymapEntry {
+    std::string host;       // host key name ("Escape", "KP_Enter", "a", "0x04")
+    std::string mods;       // space separated ("shift", "ctrl alt", "*"); "" = none
+    std::string to;         // terminal function, "0x5A", "none" or "positional"
+    std::string keyboard;   // "", "122", "enhanced" or "both"
+    std::string shift;      // "", "keep", "press" or "release"
+    std::string alt;
+    bool tap = false;
+    bool operator==(const KeymapEntry& o) const {
+        return host == o.host && mods == o.mods && to == o.to && keyboard == o.keyboard && shift == o.shift &&
+               alt == o.alt && tap == o.tap;
+    }
+};
+
+struct KeymapFile {
+    std::string base = "pcomm";   // "pcomm", "positional" or "none"
+    std::vector<KeymapEntry> entries;
+};
+
+// Parse keymap TOML into its entries, and check that it builds.
+bool parse_keymap_file(const std::string& text, const std::string& origin, KeymapFile& out, std::string& error);
+// Write it out as keymap TOML (parse_keymap / --keymap read it back).
+std::string keymap_file_to_toml(const KeymapFile& file, const std::string& comment = std::string());
+// Check one entry; false with a message naming the bad field.
+bool check_keymap_entry(const KeymapEntry& e, std::string& error);
+// The built-in "pcomm" map as a file: base "positional" plus the PCOMM
+// rules as entries (keymaps/pcomm-like.toml). Building it equals
+// builtin_keymap("pcomm").
+KeymapFile pcomm_keymap_file();
+// A host key's name as keymap files write it ("Escape", "F1", "a",
+// "KP_Enter"); "0xNN" for keys without a name.
+std::string host_key_name(uint32_t hid);
+// "shift", "ctrl alt", "lctrl"... for the host modifiers held (HostMod bits).
+std::string host_mods_text(uint8_t mods);
+
 // Applies a keymap to host key events and keeps the terminal-side state:
 // which terminal keys each host key pressed (so that the release matches the
 // press whatever the modifiers do meanwhile), and the terminal's Shift/Alt

@@ -24,4 +24,11 @@ const Model* find_model(const std::string& name) {
     return nullptr;
 }
 
+std::vector<const Model*> runnable_models() {
+    std::vector<const Model*> out;
+    for (const Model* m : all_models())
+        if (m->can_build().empty() && m->info().status == ModelStatus::Bringup) out.push_back(m);
+    return out;
+}
+
 } // namespace tn34xx

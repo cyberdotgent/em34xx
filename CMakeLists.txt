@@ -213,6 +213,9 @@ endif()
 tn34xx_library(tn34xx_runtime
   src/config/config.cpp
   src/config/connect_args.cpp
+  src/config/profile.cpp
+  src/config/settings.cpp
+  src/config/user_dirs.cpp
   src/app/application.cpp
   src/app/host_link.cpp
 )

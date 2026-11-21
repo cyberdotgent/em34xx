@@ -31,6 +31,9 @@ public:
 
 const std::vector<const Model*>& all_models();
 const Model* find_model(const std::string& name);
+// Models an end user can run: buildable, with a complete ROM dump known
+// (not RomIncomplete, not a placeholder). What a GUI offers.
+std::vector<const Model*> runnable_models();
 
 // Individual model singletons (defined in model_*.cpp).
 const Model& model_3477();

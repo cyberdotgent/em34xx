@@ -454,3 +454,59 @@ TEST_CASE("keymap files: errors name the line") {
     fails("[[map]]\nhost = \"a\"\nto = \"attn\"\nwhat = 1\n", "unknown key 'what'");
     fails("[[map]\n", "k.toml");
 }
+
+TEST_CASE("keymap files as text: round trip, PCOMM default, names") {
+    // The PCOMM map as a file builds the built-in map, also after a round trip.
+    const KeymapFile pc = pcomm_keymap_file();
+    CHECK(pc.base == "positional");
+    REQUIRE_FALSE(pc.entries.empty());
+    const std::string text = keymap_file_to_toml(pc, "tn34xx keymap\nline two");
+    CHECK(text.rfind("# tn34xx keymap\n# line two\n", 0) == 0);
+    Keymap from_text, builtin;
+    std::string error;
+    INFO(error);
+    REQUIRE(parse_keymap(text, "pcomm.toml", true, from_text, error));
+    REQUIRE(builtin_keymap("pcomm", true, builtin));
+    check_same_keymap(from_text, builtin);
+
+    KeymapFile back;
+    REQUIRE(parse_keymap_file(text, "pcomm.toml", back, error));
+    CHECK(back.base == pc.base);
+    REQUIRE(back.entries.size() == pc.entries.size());
+    for (size_t i = 0; i < back.entries.size(); ++i) CHECK(back.entries[i] == pc.entries[i]);
+
+    // The shipped file reads as entries too; numeric forms become text.
+    KeymapFile f;
+    REQUIRE(parse_keymap_file("base = \"none\"\n[[map]]\nhost = 0x04\nmods = [\"lctrl\", \"shift\"]\nto = 0x22\n"
+                              "keyboard = \"enhanced\"\nshift = \"release\"\ntap = true\n",
+                              "t", f, error));
+    REQUIRE(f.entries.size() == 1);
+    CHECK(f.entries[0].host == "a");
+    CHECK(f.entries[0].mods == "lctrl shift");
+    CHECK(f.entries[0].to == "0x22");
+    CHECK(f.entries[0].keyboard == "enhanced");
+    CHECK(f.entries[0].shift == "release");
+    CHECK(f.entries[0].tap);
+    CHECK_FALSE(parse_keymap_file("[[map]]\nhost = \"nosuchkey\"\nto = \"attn\"\n", "t", f, error));
+
+    KeymapEntry e;
+    e.host = "F1";
+    e.mods = "alt";
+    e.to = "help";
+    CHECK(check_keymap_entry(e, error));
+    e.to = "bogus";
+    CHECK_FALSE(check_keymap_entry(e, error));
+    CHECK(error.find("bogus") != std::string::npos);
+
+    // Every named key reads back as itself.
+    for (uint32_t hid = 0x04; hid <= 0xE7; ++hid) {
+        uint32_t back_hid = 0;
+        const std::string n = host_key_name(hid);
+        REQUIRE(host_key_from_name(n, back_hid));
+        CHECK(back_hid == hid);
+    }
+    CHECK(host_key_name(0x58) == "KP_Enter");
+    CHECK(host_mods_text(kModLShift | kModRCtrl) == "shift ctrl");
+    CHECK(host_mods_text(kModRAlt) == "altgr");
+    CHECK(host_mods_text(0).empty());
+}

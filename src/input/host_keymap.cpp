@@ -569,6 +569,155 @@ bool load_keymap(const std::string& spec, bool shift_fkeys, Keymap& out, std::st
     return parse_keymap(ss.str(), spec, shift_fkeys, out, error);
 }
 
+// --- Keymap files as text -----------------------------------------------------
+
+namespace {
+
+std::string node_text(const toml::node& v) {
+    if (v.is_boolean()) return *v.value<bool>() ? "true" : "false";
+    if (v.is_integer()) return format("0x%02llX", static_cast<unsigned long long>(*v.value<int64_t>()));
+    if (v.is_string()) return *v.value<std::string>();
+    if (const toml::array* a = v.as_array()) {
+        std::string out;
+        for (const toml::node& m : *a)
+            if (auto s = m.value<std::string>()) out += (out.empty() ? "" : " ") + *s;
+        return out;
+    }
+    return std::string();
+}
+
+struct PrettyName {
+    uint32_t hid;
+    const char* name;
+};
+
+const PrettyName kPrettyNames[] = {
+    {0x28, "Enter"}, {0x29, "Escape"}, {0x2A, "Backspace"}, {0x2B, "Tab"}, {0x2C, "Space"},
+    {0x2D, "Minus"}, {0x2E, "Equals"}, {0x2F, "LeftBracket"}, {0x30, "RightBracket"}, {0x31, "Backslash"},
+    {0x32, "NonUSHash"}, {0x33, "Semicolon"}, {0x34, "Apostrophe"}, {0x35, "Grave"}, {0x36, "Comma"},
+    {0x37, "Period"}, {0x38, "Slash"}, {0x39, "CapsLock"}, {0x46, "PrintScreen"}, {0x47, "ScrollLock"},
+    {0x48, "Pause"}, {0x49, "Insert"}, {0x4A, "Home"}, {0x4B, "PageUp"}, {0x4C, "Delete"}, {0x4D, "End"},
+    {0x4E, "PageDown"}, {0x4F, "Right"}, {0x50, "Left"}, {0x51, "Down"}, {0x52, "Up"}, {0x53, "NumLock"},
+    {0x54, "KP_Divide"}, {0x55, "KP_Multiply"}, {0x56, "KP_Minus"}, {0x57, "KP_Plus"}, {0x58, "KP_Enter"},
+    {0x63, "KP_Period"}, {0x64, "NonUSBackslash"}, {0x65, "Application"}, {0x67, "KP_Equals"},
+    {0xE0, "LCtrl"}, {0xE1, "LShift"}, {0xE2, "LAlt"}, {0xE3, "LGui"}, {0xE4, "RCtrl"}, {0xE5, "RShift"},
+    {0xE6, "RAlt"}, {0xE7, "RGui"},
+};
+
+} // namespace
+
+std::string host_key_name(uint32_t hid) {
+    if (hid >= 0x04 && hid <= 0x1D) return std::string(1, char('a' + (hid - 0x04)));
+    if (hid >= 0x1E && hid <= 0x26) return std::string(1, char('1' + (hid - 0x1E)));
+    if (hid == 0x27) return "0";
+    if (hid >= 0x3A && hid <= 0x45) return format("F%u", hid - 0x3A + 1);
+    if (hid >= 0x68 && hid <= 0x73) return format("F%u", hid - 0x68 + 13);
+    if (hid >= 0x59 && hid <= 0x61) return format("KP_%u", hid - 0x59 + 1);
+    if (hid == 0x62) return "KP_0";
+    for (const PrettyName& p : kPrettyNames)
+        if (p.hid == hid) return p.name;
+    return format("0x%02X", hid);
+}
+
+std::string host_mods_text(uint8_t mods) {
+    std::string out;
+    auto add = [&](uint8_t l, uint8_t r, const char* both, const char* left, const char* right) {
+        const bool hl = (mods & l) != 0, hr = (mods & r) != 0;
+        if (!hl && !hr) return;
+        if (!out.empty()) out += ' ';
+        out += hl && hr ? both : hl ? left : right;
+    };
+    add(kModLShift, kModRShift, "shift", "shift", "shift");
+    add(kModLCtrl, kModRCtrl, "ctrl", "ctrl", "ctrl");
+    add(kModLAlt, kModRAlt, "alt", "alt", "altgr");
+    return out;
+}
+
+bool parse_keymap_file(const std::string& text, const std::string& origin, KeymapFile& out, std::string& error) {
+    Keymap check;
+    if (!parse_keymap(text, origin, true, check, error)) return false;
+    toml::table root = toml::parse(text, origin);   // parse_keymap accepted it
+    out = KeymapFile();
+    if (auto b = root["base"].value<std::string>()) out.base = *b;
+    if (const toml::array* arr = root["map"].as_array()) {
+        for (const toml::node& node : *arr) {
+            const toml::table* t = node.as_table();
+            if (!t) continue;
+            KeymapEntry e;
+            for (const auto& kv : *t) {
+                const std::string key(kv.first.str());
+                const std::string v = node_text(kv.second);
+                if (key == "host") {
+                    uint32_t hid = 0;
+                    e.host = kv.second.is_integer() && host_key_from_name(v, hid) ? host_key_name(hid) : v;
+                } else if (key == "mods") e.mods = v;
+                else if (key == "to") e.to = v;
+                else if (key == "keyboard") e.keyboard = v;
+                else if (key == "shift") e.shift = v;
+                else if (key == "alt") e.alt = v;
+                else if (key == "tap") e.tap = v == "true";
+            }
+            out.entries.push_back(e);
+        }
+    }
+    return true;
+}
+
+namespace {
+// TOML basic string with the few escapes keymap values can need.
+std::string quoted(const std::string& s) {
+    std::string out = "\"";
+    for (char c : s) {
+        if (c == '"' || c == '\\') out += '\\';
+        out += c;
+    }
+    return out + "\"";
+}
+} // namespace
+
+std::string keymap_file_to_toml(const KeymapFile& file, const std::string& comment) {
+    std::string out;
+    if (!comment.empty()) {
+        for (const std::string& line : split(comment, '\n')) out += (line.empty() ? "#" : "# " + line) + "\n";
+        out += "\n";
+    }
+    out += "base = " + quoted(file.base) + "\n";
+    for (const KeymapEntry& e : file.entries) {
+        out += "\n[[map]]\nhost = " + quoted(e.host) + "\n";
+        if (!e.mods.empty()) out += "mods = " + quoted(e.mods) + "\n";
+        out += "to = " + quoted(e.to) + "\n";
+        if (!e.keyboard.empty()) out += "keyboard = " + quoted(e.keyboard) + "\n";
+        if (!e.shift.empty()) out += "shift = " + quoted(e.shift) + "\n";
+        if (!e.alt.empty()) out += "alt = " + quoted(e.alt) + "\n";
+        if (e.tap) out += "tap = true\n";
+    }
+    return out;
+}
+
+bool check_keymap_entry(const KeymapEntry& e, std::string& error) {
+    KeymapFile f;
+    f.base = "none";
+    f.entries.push_back(e);
+    Keymap km;
+    return parse_keymap(keymap_file_to_toml(f), "mapping", true, km, error);
+}
+
+KeymapFile pcomm_keymap_file() {
+    KeymapFile f;
+    f.base = "positional";
+    for (const BuiltinRule& b : kPcommRules) {
+        KeymapEntry e;
+        uint32_t hid = 0;
+        e.host = host_key_from_name(b.host, hid) ? host_key_name(hid) : b.host;
+        e.mods = b.mods;
+        e.to = b.to;
+        e.keyboard = b.keyboard;
+        e.tap = b.tap;
+        f.entries.push_back(e);
+    }
+    return f;
+}
+
 // --- Engine ------------------------------------------------------------------
 
 void HostKeymapEngine::reset() {

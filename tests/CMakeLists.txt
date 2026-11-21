@@ -31,8 +31,10 @@ add_executable(tn34xx_app_tests
   test_display.cpp
   test_connect.cpp
   test_probe.cpp
+  test_user_data.cpp
 )
 target_link_libraries(tn34xx_app_tests PRIVATE tn34xx_devtools tn34xx_warnings doctest::doctest)
+target_compile_definitions(tn34xx_app_tests PRIVATE TN34XX_SOURCE_DIR="${PROJECT_SOURCE_DIR}")
 
 # GUI link check: a minimal application linked against the runtime only.
 add_executable(tn34xx_runtime_only runtime_only_main.cpp)
