@@ -102,6 +102,10 @@ void apply_station_tls(Tn5250Config& cfg, const StationConfig& station) {
     TlsVersion v;
     if (!station.tls_min_version.empty() && parse_tls_version(station.tls_min_version, v)) cfg.tls_min_version = v;
     if (!station.tls_max_version.empty() && parse_tls_version(station.tls_max_version, v)) cfg.tls_max_version = v;
+    if (!station.tls_cert_sha256.empty()) {
+        cfg.tls_cert_sha256 = station.tls_cert_sha256;
+        cfg.tls_verify = TlsVerify::System;   // a pin decides alone
+    }
 }
 
 const char* twinax_host_kind_name(TwinaxHostKind kind) {
@@ -187,6 +191,11 @@ std::string TwinaxConfig::validate(unsigned max_sessions, int max_printers) cons
             return format("station %u: tls_min_version must be ssl3, 1.0, 1.1, 1.2 or 1.3", st.address);
         if (!st.tls_max_version.empty() && !parse_tls_version(st.tls_max_version, v))
             return format("station %u: tls_max_version must be ssl3, 1.0, 1.1, 1.2, 1.3 or any", st.address);
+        Sha256Digest d;
+        if (!st.tls_cert_sha256.empty() && !parse_sha256_fingerprint(st.tls_cert_sha256, d))
+            return format("station %u: tls_cert_sha256 is not a SHA-256 fingerprint", st.address);
+        if (st.type != StationType::Display && (!st.host.empty() || st.port || !st.tls_cert_sha256.empty()))
+            return format("station %u: host, port and tls_cert_sha256 apply to display stations only", st.address);
     }
     if (list.size() > kMaxStationsPerBus)
         return format("%zu twinax stations configured, but a cable carries at most %u",

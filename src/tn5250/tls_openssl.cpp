@@ -181,6 +181,7 @@ public:
             close();
             return false;
         }
+        port_ = port;
         ssl_ = SSL_new(ctx_);
         if (!ssl_) {
             error = "TLS: SSL_new failed: " + openssl_errors();
@@ -381,6 +382,7 @@ private:
         }
         peer.subject = name_text(X509_get_subject_name(cert));
         peer.issuer = name_text(X509_get_issuer_name(cert));
+        peer.valid_from = time_text(X509_get0_notBefore(cert));
         const ASN1_TIME* not_after = X509_get0_notAfter(cert);
         peer.expires = time_text(not_after);
         peer.expired = X509_cmp_current_time(not_after) < 0;
@@ -391,10 +393,13 @@ private:
         peer.chain_ok = chain_error == X509_V_OK;
         if (!peer.chain_ok)
             peer.chain_error = format("%s (depth %d)", X509_verify_cert_error_string(chain_error), verify_.depth);
-        return tls_accept_peer(cfg_, host, peer, [this](LogLevel l, const std::string& s) { note(l, s); }, error);
+        set_peer_certificate(peer);
+        return tls_accept_peer(cfg_, host, peer, [this](LogLevel l, const std::string& s) { note(l, s); }, error,
+                               trust_handler(), port_);
     }
 
     Tn5250Config cfg_;
+    uint16_t port_ = 0;
     TcpSocket sock_;
     SocketBio bio_;
     SSL_CTX* ctx_ = nullptr;

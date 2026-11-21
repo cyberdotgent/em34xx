@@ -60,14 +60,19 @@ struct BridgeOptions {
     bool reconnect = true;                          // reconnect after the session ends
     unsigned reconnect_min_ms = 2000;               // wall clock
     unsigned reconnect_max_ms = 60000;
+    // Asked when a session's TLS certificate is refused by the configuration
+    // (tn5250/tls_trust.hpp); the request carries the station address.
+    // Called on the session's I/O thread. Unset: the configuration decides.
+    tn5250::TlsTrustHandler tls_trust;
     // Tests replace the network: one transport per session start.
     std::function<std::unique_ptr<tn5250::Transport>(const StationConfig&, std::string& error)> transport;
 };
 
 // The Tn5250Config one display station's session uses: the shared settings
 // (host, port, TLS, code page, environment) with the station's own device
-// name (the first display falls back to tn5250.device_name) and terminal
-// type (station_terminal_type).
+// name (the first display falls back to tn5250.device_name), terminal
+// type (station_terminal_type), and its host / port / pinned certificate
+// when it overrides them (a session to another system).
 Tn5250Config station_session_config(const Tn5250Config& tn5250, const StationConfig& station, bool first_display,
                                     const std::string& model, DisplaySubtype display);
 
@@ -104,6 +109,7 @@ public:
 
 private:
     void start_session();
+    void new_client();
 
     StationConfig station_;
     Tn5250Config cfg_;

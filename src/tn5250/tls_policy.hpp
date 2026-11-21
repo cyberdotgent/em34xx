@@ -9,6 +9,7 @@
 #pragma once
 
 #include "host/host_config.hpp"
+#include "tn5250/tls_trust.hpp"
 #include "tn5250/transport.hpp"
 #include "util/fingerprint.hpp"
 
@@ -17,21 +18,19 @@
 namespace tn34xx {
 namespace tn5250 {
 
-struct PeerCertificate {
-    bool have_digest = false;
-    Sha256Digest sha256{};      // of the leaf certificate's DER encoding
-    std::string subject;
-    std::string issuer;
-    std::string expires;        // "YYYY-MM-DD HH:MM:SS UTC"
-    bool expired = false;
-    bool chain_ok = false;      // chains to a trusted root and matches the host name
-    std::string chain_error;    // why not, when !chain_ok
-};
-
 // Applies tls_verify / tls_cert_sha256. Logs through `note`; returns false
-// with `error` set when the connection must be dropped.
+// with `error` set when the connection must be dropped. When the
+// configuration refuses the certificate and `ask` is set, `ask` decides
+// instead (tls_trust.hpp); `port` goes into its request.
 bool tls_accept_peer(const Tn5250Config& cfg, const std::string& host, const PeerCertificate& peer,
-                     const Transport::LogFn& note, std::string& error);
+                     const Transport::LogFn& note, std::string& error, const TlsTrustHandler& ask = nullptr,
+                     uint16_t port = 0);
+
+// Connect to cfg.host:cfg.port with TLS, take the server certificate and
+// close again: what a "fetch certificate" button needs. The certificate is
+// returned whether or not it verifies (chain_ok / chain_error say), and no
+// trust handler is asked. Blocks for the connection and the handshake.
+bool tls_fetch_certificate(const Tn5250Config& cfg, PeerCertificate& out, std::string& error);
 
 // "TLS server certificate SHA-256 fingerprint: AB:CD:..." and the like.
 std::string tls_fingerprint_line(const Sha256Digest& digest);

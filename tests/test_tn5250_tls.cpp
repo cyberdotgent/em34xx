@@ -1,6 +1,7 @@
 // TLS for the TN5250 client: fingerprints, configuration, the certificate
 // decision, and (with the OpenSSL backend) a real handshake against an
 // in-process server using a certificate generated at test time.
+#include "app/host_link.hpp"
 #include "config/config.hpp"
 #include "host/host_config.hpp"
 #include "tn5250/tls_policy.hpp"
@@ -306,6 +307,100 @@ TEST_CASE("TLS certificate decision: system, insecure and pinned modes") {
     }
 }
 
+TEST_CASE("TLS trust hook: the handler decides what the configuration refuses") {
+    Tn5250Config cfg;
+    cfg.host = "h";
+    cfg.tls = true;
+    PeerCertificate bad;
+    bad.have_digest = true;
+    bad.sha256 = sample_digest();
+    bad.subject = "CN=h";
+    bad.chain_ok = false;
+    bad.chain_error = "self-signed certificate (depth 0)";
+    std::string err;
+    std::vector<TlsTrustRequest> asked;
+    TlsTrustDecision answer = TlsTrustDecision::Reject;
+    TlsTrustHandler ask = [&](const TlsTrustRequest& r) {
+        asked.push_back(r);
+        return answer;
+    };
+
+    SUBCASE("rejecting keeps the configured error") {
+        LogCapture log;
+        CHECK_FALSE(tls_accept_peer(cfg, "h", bad, log.fn(), err, ask, 992));
+        REQUIRE(asked.size() == 1);
+        CHECK(asked[0].host == "h");
+        CHECK(asked[0].port == 992);
+        CHECK(asked[0].problem == TlsTrustProblem::Unverified);
+        CHECK(asked[0].reason == bad.chain_error);
+        CHECK(asked[0].peer.sha256 == bad.sha256);
+        CHECK(err.find("rejected") != std::string::npos);
+        CHECK(log.has("rejected by the user"));
+    }
+    SUBCASE("accepting connects, once or permanently") {
+        for (TlsTrustDecision d : {TlsTrustDecision::AcceptOnce, TlsTrustDecision::AcceptPermanently}) {
+            answer = d;
+            LogCapture log;
+            CHECK(tls_accept_peer(cfg, "h", bad, log.fn(), err, ask, 992));
+            CHECK(log.has("accepted by the user"));
+        }
+        CHECK(asked.size() == 2);
+    }
+    SUBCASE("a verified certificate, or verification off, never asks") {
+        PeerCertificate good = bad;
+        good.chain_ok = true;
+        CHECK(tls_accept_peer(cfg, "h", good, nullptr, err, ask, 992));
+        cfg.tls_verify = TlsVerify::None;
+        CHECK(tls_accept_peer(cfg, "h", bad, nullptr, err, ask, 992));
+        CHECK(asked.empty());
+    }
+    SUBCASE("a pin mismatch asks too; a pin match does not") {
+        Sha256Digest other = bad.sha256;
+        other[0] ^= 1;
+        cfg.tls_cert_sha256 = format_sha256_fingerprint(other);
+        answer = TlsTrustDecision::AcceptPermanently;
+        CHECK(tls_accept_peer(cfg, "h", bad, nullptr, err, ask, 992));
+        REQUIRE(asked.size() == 1);
+        CHECK(asked[0].problem == TlsTrustProblem::PinMismatch);
+        cfg.tls_cert_sha256 = format_sha256_fingerprint(bad.sha256);
+        CHECK(tls_accept_peer(cfg, "h", bad, nullptr, err, ask, 992));
+        CHECK(asked.size() == 1);
+    }
+}
+
+TEST_CASE("TLS trust broker: one handler per bridge, accepted certificates remembered") {
+    TlsTrustBroker broker;
+    CHECK_FALSE(broker.for_new_bridge());   // no handler: the configuration decides
+    int calls = 0;
+    TlsTrustDecision answer = TlsTrustDecision::AcceptOnce;
+    broker.set_handler([&](const TlsTrustRequest&) {
+        ++calls;
+        return answer;
+    });
+    TlsTrustRequest req;
+    req.host = "h";
+    req.port = 992;
+    req.peer.have_digest = true;
+    req.peer.sha256 = sample_digest();
+
+    TlsTrustHandler bridge1 = broker.for_new_bridge();
+    REQUIRE(bridge1);
+    CHECK(bridge1(req) == TlsTrustDecision::AcceptOnce);
+    CHECK(bridge1(req) == TlsTrustDecision::AcceptOnce);   // a reconnect of the same bridge
+    CHECK(calls == 1);
+    TlsTrustRequest other = req;
+    other.peer.sha256[5] ^= 1;
+    answer = TlsTrustDecision::Reject;
+    CHECK(bridge1(other) == TlsTrustDecision::Reject);
+    CHECK(bridge1(other) == TlsTrustDecision::Reject);     // rejections are not remembered
+    CHECK(calls == 3);
+
+    TlsTrustHandler bridge2 = broker.for_new_bridge();      // a new connect asks again
+    answer = TlsTrustDecision::AcceptOnce;
+    CHECK(bridge2(req) == TlsTrustDecision::AcceptOnce);
+    CHECK(calls == 4);
+}
+
 TEST_CASE("TLS transport: plain TCP stays the default") {
     Tn5250Config cfg;
     cfg.host = "h";
@@ -523,6 +618,58 @@ TEST_CASE("TLS transport (OpenSSL): handshake with a self-signed server certific
             CHECK_FALSE(o.connected);
             CHECK(o.error.find("mismatch") != std::string::npos);
         }
+    }
+    SUBCASE("trust handler: asked with the certificate details; accepting connects") {
+        TestServer srv(tc, TLS1_2_VERSION, 0);
+        Tn5250Config c = base;
+        c.host = "127.0.0.1";
+        c.port = srv.port;
+        c.tls = true;
+        std::string err;
+        auto t = make_transport(c, err);
+        REQUIRE(t);
+        std::vector<TlsTrustRequest> asked;
+        t->set_trust_handler([&](const TlsTrustRequest& r) {
+            asked.push_back(r);
+            return TlsTrustDecision::AcceptOnce;
+        });
+        CHECK(t->connect(c.host, c.port, err));
+        REQUIRE(asked.size() == 1);
+        CHECK(asked[0].port == srv.port);
+        CHECK(asked[0].peer.sha256 == tc.sha256);
+        CHECK(asked[0].peer.subject.find("tn34xx test") != std::string::npos);
+        CHECK_FALSE(asked[0].peer.valid_from.empty());
+        CHECK_FALSE(asked[0].peer.expires.empty());
+        CHECK_FALSE(asked[0].reason.empty());
+        REQUIRE(t->peer_certificate());
+        CHECK(t->peer_certificate()->sha256 == tc.sha256);
+        t->close();
+    }
+    SUBCASE("trust handler: rejecting refuses the connection") {
+        TestServer srv(tc, TLS1_2_VERSION, 0);
+        Tn5250Config c = base;
+        c.host = "127.0.0.1";
+        c.port = srv.port;
+        c.tls = true;
+        std::string err;
+        auto t = make_transport(c, err);
+        REQUIRE(t);
+        t->set_trust_handler([](const TlsTrustRequest&) { return TlsTrustDecision::Reject; });
+        CHECK_FALSE(t->connect(c.host, c.port, err));
+        CHECK(err.find("rejected") != std::string::npos);
+        t->close();
+    }
+    SUBCASE("fetch certificate: the fingerprint of an untrusted server") {
+        TestServer srv(tc, TLS1_2_VERSION, 0);
+        Tn5250Config c = base;
+        c.host = "127.0.0.1";
+        c.port = srv.port;
+        PeerCertificate peer;
+        std::string err;
+        REQUIRE(tls_fetch_certificate(c, peer, err));
+        CHECK(peer.have_digest);
+        CHECK(peer.sha256 == tc.sha256);
+        CHECK_FALSE(peer.chain_ok);
     }
     SUBCASE("protocol bounds: a TLS 1.2-only server and a 1.3 minimum do not meet") {
         TestServer srv(tc, TLS1_2_VERSION, TLS1_2_VERSION);

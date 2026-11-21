@@ -13,6 +13,7 @@
 #pragma once
 
 #include "host/host_config.hpp"
+#include "tn5250/tls_trust.hpp"
 #include "util/log.hpp"
 
 #include <cstddef>
@@ -39,14 +40,28 @@ public:
 
     // Where connection diagnostics go (certificate details, fingerprints).
     void set_log(LogFn fn) { log_ = std::move(fn); }
+    // Who is asked when the configuration refuses the server certificate
+    // (TLS only; see tls_trust.hpp). Unset: the configured decision stands.
+    void set_trust_handler(TlsTrustHandler fn) { trust_ = std::move(fn); }
+    // The server certificate of the last TLS handshake (connect() may have
+    // refused it), or null for plain TCP / before a handshake.
+    const PeerCertificate* peer_certificate() const { return have_peer_ ? &peer_cert_ : nullptr; }
 
 protected:
     void note(LogLevel level, const std::string& line) const {
         if (log_) log_(level, line);
     }
+    const TlsTrustHandler& trust_handler() const { return trust_; }
+    void set_peer_certificate(const PeerCertificate& p) {
+        peer_cert_ = p;
+        have_peer_ = true;
+    }
 
 private:
     LogFn log_;
+    TlsTrustHandler trust_;
+    PeerCertificate peer_cert_;
+    bool have_peer_ = false;
 };
 
 // The transport the configuration asks for, or nullptr with `error` set.

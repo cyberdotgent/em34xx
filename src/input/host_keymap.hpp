@@ -133,6 +133,12 @@ public:
 
     // False if the key maps to nothing (for logging by the caller).
     bool host_key(KeyboardType type, uint32_t hid, bool pressed, const Emit& emit);
+    // Press or release one terminal stroke directly (no host key, no
+    // keymap): a toolbar's Attn button. Calls must pair up.
+    void stroke(const TerminalStroke& s, bool pressed, const Emit& emit) {
+        if (pressed) press_stroke(s, false, emit);
+        else release_stroke(s, false, emit);
+    }
     // Forget all held keys without emitting anything (keyboard reset).
     void reset();
 

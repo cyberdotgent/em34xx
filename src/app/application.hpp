@@ -101,6 +101,9 @@ public:
     FrontendOptions frontend_options() const;
 
     int exit_code() const { return exit_code_; }
+    // Why start() returned false (also written to stderr), for front ends
+    // without a console; empty for one-shot actions such as --help.
+    const std::string& last_error() const { return last_error_; }
     Emulator& emulator() { return *emu_; }
     const Model& model() const { return *model_; }
 
@@ -120,6 +123,7 @@ private:
     bool background_ = false;
     bool finished_ = false;
     int exit_code_ = 0;
+    std::string last_error_;
 };
 
 } // namespace tn34xx

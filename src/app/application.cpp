@@ -68,6 +68,7 @@ int Application::main(int argc, char** argv) {
 
 bool Application::fail(const std::string& message, int code) {
     std::fprintf(stderr, "tn34xx: %s\n", message.c_str());
+    last_error_ = message;
     exit_code_ = code;
     return false;
 }
@@ -158,11 +159,15 @@ bool Application::build_machine() {
     // session per display station (src/host/wsc/tn5250_bridge.hpp).
     const std::string model_name = info.name;
     const DisplaySubtype display = cfg_.terminal.display;
-    Tn5250HostFactory bridge = [model_name, display](const TwinaxConfig& tw, const Tn5250Config& tn,
-                                                     std::string& err) {
+    // The front end's TLS trust handler (HostLink::set_tls_trust_handler)
+    // reaches each new bridge through the broker.
+    auto trust = std::make_shared<TlsTrustBroker>();
+    Tn5250HostFactory bridge = [model_name, display, trust](const TwinaxConfig& tw, const Tn5250Config& tn,
+                                                            std::string& err) {
         wsc::BridgeOptions bo;
         bo.model = model_name;
         bo.display = display;
+        bo.tls_trust = trust->for_new_bridge();
         return wsc::make_tn5250_bridge(tw, tn, std::move(bo), err);
     };
     std::unique_ptr<TwinaxHost> host = make_twinax_host(cfg_.twinax, cfg_.tn5250, error, bridge);
@@ -185,7 +190,7 @@ bool Application::build_machine() {
     emu_ = std::make_unique<Emulator>(std::move(machine));
     emu_->set_speed_percent(cfg_.speed_percent);
     host_link_ = std::make_unique<HostLink>(*emu_, cfg_, info.max_sessions, int(info.max_printer_sessions),
-                                            std::move(bridge));
+                                            std::move(bridge), trust);
     AppTooling* tooling = tooling_.get();
     if (tooling) emu_->set_stop_callback([tooling](const StopEvent& ev) { tooling->on_stop(ev); });
     emu_->start();

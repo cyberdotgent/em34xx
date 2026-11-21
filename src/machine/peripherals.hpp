@@ -67,6 +67,24 @@ class KeyboardSink {
 public:
     virtual ~KeyboardSink() = default;
     virtual void host_key(const HostKeyEvent& ev) = 0;
+    // Press or release the terminal's own key for a function ("attn",
+    // "sysrq", "reset"... as host keymap files name them), with the
+    // terminal Shift/Alt its legend needs, bypassing the host keymap: what
+    // a toolbar button does. False if this keyboard has no such key.
+    virtual bool terminal_key(const std::string& function, bool pressed) {
+        (void)function;
+        (void)pressed;
+        return false;
+    }
+    // Replace the host keymap ("pcomm", "positional" or a TOML file, as
+    // TerminalOptions::keymap). False with `error` if it does not load or
+    // the keyboard has no keymap.
+    virtual bool set_host_keymap(const std::string& spec, bool shift_fkeys, std::string& error) {
+        (void)spec;
+        (void)shift_fkeys;
+        error = "this keyboard has no host keymap";
+        return false;
+    }
 };
 
 // Sound output of a terminal. Devices report what their hardware does; a

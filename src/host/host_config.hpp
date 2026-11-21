@@ -103,6 +103,12 @@ struct StationConfig {
     std::string tls_min_version{};   // (initialised: keeps 4-member brace
                                      // initialisers free of -Wmissing-field-initializers)
     std::string tls_max_version{};
+    // A session to another system than [tn5250]: host and port (0 = the
+    // [tn5250] port), and the SHA-256 of its TLS certificate when pinned
+    // (empty = the [tn5250] setting). Display stations only.
+    std::string host{};
+    uint16_t port = 0;
+    std::string tls_cert_sha256{};
 };
 
 // Terminal type for one station: its `profile`, else tn5250.terminal_type
@@ -110,9 +116,9 @@ struct StationConfig {
 std::string station_terminal_type(const Tn5250Config& tn5250, const StationConfig& station,
                                   const std::string& model, DisplaySubtype display);
 
-// Apply a station's TLS overrides (tls_min_version, tls_max_version) to
-// the session configuration built from [tn5250]. Unparsable values are
-// left alone; TwinaxConfig::validate() reports them.
+// Apply a station's TLS overrides (tls_min_version, tls_max_version,
+// tls_cert_sha256) to the session configuration built from [tn5250].
+// Unparsable values are left alone; TwinaxConfig::validate() reports them.
 void apply_station_tls(Tn5250Config& cfg, const StationConfig& station);
 
 // Parses the CLI shorthand ADDR[:TYPE[:DEVNAME]], e.g. "1:printer:PRT01".

@@ -43,6 +43,10 @@ public:
     Client(const Client&) = delete;
     Client& operator=(const Client&) = delete;
 
+    // Who decides about a TLS certificate the configuration refuses
+    // (tls_trust.hpp); called on the I/O thread. Set before start().
+    void set_tls_trust_handler(TlsTrustHandler fn) { trust_ = std::move(fn); }
+
     // Validate the configuration and start the I/O thread.
     bool start(std::string& error);
     void stop();
@@ -79,6 +83,7 @@ private:
 
     Tn5250Config cfg_;
     TransportFactory factory_;
+    TlsTrustHandler trust_;
     Engine engine_;
     std::thread thread_;
     std::atomic<bool> stop_{false};

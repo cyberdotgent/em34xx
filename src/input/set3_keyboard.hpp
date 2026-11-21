@@ -64,6 +64,9 @@ public:
     // Host key from the front end.
     void host_key(const HostKeyEvent& ev) override;
 
+    bool terminal_key(const std::string& function, bool pressed) override;
+    bool set_host_keymap(const std::string& spec, bool shift_fkeys, std::string& error) override;
+
     // Host keymap applied to host_key(). The default is the built-in
     // "positional" map.
     void set_keymap(std::shared_ptr<const Keymap> km) { keymap_.set_keymap(std::move(km)); }

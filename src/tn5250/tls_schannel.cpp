@@ -242,6 +242,7 @@ public:
             return false;
         }
         whost_ = widen(host);
+        port_ = port;
         if (!handshake(error)) {
             error = format("TLS handshake with %s:%u failed: %s", host.c_str(), port, error.c_str());
             if (port == 23) error += " (port 23 is plain telnet; TLS servers usually listen on 992)";
@@ -561,13 +562,16 @@ private:
         peer.have_digest = sha256_of(cert->pbCertEncoded, cert->cbCertEncoded, peer.sha256);
         peer.subject = cert_name(&cert->pCertInfo->Subject);
         peer.issuer = cert_name(&cert->pCertInfo->Issuer);
+        peer.valid_from = filetime_text(cert->pCertInfo->NotBefore);
         peer.expires = filetime_text(cert->pCertInfo->NotAfter);
         FILETIME now;
         GetSystemTimeAsFileTime(&now);
         peer.expired = CompareFileTime(&cert->pCertInfo->NotAfter, &now) < 0;
         verify_chain(cert, peer);
         CertFreeCertificateContext(cert);
-        return tls_accept_peer(cfg_, host, peer, [this](LogLevel l, const std::string& s) { note(l, s); }, error);
+        set_peer_certificate(peer);
+        return tls_accept_peer(cfg_, host, peer, [this](LogLevel l, const std::string& s) { note(l, s); }, error,
+                               trust_handler(), port_);
     }
 
     Tn5250Config cfg_;
@@ -578,6 +582,7 @@ private:
     bool have_ctx_ = false;
     bool failed_ = false;
     std::wstring whost_;
+    uint16_t port_ = 0;
     SecPkgContext_StreamSizes sizes_{};
     std::vector<uint8_t> enc_;     // received, not yet decrypted
     std::vector<uint8_t> plain_;   // decrypted, not yet returned

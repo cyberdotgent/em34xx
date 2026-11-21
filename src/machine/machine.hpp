@@ -139,6 +139,10 @@ public:
     // the display subtype (render_presented).
     void render(Framebuffer& fb);
     void key_event(const HostKeyEvent& ev);
+    // KeyboardSink::terminal_key / set_host_keymap on the model's keyboard;
+    // a new keymap is also recorded in options().keymap.
+    bool terminal_key(const std::string& function, bool pressed);
+    bool set_keymap(const std::string& spec, std::string& error);
 
     // True once each time the picture may have changed since the last call:
     // a write into the pages the model observes for its display

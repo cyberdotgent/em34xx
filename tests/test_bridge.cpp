@@ -358,6 +358,25 @@ TEST_CASE("tn5250 bridge: per-station session settings") {
     CHECK(cb.tls_min_version == TlsVersion::Tls1_2);
     c.tls_min_version = "1.0";
     CHECK(station_session_config(tn, c, false, "3477", DisplaySubtype::Green).tls_min_version == TlsVersion::Tls1_0);
+    // A session to another system: its own host, port and pinned certificate.
+    tn.tls_verify = TlsVerify::None;
+    StationConfig d{1, StationType::Display, "", ""};
+    d.host = "other";
+    d.port = 9920;
+    d.tls_cert_sha256.clear();
+    for (int i = 0; i < 32; ++i) d.tls_cert_sha256 += i ? ":AB" : "AB";
+    const Tn5250Config cd = station_session_config(tn, d, false, "3477", DisplaySubtype::Color);
+    CHECK(cd.host == "other");
+    CHECK(cd.port == 9920);
+    CHECK(cd.tls_cert_sha256 == d.tls_cert_sha256);
+    CHECK(cd.tls_verify == TlsVerify::System);   // the pin decides alone
+    CHECK(cd.validate().empty());
+    CHECK(ca.host == "h");
+    TwinaxConfig tw;
+    tw.stations = {a, d};
+    CHECK(tw.validate().empty());
+    tw.stations[1].tls_cert_sha256 = "nope";
+    CHECK(tw.validate().find("tls_cert_sha256") != std::string::npos);
 }
 
 TEST_CASE("tn5250 bridge: make_twinax_host uses the bridge factory") {

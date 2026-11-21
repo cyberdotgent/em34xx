@@ -417,3 +417,45 @@ TEST_CASE("typematic runs in emulated time (3477 keyboard interface)") {
     for (int i = 0; i < 2; ++i) kif.tick(hz / 1000);
     CHECK(k.output_size() == 1);
 }
+
+TEST_CASE("terminal function keys bypass the host keymap (toolbar Attn, SysRq, Reset)") {
+    Set3Keyboard k(KeyboardType::Enhanced, 0x7F, 0x7F);
+    k.power_on();
+    drain(k);
+    REQUIRE(k.terminal_key("attn", true));
+    REQUIRE(k.terminal_key("attn", false));
+    CHECK(drain(k) == Bytes{0x08});              // Enhanced Attn: Esc position, make-only
+    // The host's Shift is held: Attn releases the terminal Shift around it.
+    press(k, 0xE1, true);
+    CHECK(drain(k) == Bytes{0x12});
+    REQUIRE(k.terminal_key("attn", true));
+    REQUIRE(k.terminal_key("attn", false));
+    CHECK(drain(k) == Bytes{0xF0, 0x12, 0x08, 0x12});
+    press(k, 0xE1, false);
+    drain(k);
+    // SysRq on the Enhanced keyboard is Alt + Print Screen.
+    REQUIRE(k.terminal_key("sysrq", true));
+    REQUIRE(k.terminal_key("sysrq", false));
+    const Bytes sysrq = drain(k);
+    REQUIRE(sysrq.size() >= 2);
+    CHECK(sysrq[0] == 0x19);                     // Left Alt make first
+    CHECK(sysrq[1] == 0x57);
+    CHECK(k.terminal_key("reset", true));
+    CHECK(k.terminal_key("reset", false));
+    CHECK_FALSE(k.terminal_key("no such key", true));
+}
+
+TEST_CASE("host keymap replaced at run time") {
+    Set3Keyboard k(KeyboardType::Enhanced, 0x7F, 0x7F);
+    k.power_on();
+    drain(k);
+    std::string err;
+    REQUIRE(k.set_host_keymap("pcomm", true, err));
+    press(k, 0x28, true);   // Enter -> Field Exit (5A) under pcomm
+    press(k, 0x28, false);
+    const Bytes pcomm = drain(k);
+    REQUIRE_FALSE(pcomm.empty());
+    CHECK(pcomm[0] == 0x5A);
+    CHECK_FALSE(k.set_host_keymap("/no/such/keymap.toml", true, err));
+    CHECK_FALSE(err.empty());
+}

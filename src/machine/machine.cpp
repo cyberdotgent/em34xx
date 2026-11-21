@@ -160,6 +160,20 @@ void Machine::key_event(const HostKeyEvent& ev) {
     (keyboard_ ? keyboard_ : &fallback_keyboard_)->host_key(ev);
 }
 
+bool Machine::terminal_key(const std::string& function, bool pressed) {
+    return keyboard_ && keyboard_->terminal_key(function, pressed);
+}
+
+bool Machine::set_keymap(const std::string& spec, std::string& error) {
+    if (!keyboard_) {
+        error = "this model has no keyboard";
+        return false;
+    }
+    if (!keyboard_->set_host_keymap(spec, options_.shift_fkeys, error)) return false;
+    options_.keymap = spec;
+    return true;
+}
+
 // ---------------------------------------------------------------------------
 
 void PlaceholderDisplay::render(Framebuffer& fb) {

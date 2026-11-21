@@ -17,8 +17,18 @@ void tls_note_legacy(const Tn5250Config& cfg, const Transport::LogFn& note) {
                                 tls_version_name(cfg.tls_min_version)));
 }
 
+const char* tls_trust_decision_name(TlsTrustDecision d) {
+    switch (d) {
+    case TlsTrustDecision::Reject: return "reject";
+    case TlsTrustDecision::AcceptOnce: return "accept once";
+    case TlsTrustDecision::AcceptPermanently: return "accept permanently";
+    }
+    return "?";
+}
+
 bool tls_accept_peer(const Tn5250Config& cfg, const std::string& host, const PeerCertificate& peer,
-                     const Transport::LogFn& note_fn, std::string& error) {
+                     const Transport::LogFn& note_fn, std::string& error, const TlsTrustHandler& ask,
+                     uint16_t port) {
     auto note = [&](LogLevel level, const std::string& line) {
         if (note_fn) note_fn(level, line);
     };
@@ -33,6 +43,26 @@ bool tls_accept_peer(const Tn5250Config& cfg, const std::string& host, const Pee
         note(level, peer.have_digest ? tls_fingerprint_line(peer.sha256)
                                      : std::string("TLS server certificate SHA-256 fingerprint: unavailable"));
     };
+    // The configuration refuses the certificate: ask the handler, if any.
+    auto refuse = [&](TlsTrustProblem problem, const std::string& reason, const std::string& message) {
+        if (ask && peer.have_digest) {
+            TlsTrustRequest req;
+            req.host = host;
+            req.port = port;
+            req.peer = peer;
+            req.problem = problem;
+            req.reason = reason;
+            const TlsTrustDecision d = ask(req);
+            if (d != TlsTrustDecision::Reject) {
+                note(LogLevel::Warn, "TLS certificate " + fp + " accepted by the user (" +
+                                         tls_trust_decision_name(d) + "): " + reason);
+                return true;
+            }
+            note(LogLevel::Warn, "TLS certificate " + fp + " rejected by the user");
+        }
+        error = message;
+        return false;
+    };
 
     if (!cfg.tls_cert_sha256.empty()) {
         Sha256Digest pin{};
@@ -46,9 +76,11 @@ bool tls_accept_peer(const Tn5250Config& cfg, const std::string& host, const Pee
             return true;
         }
         log_fingerprint(LogLevel::Warn);
-        error = "TLS: the server certificate does not match the pinned SHA-256 (tls_cert_sha256); "
-                "its fingerprint is in the log";
-        return false;
+        return refuse(TlsTrustProblem::PinMismatch,
+                      "the certificate does not match the trusted SHA-256 fingerprint (" +
+                          format_sha256_fingerprint(pin) + ")" + (peer.chain_ok ? "" : "; " + chain_text),
+                      "TLS: the server certificate does not match the pinned SHA-256 (tls_cert_sha256); "
+                      "its fingerprint is in the log");
     }
     if (cfg.tls_verify == TlsVerify::None) {
         log_fingerprint(LogLevel::Warn);
@@ -57,12 +89,31 @@ bool tls_accept_peer(const Tn5250Config& cfg, const std::string& host, const Pee
     }
     if (!peer.chain_ok) {
         log_fingerprint(LogLevel::Warn);
-        error = "TLS: the server certificate for " + host + " was rejected: " + peer.chain_error +
-                ". If you trust it, pin its fingerprint (in the log) or add its CA with ca_file";
-        return false;
+        return refuse(TlsTrustProblem::Unverified, peer.chain_error,
+                      "TLS: the server certificate for " + host + " was rejected: " + peer.chain_error +
+                          ". If you trust it, pin its fingerprint (in the log) or add its CA with ca_file");
     }
     note(LogLevel::Info, details);
     note(LogLevel::Info, "TLS certificate verified for " + host + "; SHA-256 " + fp);
+    return true;
+}
+
+bool tls_fetch_certificate(const Tn5250Config& cfg_in, PeerCertificate& out, std::string& error) {
+    Tn5250Config cfg = cfg_in;
+    cfg.tls = true;
+    cfg.tls_verify = TlsVerify::None;   // take whatever is presented; nothing is sent
+    cfg.tls_cert_sha256.clear();
+    std::unique_ptr<Transport> t = make_tls_transport(cfg, error);
+    if (!t) return false;
+    const bool ok = t->connect(cfg.host, cfg.port, error);
+    const PeerCertificate* peer = t->peer_certificate();
+    t->close();
+    if (!peer) {
+        if (ok) error = "TLS: the server sent no certificate";
+        return false;
+    }
+    out = *peer;
+    error.clear();
     return true;
 }
 

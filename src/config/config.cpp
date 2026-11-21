@@ -133,6 +133,12 @@ bool load_config_file(const std::string& path, AppConfig& cfg, std::string& erro
                 get(*st, "profile", sc.profile);
                 get(*st, "tls_min_version", sc.tls_min_version);
                 get(*st, "tls_max_version", sc.tls_max_version);
+                get(*st, "host", sc.host);
+                if (get(*st, "port", i)) {
+                    if (i <= 0 || i > 65535) { error = path + ": twinax.station.port out of range"; return false; }
+                    sc.port = uint16_t(i);
+                }
+                get(*st, "tls_cert_sha256", sc.tls_cert_sha256);
                 cfg.twinax.stations.push_back(sc);
             }
         }
@@ -474,6 +480,9 @@ std::string config_to_toml(const AppConfig& cfg) {
             if (!sc.profile.empty()) st.insert("profile", sc.profile);
             if (!sc.tls_min_version.empty()) st.insert("tls_min_version", sc.tls_min_version);
             if (!sc.tls_max_version.empty()) st.insert("tls_max_version", sc.tls_max_version);
+            if (!sc.host.empty()) st.insert("host", sc.host);
+            if (sc.port) st.insert("port", int64_t(sc.port));
+            if (!sc.tls_cert_sha256.empty()) st.insert("tls_cert_sha256", sc.tls_cert_sha256);
             stations.push_back(std::move(st));
         }
         root["twinax"].as_table()->insert("station", std::move(stations));

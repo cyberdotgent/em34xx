@@ -49,6 +49,12 @@ public:
     void tick(uint64_t cycles);
 
     void host_key(const HostKeyEvent& ev) override { kbd_.host_key(ev); }
+    bool terminal_key(const std::string& function, bool pressed) override {
+        return kbd_.terminal_key(function, pressed);
+    }
+    bool set_host_keymap(const std::string& spec, bool shift_fkeys, std::string& error) override {
+        return kbd_.set_host_keymap(spec, shift_fkeys, error);
+    }
 
     uint8_t status() const;
     bool interrupt_pending() const { return rx_full_ || tx_done_; }

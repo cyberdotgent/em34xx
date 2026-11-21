@@ -15,7 +15,9 @@ Tn5250Config station_session_config(const Tn5250Config& tn5250, const StationCon
                     : first_display              ? tn5250.device_name
                                                  : std::string();
     c.terminal_type = station_terminal_type(tn5250, station, model, display);
-    apply_station_tls(c, station);   // per-station tls_min_version / tls_max_version
+    apply_station_tls(c, station);   // per-station TLS versions and pinned certificate
+    if (!station.host.empty()) c.host = station.host;
+    if (station.port) c.port = station.port;
     return c;
 }
 
@@ -33,8 +35,7 @@ tn5250::Client::TransportFactory transport_for(const BridgeOptions& opt, const S
 DisplayStationPort::DisplayStationPort(StationConfig station, Tn5250Config cfg, const BridgeOptions& opt,
                                        Station& link)
     : station_(std::move(station)), cfg_(std::move(cfg)), opt_(opt), link_(link) {
-    client_ = std::make_unique<tn5250::Client>(cfg_, transport_for(opt_, station_));
-    adapter_ = std::make_unique<Tn5250DisplayAdapter>(*client_);
+    new_client();
     link_.set_plugged(false, 0);   // no cable until the session is up
     // Connect now, not on the first advance(): the link device only calls
     // in once the firmware runs its Twinax receiver.
@@ -71,14 +72,27 @@ void DisplayStationPort::operator_action(const OperatorAction& action) { adapter
 
 bool DisplayStationPort::connected() const { return client_->state() == tn5250::ConnState::Ready; }
 
+void DisplayStationPort::new_client() {
+    client_ = std::make_unique<tn5250::Client>(cfg_, transport_for(opt_, station_));
+    if (opt_.tls_trust) {
+        const tn5250::TlsTrustHandler ask = opt_.tls_trust;
+        const unsigned address = station_.address;
+        client_->set_tls_trust_handler([ask, address](const tn5250::TlsTrustRequest& req) {
+            tn5250::TlsTrustRequest r = req;
+            r.station = address;
+            return ask(r);
+        });
+    }
+    adapter_ = std::make_unique<Tn5250DisplayAdapter>(*client_);
+}
+
 void DisplayStationPort::start_session() {
     if (client_->state() != tn5250::ConnState::Idle) {
         // A used client cannot be restarted: replace it. The generation
         // base keeps screen_generation() moving forward.
         generation_base_ += client_->generation() + 1;
         client_->stop();
-        client_ = std::make_unique<tn5250::Client>(cfg_, transport_for(opt_, station_));
-        adapter_ = std::make_unique<Tn5250DisplayAdapter>(*client_);
+        new_client();
     }
     ++starts_;
     last_state_ = tn5250::ConnState::Connecting;

@@ -149,6 +149,7 @@ void Client::run() {
         std::lock_guard<std::mutex> g(mu_);
         log_.push_back(line);
     });
+    if (trust_) t->set_trust_handler(trust_);
     log(format("connecting to %s:%u", cfg_.host.c_str(), cfg_.port));
     if (!t->connect(cfg_.host, cfg_.port, err)) { fail(err); return; }
     log("connected (" + t->describe() + ")");

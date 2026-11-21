@@ -4,11 +4,52 @@
 #include "machine/emulator.hpp"
 #include "util/strings.hpp"
 
+#include <set>
+
 namespace tn34xx {
 
-HostLink::HostLink(Emulator& emu, AppConfig base, unsigned max_sessions, int max_printers, Tn5250HostFactory bridge)
+void TlsTrustBroker::set_handler(tn5250::TlsTrustHandler fn) {
+    std::lock_guard<std::mutex> g(mu_);
+    handler_ = std::move(fn);
+}
+
+bool TlsTrustBroker::has_handler() const {
+    std::lock_guard<std::mutex> g(mu_);
+    return static_cast<bool>(handler_);
+}
+
+tn5250::TlsTrustHandler TlsTrustBroker::for_new_bridge() {
+    tn5250::TlsTrustHandler fn;
+    {
+        std::lock_guard<std::mutex> g(mu_);
+        fn = handler_;
+    }
+    if (!fn) return nullptr;
+    struct Accepted {
+        std::mutex mu;
+        std::set<std::string> fingerprints;   // host:port fingerprint
+    };
+    auto accepted = std::make_shared<Accepted>();
+    return [fn, accepted](const tn5250::TlsTrustRequest& req) {
+        const std::string key =
+            format("%s:%u %s", req.host.c_str(), req.port, format_sha256_fingerprint(req.peer.sha256).c_str());
+        {
+            std::lock_guard<std::mutex> g(accepted->mu);
+            if (accepted->fingerprints.count(key)) return tn5250::TlsTrustDecision::AcceptOnce;
+        }
+        const tn5250::TlsTrustDecision d = fn(req);
+        if (d != tn5250::TlsTrustDecision::Reject) {
+            std::lock_guard<std::mutex> g(accepted->mu);
+            accepted->fingerprints.insert(key);
+        }
+        return d;
+    };
+}
+
+HostLink::HostLink(Emulator& emu, AppConfig base, unsigned max_sessions, int max_printers, Tn5250HostFactory bridge,
+                   std::shared_ptr<TlsTrustBroker> trust)
     : emu_(emu), base_(std::move(base)), max_sessions_(max_sessions), max_printers_(max_printers),
-      bridge_(std::move(bridge)) {}
+      bridge_(std::move(bridge)), trust_(trust ? std::move(trust) : std::make_shared<TlsTrustBroker>()) {}
 
 bool HostLink::connect(const AppConfig& cfg, std::string& message, std::string& error) {
     if (!bridge_) {
