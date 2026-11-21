@@ -425,10 +425,20 @@ void Win32Frontend::restore_placement() {
     const WindowPlacement& wp = settings().window;
     if (wp.valid) {
         RECT r{wp.x, wp.y, wp.x + wp.width, wp.y + wp.height};
-        if (MonitorFromRect(&r, MONITOR_DEFAULTTONULL)) {
-            SetWindowPos(h, nullptr, r.left, r.top, wp.width, wp.height, SWP_NOZORDER | SWP_NOACTIVATE);
-            dpi_ = window_dpi(h);
-            return;
+        if (HMONITOR mon = MonitorFromRect(&r, MONITOR_DEFAULTTONULL)) {
+            MONITORINFO mi;
+            mi.cbSize = sizeof mi;
+            GetMonitorInfoW(mon, &mi);
+            const RECT& w = mi.rcWork;
+            // Keep it on that monitor's work area (resolution or DPI may
+            // have changed since).
+            if (wp.width <= w.right - w.left && wp.height <= w.bottom - w.top) {
+                const int x = std::max(int(w.left), std::min(int(r.left), int(w.right) - wp.width));
+                const int y = std::max(int(w.top), std::min(int(r.top), int(w.bottom) - wp.height));
+                SetWindowPos(h, nullptr, x, y, wp.width, wp.height, SWP_NOZORDER | SWP_NOACTIVATE);
+                dpi_ = window_dpi(h);
+                return;
+            }
         }
     }
     size_for_zoom(true);
