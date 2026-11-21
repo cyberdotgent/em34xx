@@ -44,10 +44,11 @@ Executables (each front end is its own program; see
 | --- | --- | --- |
 | `tn34xx` | SDL3 found (`-DTN34XX_FRONTEND_SDL=AUTO`, default; `ON` requires it, `OFF` skips it) | SDL3 window plus the developer tooling: monitor console, GDB stub, scripts; `--headless` runs it without a window |
 | `tn34xx-headless` | always | the same without SDL: monitor on stdin/stdout, scripts, GDB stub |
+| `tn34xxw` | Windows builds only | native Win32 GUI for end users: profiles, ROM manager, keymap editor; no developer tooling ([docs/frontend-win32.md](docs/frontend-win32.md)) |
 | `tn5250-probe` | always | stand-alone TN5250 client for protocol tests |
 
-Native end-user front ends (`tn34xxw` for Win32, `tn34xx.app` for Cocoa)
-are planned as separate executables without the developer tooling.
+A Cocoa `tn34xx.app` is planned the same way, without the developer
+tooling.
 
 ### Windows (MinGW-w64 cross build)
 
@@ -62,14 +63,67 @@ cmake --build --preset mingw-x86-release
 ctest --preset mingw-x86-release -LE slow   # through wine, if installed
 ```
 
-The output is `build/mingw-x86-release/tn34xx.exe` (and
-`tn34xx-headless.exe`), a console program that
-needs only system DLLs: the MinGW runtime, SDL3 and the other ports are
+The output is `build/mingw-x86-release/tn34xxw.exe` (the GUI),
+`tn34xx.exe` and `tn34xx-headless.exe` (console programs with the
+developer tooling). All need only system DLLs: the MinGW runtime, SDL3 and the other ports are
 linked statically. The toolchain files in `cmake/toolchains/` use the
 compilers' posix thread model (`*-g++-posix`) and `_WIN32_WINNT=0x0601`;
 the overlay triplets in `cmake/triplets/` build the vcpkg ports with them.
 The monitor runs in the Windows console (replxx); `--headless` and
 `--batch` work as on Linux.
+
+### tn34xxw (Windows GUI)
+
+`tn34xxw.exe` keeps everything in one folder per user, `%APPDATA%\tn34xx`
+(or the folder in the environment variable `TN34XX_USER_DIR`):
+
+```
+%APPDATA%\tn34xx\
+  settings.toml        CRT type and rendering, speed, default TLS minimum,
+                       zoom, window placement
+  keymap.toml          the global host keymap (Edit > Keymap; PCOMM until edited)
+  roms\                ROM images (imported through the ROM dialog)
+  profiles\*.tn34xx    connection profiles
+  3477.nvram           the terminal's battery-backed setup memory
+  tn34xxw.log          log of the last run
+```
+
+On the first start (no usable ROMs) a dialog lists what each model needs
+(present / missing / bad hash) and imports dumps under any name: they are
+recognised by SHA-256. Later the same dialog is under Edit > Settings.
+
+File > Connect... connects without saving ("Untitled Profile*"); File >
+Save As keeps it. File > Connect to Profile... manages the saved profiles
+(New, Edit, Rename, Copy, Delete). `tn34xxw PROFILE.tn34xx` opens and
+connects a profile; Settings can associate `.tn34xx` files with tn34xxw for
+the current user. The toolbar has Attn, SysRq and Reset, sent as the
+terminal's own keys. With TLS, a certificate that does not verify brings up
+a prompt: Stop, Connect (this time) or Trust Permanently (its SHA-256 goes
+into the profile).
+
+A profile is TOML and never holds a password:
+
+```toml
+format = 1
+model = "3477"
+
+[tls]
+enabled = true
+verify = "system"          # "system", "none" (accept all) or "fingerprint"
+cert_sha256 = ""           # the trusted SHA-256 with "fingerprint"
+min_version = "1.2"        # optional
+
+[[session]]                # session 1 (station 0)
+host = "pub400.com"
+port = 992
+device_name = ""           # optional
+
+[[session]]                # session 2 (station 1), optional
+host = ""
+port = 23
+```
+
+Details: [docs/frontend-win32.md](docs/frontend-win32.md).
 
 ## ROMs
 

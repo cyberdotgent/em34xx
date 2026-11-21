@@ -2,7 +2,7 @@
 
 ```
    Frontend (main thread)            AppTooling: monitor (replxx thread / rc / stdin)
-   SDL3 window today                      |          ^
+   SDL3 or Win32 window                   |          ^
         |  frame-ready, render, keys      v          | qRcmd
         v                                                       GDB stub
    Application (config, HostLink, power, settings)              (thread)
@@ -37,7 +37,11 @@ tn34xx_emu        util, cpu, bus, rom, machine   (Machine, Emulator, Cpu, interf
 tn34xx_runtime    config, app                    Application, HostLink  (-> machines, bridge, present)
   ^-- tn34xx_devtools   monitor, gdb, devtools   monitor, replxx console, GDB stub, probes
   ^-- tn34xx_frontend_sdl  frontend/sdl          SDL3 front end
+  ^-- tn34xx_frontend_win32 frontend/win32       Win32 front end (WIN32 only)
 ```
+
+Front ends may include everything the runtime links (models, input, the
+TN5250 client's headers) but never the tooling.
 
 Executables, one per front end (names are CMake variables `TN34XX_EXE_*`):
 
@@ -45,7 +49,7 @@ Executables, one per front end (names are CMake variables `TN34XX_EXE_*`):
 | --- | --- | --- |
 | `tn34xx` | frontend_sdl, devtools, runtime | only when SDL3 is found (`TN34XX_FRONTEND_SDL`) |
 | `tn34xx-headless` | devtools, runtime | always built; no SDL |
-| `tn34xxw` (future) | frontend_win32, runtime (devtools optional) | WIN32 only, GUI subsystem, end-user build |
+| `tn34xxw` | frontend_win32, runtime | WIN32 only, GUI subsystem, end-user build; see [frontend-win32.md](frontend-win32.md) |
 | `tn34xx.app` (future) | frontend_cocoa, runtime (devtools optional) | APPLE only, MACOSX_BUNDLE, end-user build |
 
 End-user GUI builds expose only the emulator (display, keyboard, sound,
@@ -71,10 +75,12 @@ thread when headless and runs the console thread beside a window. Without
 it, tooling options are refused.
 
 The control API a GUI calls directly: `host_link()` (`HostLink`:
-connect/disconnect, per-station disconnect, controller status; the
-monitor's `connect`/`disconnect` are wrappers over it), `power_on()`,
+connect/disconnect, per-station disconnect, controller status as text and
+per session (`sessions()`), the TLS trust handler; the monitor's
+`connect`/`disconnect` are wrappers over it), `power_on()`,
 `power_off()`, `reset()`, `set_speed_percent()`, `set_crt()`, `config()`.
-Front ends that must own the process run loop (Cocoa) call `start()`,
+`last_error()` holds the reason `start()` failed, for front ends without a
+console. Front ends that must own the process run loop (Cocoa) call `start()`,
 drive the emulator from their loop, then `request_quit()` and `finish()`
 instead of `main()`.
 
@@ -115,15 +121,37 @@ What it uses:
   0x00 -> 0x04, kVK_Return 0x24 -> 0x28), with modifier keys from
   `flagsChanged:`. Positions, not characters: the host keymap
   (`src/input/host_keymap.hpp`) maps HID usages to the terminal's keys.
+- **Terminal keys.** `Machine::terminal_key("attn", pressed)` presses the
+  terminal's own key for a function (set-3 position plus the terminal
+  Shift/Alt its legend needs), bypassing the host keymap: toolbar buttons
+  for Attn, SysRq, Reset. `Machine::set_keymap(spec)` replaces the host
+  keymap at run time.
+- **TLS trust.** `HostLink::set_tls_trust_handler()`: when TLS is on and
+  the configuration refuses the server certificate (verification failed,
+  or not the pinned one), the handler gets a `tn5250::TlsTrustRequest`
+  (host, port, station, certificate details, reason) on the session's I/O
+  thread and returns Reject, AcceptOnce or AcceptPermanently; it may block
+  while the UI asks. The front end records a permanent decision itself
+  (tn34xxw pins the fingerprint in the profile). It must answer pending
+  requests before it disconnects (the session threads are joined). The
+  layers: `tn5250/tls_trust.hpp` (types), `Transport::set_trust_handler()`
+  and `tls_accept_peer()` (both backends), `tn5250::Client`,
+  `wsc::BridgeOptions::tls_trust`, `TlsTrustBroker` in `app/host_link.hpp`
+  (per-bridge memory of accepted certificates). Without a handler (SDL,
+  monitor) the configured behaviour is unchanged. Details in
+  [tn5250.md](tn5250.md).
 - **Sound.** `Machine::set_audio_sink(AudioSink*)` (`machine/peripherals.hpp`):
   `tone(on, hz)`, `speaker(on)`, `click()` arrive on the emulation thread
   under the machine lock; queue them for the audio thread.
 - **Control.** The Application API above.
 
-To add `tn34xxw` or `tn34xx.app`: a `tn34xx_frontend_<name>` library
+To add `tn34xx.app` (as `tn34xxw` was): a `tn34xx_frontend_<name>` library
 linking `tn34xx_runtime`, a `main` that constructs the front end and
 `Application(frontend, nullptr)`, and an executable target guarded by
-`if(WIN32)` / `if(APPLE)`; `CMakeLists.txt` has a commented stub.
+`if(APPLE)`; `CMakeLists.txt` has a commented stub. End-user data
+(settings, profiles, the user folder, ROM status, keymap files as text) is
+platform independent in `config/` (`profile.hpp`, `settings.hpp`,
+`user_dirs.hpp`) and `input/host_keymap.hpp` for the next GUI to reuse.
 
 ## Principles
 
