@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 // The end-user GUI's data: the user folder (config/user_dirs.hpp), settings
 // (config/settings.hpp) and connection profiles (config/profile.hpp).
 #include "config/profile.hpp"
@@ -116,6 +117,11 @@ TEST_CASE("user folder: ROM status and import") {
         if (r.model == "3477") ++rows3477;
     }
     CHECK(rows3477 == m3477->info().roms.size());
+    // Models with known bad or incomplete dumps are not asked for.
+    for (const RomStatusRow& r : rows) {
+        CHECK(r.model != "3486");
+        CHECK(r.model != "3489");
+    }
 
     // An image of the right size with an unknown hash, imported under its own
     // name: it is "unknown hash", which still runs.

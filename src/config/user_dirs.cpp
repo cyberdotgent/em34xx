@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 #include "config/user_dirs.hpp"
 
 #include "models/model.hpp"
@@ -191,7 +192,7 @@ bool UserDirs::import_rom(const std::string& source, std::string& stored_as, std
     }
     stored_as.clear();
     note.clear();
-    for (const Model* m : all_models()) {
+    for (const Model* m : runnable_models()) {
         if (const RomSpec* spec = rom_spec_for_data(m->info().roms, data)) {
             stored_as = spec->file;
             note = "IBM " + m->info().name + " " + spec->label + " (known good)";
@@ -201,7 +202,7 @@ bool UserDirs::import_rom(const std::string& source, std::string& stored_as, std
     if (stored_as.empty()) {
         stored_as = ustr(src.filename());
         note = "not a known-good dump of any model; stored under its own name";
-        for (const Model* m : all_models())
+        for (const Model* m : runnable_models())
             for (const RomSpec& spec : m->info().roms)
                 if (to_lower(spec.file) == to_lower(stored_as)) {
                     stored_as = spec.file;
@@ -238,7 +239,9 @@ bool UserDirs::remove_rom(const std::string& file, std::string& error) const {
 
 std::vector<RomStatusRow> rom_status(const std::string& rom_dir) {
     std::vector<RomStatusRow> out;
-    for (const Model* m : all_models()) {
+    // Only models a user can run: the 3486 and 3489 dumps are known to be
+    // incomplete or bad, so asking for them would only confuse.
+    for (const Model* m : runnable_models()) {
         for (const RomSpec& spec : m->info().roms) {
             RomStatusRow row;
             row.model = m->info().name;
