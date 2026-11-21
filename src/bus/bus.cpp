@@ -7,7 +7,7 @@
 #include <algorithm>
 #include <stdexcept>
 
-namespace tn34xx {
+namespace em34xx {
 
 const char* unmapped_policy_name(UnmappedPolicy p) {
     switch (p) {
@@ -283,4 +283,4 @@ void Bus::reset_devices() {
     for (auto& m : io_) reset_once(m.device);
 }
 
-} // namespace tn34xx
+} // namespace em34xx

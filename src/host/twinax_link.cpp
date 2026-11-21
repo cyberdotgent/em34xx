@@ -5,7 +5,7 @@
 #include "util/log.hpp"
 #include "util/strings.hpp"
 
-namespace tn34xx {
+namespace em34xx {
 
 void ScriptTwinaxHost::from_station(const TwinaxMessage& msg) {
     std::lock_guard<std::mutex> lock(mutex_);
@@ -82,4 +82,4 @@ std::unique_ptr<TwinaxHost> make_twinax_host(const TwinaxConfig& twinax, const T
     return nullptr;
 }
 
-} // namespace tn34xx
+} // namespace em34xx

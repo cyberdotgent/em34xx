@@ -16,7 +16,7 @@
 
 #include <string>
 
-namespace tn34xx {
+namespace em34xx {
 namespace tn5250 {
 
 // Applies tls_verify / tls_cert_sha256. Logs through `note`; returns false
@@ -44,4 +44,4 @@ void tls_note_legacy(const Tn5250Config& cfg, const Transport::LogFn& note);
 const char* tls_backend_name();
 
 } // namespace tn5250
-} // namespace tn34xx
+} // namespace em34xx

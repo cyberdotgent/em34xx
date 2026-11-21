@@ -1,4 +1,4 @@
-# tn34xx
+# em34xx
 
 A hardware-level emulator for IBM 34xx-family 5250 (Twinax) terminals,
 running the terminals' own firmware. The terminals are iterations of one
@@ -23,7 +23,7 @@ doctest, nlohmann-json and zlib).
 
 TLS for the TN5250 client uses the host's own TLS stack, not vcpkg: the
 system OpenSSL (libssl/libcrypto, Debian/Ubuntu `libssl-dev`) on Linux, and
-SChannel/CryptoAPI (system DLLs) on Windows. `-DTN34XX_TLS=AUTO` (the
+SChannel/CryptoAPI (system DLLs) on Windows. `-DEM34XX_TLS=AUTO` (the
 default; the presets leave it alone) uses it when found and otherwise builds
 without TLS, with a configure-time message; `ON` makes a missing TLS stack
 an error, `OFF` builds without TLS.
@@ -42,12 +42,12 @@ Executables (each front end is its own program; see
 
 | Program | Built when | What it is |
 | --- | --- | --- |
-| `tn34xx` | SDL3 found (`-DTN34XX_FRONTEND_SDL=AUTO`, default; `ON` requires it, `OFF` skips it) | SDL3 window plus the developer tooling: monitor console, GDB stub, scripts; `--headless` runs it without a window |
-| `tn34xx-headless` | always | the same without SDL: monitor on stdin/stdout, scripts, GDB stub |
-| `tn34xxw` | Windows builds only | native Win32 GUI for end users: profiles, ROM manager, keymap editor; no developer tooling ([docs/frontend-win32.md](docs/frontend-win32.md)) |
+| `em34xx` | SDL3 found (`-DEM34XX_FRONTEND_SDL=AUTO`, default; `ON` requires it, `OFF` skips it) | SDL3 window plus the developer tooling: monitor console, GDB stub, scripts; `--headless` runs it without a window |
+| `em34xx-headless` | always | the same without SDL: monitor on stdin/stdout, scripts, GDB stub |
+| `em34xxw` | Windows builds only | native Win32 GUI for end users: profiles, ROM manager, keymap editor; no developer tooling ([docs/frontend-win32.md](docs/frontend-win32.md)) |
 | `tn5250-probe` | always | stand-alone TN5250 client for protocol tests |
 
-A Cocoa `tn34xx.app` is planned the same way, without the developer
+A Cocoa `em34xx.app` is planned the same way, without the developer
 tooling.
 
 ### Windows (MinGW-w64 cross build)
@@ -63,8 +63,8 @@ cmake --build --preset mingw-x86-release
 ctest --preset mingw-x86-release -LE slow   # through wine, if installed
 ```
 
-The output is `build/mingw-x86-release/tn34xxw.exe` (the GUI),
-`tn34xx.exe` and `tn34xx-headless.exe` (console programs with the
+The output is `build/mingw-x86-release/em34xxw.exe` (the GUI),
+`em34xx.exe` and `em34xx-headless.exe` (console programs with the
 developer tooling). All need only system DLLs: the MinGW runtime, SDL3 and the other ports are
 linked statically. The toolchain files in `cmake/toolchains/` use the
 compilers' posix thread model (`*-g++-posix`) and `_WIN32_WINNT=0x0601`;
@@ -72,20 +72,20 @@ the overlay triplets in `cmake/triplets/` build the vcpkg ports with them.
 The monitor runs in the Windows console (replxx); `--headless` and
 `--batch` work as on Linux.
 
-### tn34xxw (Windows GUI)
+### em34xxw (Windows GUI)
 
-`tn34xxw.exe` keeps everything in one folder per user, `%APPDATA%\tn34xx`
-(or the folder in the environment variable `TN34XX_USER_DIR`):
+`em34xxw.exe` keeps everything in one folder per user, `%APPDATA%\em34xx`
+(or the folder in the environment variable `EM34XX_USER_DIR`):
 
 ```
-%APPDATA%\tn34xx\
+%APPDATA%\em34xx\
   settings.toml        CRT type and rendering, speed, default TLS minimum,
                        zoom, window placement
   keymap.toml          the global host keymap (Edit > Keymap; PCOMM until edited)
   roms\                ROM images (imported through the ROM dialog)
-  profiles\*.tn34xx    connection profiles
+  profiles\*.em34xx    connection profiles
   3477.nvram           the terminal's battery-backed setup memory
-  tn34xxw.log          log of the last run
+  em34xxw.log          log of the last run
 ```
 
 On the first start (no usable ROMs) a dialog lists what each model needs
@@ -94,8 +94,8 @@ recognised by SHA-256. Later the same dialog is under Edit > Settings.
 
 File > Connect... connects without saving ("Untitled Profile*"); File >
 Save As keeps it. File > Connect to Profile... manages the saved profiles
-(New, Edit, Rename, Copy, Delete). `tn34xxw PROFILE.tn34xx` opens and
-connects a profile; Settings can associate `.tn34xx` files with tn34xxw for
+(New, Edit, Rename, Copy, Delete). `em34xxw PROFILE.em34xx` opens and
+connects a profile; Settings can associate `.em34xx` files with em34xxw for
 the current user. The toolbar has Attn, SysRq and Reset, sent as the
 terminal's own keys. With TLS, a certificate that does not verify brings up
 a prompt: Stop, Connect (this time) or Trust Permanently (its SHA-256 goes
@@ -132,7 +132,7 @@ ROM images are not distributed. Put them in `roms/` under the names listed in
 Known-defective dumps are refused unless `--allow-bad-rom` is given.
 
 ```sh
-build/release/tn34xx --check-roms --model 3477
+build/release/em34xx --check-roms --model 3477
 ```
 
 The emulator is a clean implementation: it contains no code or data taken
@@ -142,11 +142,11 @@ instead.
 ## Running
 
 ```sh
-build/release/tn34xx --model 3477              # window + monitor on the terminal
-build/release/tn34xx --headless -S             # monitor only, CPU stopped at reset
-build/release/tn34xx-headless -S               # the same, from the build without SDL
-build/release/tn34xx --batch --rc script.rc    # automated run; exit code from the script
-build/release/tn34xx --gdb -S                  # GDB stub on 127.0.0.1:1234
+build/release/em34xx --model 3477              # window + monitor on the terminal
+build/release/em34xx --headless -S             # monitor only, CPU stopped at reset
+build/release/em34xx-headless -S               # the same, from the build without SDL
+build/release/em34xx --batch --rc script.rc    # automated run; exit code from the script
+build/release/em34xx --gdb -S                  # GDB stub on 127.0.0.1:1234
 ```
 
 One ROM serves every display subtype and language of a model. Choose the
@@ -157,7 +157,7 @@ terminal's language through its ID, so it is configured too:
 [docs/keyboard.md](docs/keyboard.md)).
 
 Configuration can also come from a TOML file (`--config`); see
-[tn34xx.example.toml](tn34xx.example.toml). `--dump-config` prints the
+[em34xx.example.toml](em34xx.example.toml). `--dump-config` prints the
 effective configuration.
 
 During bring-up, any access to an address or port that the model does not
@@ -183,14 +183,14 @@ assert expr msg   for scripts; failures give exit code 1
 ### GDB
 
 ```sh
-gdb-multiarch -x tools/tn34xx.gdb -ex 'target remote :1234'
+gdb-multiarch -x tools/em34xx.gdb -ex 'target remote :1234'
 ```
 
 The stub describes an i8086 target. `eip` is the linear address of CS:IP,
 and memory addresses are linear. `monitor <cmd>` runs any monitor command;
 its output streams to GDB while the command runs.
 
-[tools/tn34xx.gdb](tools/tn34xx.gdb) sets up 16-bit Intel-syntax
+[tools/em34xx.gdb](tools/em34xx.gdb) sets up 16-bit Intel-syntax
 disassembly, shows `monitor regs` and the next instructions at every stop,
 and adds segmented-address helpers (numbers are hex, as in the monitor;
 `SEG:OFF` and register names also work):
@@ -243,7 +243,7 @@ roms/ROMS.md   expected ROM files and hashes
 
 ## Licence
 
-tn34xx is free software, licensed under the GNU General Public License,
+em34xx is free software, licensed under the GNU General Public License,
 version 3 or (at your option) any later version (`GPL-3.0-or-later`); see
 [LICENSE](LICENSE). It contains no IBM code or data: the terminal firmware
 ROMs are not part of this project and must be supplied by the user.
@@ -252,4 +252,4 @@ Dependencies are under GPL-compatible licences: SDL3 (zlib), replxx (BSD),
 toml++ (MIT), and for tests doctest (MIT), nlohmann-json (MIT) and zlib. The
 optional TLS support uses the system OpenSSL on Linux (OpenSSL 3:
 Apache-2.0, compatible with GPLv3) and Windows' own SChannel. The licence
-notices of what is linked into `tn34xxw` are shown in its Help > About.
+notices of what is linked into `em34xxw` are shown in its Help > About.

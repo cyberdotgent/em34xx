@@ -17,7 +17,7 @@
 #include <memory>
 #include <string>
 
-namespace tn34xx {
+namespace em34xx {
 
 class Ibm3477KeyboardInterface;
 
@@ -138,4 +138,4 @@ private:
     uint8_t misc_ = 0;                     // 20015
 };
 
-} // namespace tn34xx
+} // namespace em34xx

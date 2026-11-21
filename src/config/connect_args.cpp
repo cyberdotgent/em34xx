@@ -3,7 +3,7 @@
 
 #include "util/strings.hpp"
 
-namespace tn34xx {
+namespace em34xx {
 
 namespace {
 
@@ -42,7 +42,7 @@ bool parse_connect_args(const std::vector<std::string>& args, const AppConfig& b
 
     // Build command-line options and let the command-line parser apply them
     // on top of the start-up configuration.
-    std::vector<std::string> cli = {"tn34xx", "--tn5250-host", host};
+    std::vector<std::string> cli = {"em34xx", "--tn5250-host", host};
     bool tls = false;
     bool port_given = !port.empty();
     if (port_given) { cli.push_back("--tn5250-port"); cli.push_back(port); }
@@ -108,4 +108,4 @@ bool parse_connect_args(const std::vector<std::string>& args, const AppConfig& b
     return true;
 }
 
-} // namespace tn34xx
+} // namespace em34xx

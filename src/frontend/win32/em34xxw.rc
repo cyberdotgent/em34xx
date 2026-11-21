@@ -1,19 +1,19 @@
-// tn34xxw resources: icons, toolbar images, menu, accelerators, dialogs,
+// em34xxw resources: icons, toolbar images, menu, accelerators, dialogs,
 // strings, version information and the application manifest.
 // Built with windres (MinGW-w64). Dialog units throughout.
 #include <windows.h>
 #include <commctrl.h>
 #include "resource.h"
-#include "tn34xx_version.h"
+#include "em34xx_version.h"
 
 #pragma code_page(65001)
 LANGUAGE LANG_ENGLISH, SUBLANG_ENGLISH_US
 
 // --- Manifest: Common Controls 6 (visual styles), DPI awareness, OS GUIDs --
-1 24 "tn34xxw.manifest"
+1 24 "em34xxw.manifest"
 
 // --- Icons and bitmaps (tools/gen_win32_assets.py) ---------------------------
-IDI_APP     ICON "res/tn34xxw.ico"
+IDI_APP     ICON "res/em34xxw.ico"
 IDI_PROFILE ICON "res/profile.ico"
 IDR_NOTICES RCDATA "res/notices.txt"
 IDB_TOOLBAR16 BITMAP "res/toolbar16.bmp"
@@ -109,7 +109,7 @@ BEGIN
     GROUPBOX        "Files", -1, 7, 131, 266, 54
     LTEXT           "", IDC_SET_FOLDER, 15, 143, 252, 16
     PUSHBUTTON      "&ROM Images...", IDC_SET_ROMS, 15, 163, 80, 14
-    PUSHBUTTON      "Open .tn34xx files with &tn34xxw...", IDC_SET_ASSOC, 101, 163, 140, 14
+    PUSHBUTTON      "Open .em34xx files with &em34xxw...", IDC_SET_ASSOC, 101, 163, 140, 14
     DEFPUSHBUTTON   "OK", IDOK, 159, 193, 54, 14
     PUSHBUTTON      "Cancel", IDCANCEL, 219, 193, 54, 14
 END
@@ -245,7 +245,7 @@ END
 
 IDD_ABOUT DIALOGEX 0, 0, 320, 250
 STYLE DS_SHELLFONT | DS_MODALFRAME | DS_CENTER | WS_POPUP | WS_CAPTION | WS_SYSMENU
-CAPTION "About tn34xxw"
+CAPTION "About em34xxw"
 FONT 8, "MS Shell Dlg", 400, 0, 1
 BEGIN
     ICON            IDI_APP, -1, 7, 7, 21, 20
@@ -259,7 +259,7 @@ END
 // --- Strings ------------------------------------------------------------------
 STRINGTABLE
 BEGIN
-    IDS_APP_TITLE        "tn34xx"
+    IDS_APP_TITLE        "em34xx"
     IDS_UNTITLED         "Untitled Profile"
     IDS_TB_PROFILES      "Connect to Profile"
     IDS_TB_CONNECT       "Connect"
@@ -274,19 +274,19 @@ BEGIN
     IDS_NO_PROFILE       "no profile"
     IDS_TLS_OFF          "TLS off"
     IDS_ROMS_MISSING     "The ROM images the terminal needs are missing or damaged. Import them to continue."
-    IDS_ASSOC_CONFIRM    "Open .tn34xx profile files with this copy of tn34xxw when you double-click them?\n\nThis writes file-type entries for your user account only (HKEY_CURRENT_USER\\Software\\Classes)."
-    IDS_ASSOC_DONE       ".tn34xx files now open with tn34xxw."
+    IDS_ASSOC_CONFIRM    "Open .em34xx profile files with this copy of em34xxw when you double-click them?\n\nThis writes file-type entries for your user account only (HKEY_CURRENT_USER\\Software\\Classes)."
+    IDS_ASSOC_DONE       ".em34xx files now open with em34xxw."
     IDS_SAVE_CHANGES     "Save the changes to the profile \"%s\"?"
     IDS_DELETE_CONFIRM   "Delete the profile \"%s\"?"
-    IDS_RESTART_NEEDED   "The new CRT type takes effect when tn34xxw is started again."
+    IDS_RESTART_NEEDED   "The new CRT type takes effect when em34xxw is started again."
     IDS_FILTER_ROMS      "ROM images (*.bin;*.rom)|*.bin;*.rom|All files (*.*)|*.*|"
-    IDS_FILE_TYPE_NAME   "tn34xx connection profile"
+    IDS_FILE_TYPE_NAME   "em34xx connection profile"
 END
 
 // --- Version ------------------------------------------------------------------
 VS_VERSION_INFO VERSIONINFO
-FILEVERSION     TN34XX_VERSION_MAJOR, TN34XX_VERSION_MINOR, TN34XX_VERSION_PATCH, 0
-PRODUCTVERSION  TN34XX_VERSION_MAJOR, TN34XX_VERSION_MINOR, TN34XX_VERSION_PATCH, 0
+FILEVERSION     EM34XX_VERSION_MAJOR, EM34XX_VERSION_MINOR, EM34XX_VERSION_PATCH, 0
+PRODUCTVERSION  EM34XX_VERSION_MAJOR, EM34XX_VERSION_MINOR, EM34XX_VERSION_PATCH, 0
 FILEFLAGSMASK   VS_FFI_FILEFLAGSMASK
 FILEFLAGS       0
 FILEOS          VOS_NT_WINDOWS32
@@ -297,14 +297,14 @@ BEGIN
     BEGIN
         BLOCK "040904B0"
         BEGIN
-            VALUE "CompanyName",      "tn34xx project"
-            VALUE "FileDescription",  "tn34xxw - IBM 34xx twinax terminal emulator"
-            VALUE "FileVersion",      TN34XX_VERSION_STRING
-            VALUE "InternalName",     "tn34xxw"
-            VALUE "LegalCopyright",   "tn34xx contributors"
-            VALUE "OriginalFilename", "tn34xxw.exe"
-            VALUE "ProductName",      "tn34xx"
-            VALUE "ProductVersion",   TN34XX_VERSION_STRING
+            VALUE "CompanyName",      "em34xx project"
+            VALUE "FileDescription",  "em34xxw - IBM 34xx twinax terminal emulator"
+            VALUE "FileVersion",      EM34XX_VERSION_STRING
+            VALUE "InternalName",     "em34xxw"
+            VALUE "LegalCopyright",   "em34xx contributors"
+            VALUE "OriginalFilename", "em34xxw.exe"
+            VALUE "ProductName",      "em34xx"
+            VALUE "ProductVersion",   EM34XX_VERSION_STRING
         END
     END
     BLOCK "VarFileInfo"

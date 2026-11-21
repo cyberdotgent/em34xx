@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// tn34xxw dialogs (templates in tn34xxw.rc): ROM images, settings, profile
+// em34xxw dialogs (templates in em34xxw.rc): ROM images, settings, profile
 // manager and editor, TLS settings, the TLS trust prompt, the keymap
 // editor and About. All modal; each returns once the user closes it.
 #pragma once
@@ -13,7 +13,7 @@
 
 #include <string>
 
-namespace tn34xx {
+namespace em34xx {
 
 class Model;
 
@@ -58,8 +58,8 @@ bool keymap_dialog(HWND owner, KeymapFile& file);
 
 void about_dialog(HWND owner, const UserDirs& dirs);
 
-// Per-user file type registration for .tn34xx (HKCU\Software\Classes).
+// Per-user file type registration for .em34xx (HKCU\Software\Classes).
 bool register_file_association(std::string& error);
 
 } // namespace win32
-} // namespace tn34xx
+} // namespace em34xx

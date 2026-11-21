@@ -4,7 +4,7 @@
 
 #include <cstdio>
 
-namespace tn34xx {
+namespace em34xx {
 
 namespace {
 
@@ -68,4 +68,4 @@ std::string sha256_hex(const uint8_t* data, size_t len) {
     return out;
 }
 
-} // namespace tn34xx
+} // namespace em34xx

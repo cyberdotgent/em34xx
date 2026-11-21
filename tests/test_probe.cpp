@@ -5,7 +5,7 @@
 
 #include <doctest/doctest.h>
 
-using namespace tn34xx;
+using namespace em34xx;
 
 TEST_CASE("probe device latches and peeks without side effects") {
     Bus bus(20);

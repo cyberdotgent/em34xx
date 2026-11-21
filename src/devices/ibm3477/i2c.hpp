@@ -17,7 +17,7 @@
 #include <string>
 #include <vector>
 
-namespace tn34xx {
+namespace em34xx {
 
 // 24C01..24C16-style EEPROM: an 8-bit word address, larger parts take the
 // upper address bits from the device address (block select). Writes wrap
@@ -89,4 +89,4 @@ private:
     std::vector<uint8_t> cur_, last_;
 };
 
-} // namespace tn34xx
+} // namespace em34xx

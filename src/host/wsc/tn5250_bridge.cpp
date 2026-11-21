@@ -6,7 +6,7 @@
 
 #include <algorithm>
 
-namespace tn34xx {
+namespace em34xx {
 namespace wsc {
 
 Tn5250Config station_session_config(const Tn5250Config& tn5250, const StationConfig& station, bool first_display,
@@ -299,4 +299,4 @@ std::unique_ptr<TwinaxHost> make_tn5250_bridge(const TwinaxConfig& twinax, const
 }
 
 } // namespace wsc
-} // namespace tn34xx
+} // namespace em34xx

@@ -7,8 +7,8 @@
 
 #include <memory>
 
-namespace tn34xx {
+namespace em34xx {
 
 std::unique_ptr<Frontend> make_sdl_frontend();
 
-} // namespace tn34xx
+} // namespace em34xx

@@ -5,7 +5,7 @@
 #include "util/log.hpp"
 #include "util/strings.hpp"
 
-namespace tn34xx {
+namespace em34xx {
 
 // ---------------------------------------------------------------------------
 // Interrupt controller
@@ -247,4 +247,4 @@ std::string Ibm3477System::describe() const {
     return t;
 }
 
-} // namespace tn34xx
+} // namespace em34xx

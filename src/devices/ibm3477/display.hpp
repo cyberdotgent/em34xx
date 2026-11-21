@@ -51,7 +51,7 @@
 #include <functional>
 #include <string>
 
-namespace tn34xx {
+namespace em34xx {
 
 class I2cBus;
 
@@ -152,4 +152,4 @@ private:
     uint8_t sig_result_ = 0;
 };
 
-} // namespace tn34xx
+} // namespace em34xx

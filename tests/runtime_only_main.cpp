@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Link check for end-user GUI builds: a minimal application that links only
-// the runtime libraries (tn34xx_runtime and below), with a stub front end,
+// the runtime libraries (em34xx_runtime and below), with a stub front end,
 // no developer tooling. Building it proves the runtime does not need the
 // monitor, the console or the GDB stub; running it checks that tooling
 // options are refused.
@@ -14,10 +14,10 @@
 
 namespace {
 
-class StubFrontend : public tn34xx::Frontend {
+class StubFrontend : public em34xx::Frontend {
 public:
     const char* name() const override { return "stub"; }
-    bool run(tn34xx::Application& app, const tn34xx::FrontendOptions&, std::string&) override {
+    bool run(em34xx::Application& app, const em34xx::FrontendOptions&, std::string&) override {
         // What a GUI does: status, then quit.
         std::printf("controller: %s\n", app.host_link().controller_kind().c_str());
         app.request_quit(0);
@@ -29,7 +29,7 @@ public:
 };
 
 int run_app(std::vector<const char*> args) {
-    tn34xx::Application app(std::make_unique<StubFrontend>(), nullptr);
+    em34xx::Application app(std::make_unique<StubFrontend>(), nullptr);
     return app.main(int(args.size()), const_cast<char**>(args.data()));
 }
 
@@ -37,13 +37,13 @@ int run_app(std::vector<const char*> args) {
 
 int main() {
     int failures = 0;
-    if (run_app({"tn34xx", "--version"}) != 0) {
+    if (run_app({"em34xx", "--version"}) != 0) {
         std::puts("FAIL: --version");
         ++failures;
     }
     // Tooling options must be refused without the developer tooling.
     for (const char* opt : {"--gdb", "--headless", "--batch", "-S"}) {
-        if (run_app({"tn34xx", opt}) != 2) {
+        if (run_app({"em34xx", opt}) != 2) {
             std::printf("FAIL: %s accepted without tooling\n", opt);
             ++failures;
         }

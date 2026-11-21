@@ -7,7 +7,7 @@
 
 #include <algorithm>
 
-namespace tn34xx {
+namespace em34xx {
 
 namespace {
 constexpr double kDisplayAspect = 4.0 / 3.0;
@@ -461,4 +461,4 @@ uint8_t Ibm3477Display::vdo_shim_signature(int selector) const {
     return v;
 }
 
-} // namespace tn34xx
+} // namespace em34xx

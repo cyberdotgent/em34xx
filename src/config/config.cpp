@@ -10,7 +10,7 @@
 #include <cstring>
 #include <sstream>
 
-namespace tn34xx {
+namespace em34xx {
 
 namespace {
 
@@ -497,4 +497,4 @@ std::string config_to_toml(const AppConfig& cfg) {
     return os.str();
 }
 
-} // namespace tn34xx
+} // namespace em34xx

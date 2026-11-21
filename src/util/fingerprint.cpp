@@ -3,7 +3,7 @@
 
 #include "util/strings.hpp"
 
-namespace tn34xx {
+namespace em34xx {
 
 namespace {
 
@@ -57,4 +57,4 @@ bool parse_sha256_fingerprint(const std::string& text, Sha256Digest& out) {
     return true;
 }
 
-} // namespace tn34xx
+} // namespace em34xx

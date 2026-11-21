@@ -6,7 +6,7 @@
 
 #include <vector>
 
-using namespace tn34xx;
+using namespace em34xx;
 
 namespace {
 

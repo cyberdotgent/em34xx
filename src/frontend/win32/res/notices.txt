@@ -1,7 +1,7 @@
-Third-party software in tn34xxw
+Third-party software in em34xxw
 ===============================
 
-tn34xxw contains the following third-party software. Their licences
+em34xxw contains the following third-party software. Their licences
 require these notices to accompany binary distributions.
 
 -------------------------------------------------------------------------------

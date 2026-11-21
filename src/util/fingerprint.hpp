@@ -12,7 +12,7 @@
 #include <cstdint>
 #include <string>
 
-namespace tn34xx {
+namespace em34xx {
 
 using Sha256Digest = std::array<uint8_t, 32>;
 
@@ -23,4 +23,4 @@ std::string format_sha256_fingerprint(const Sha256Digest& digest);
 // forms.
 bool parse_sha256_fingerprint(const std::string& text, Sha256Digest& out);
 
-} // namespace tn34xx
+} // namespace em34xx

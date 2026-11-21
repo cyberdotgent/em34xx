@@ -11,7 +11,7 @@
 #include <cstdint>
 #include <string>
 
-namespace tn34xx {
+namespace em34xx {
 namespace tn5250 {
 
 class CodePage {
@@ -43,4 +43,4 @@ private:
 void append_utf8(std::string& out, char32_t cp);
 
 } // namespace tn5250
-} // namespace tn34xx
+} // namespace em34xx

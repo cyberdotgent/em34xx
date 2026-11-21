@@ -16,8 +16,8 @@
 #include <string>
 #include <thread>
 
-using namespace tn34xx;
-using namespace tn34xx::tn5250;
+using namespace em34xx;
+using namespace em34xx::tn5250;
 
 namespace {
 

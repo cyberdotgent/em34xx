@@ -3,7 +3,7 @@
 
 #include <doctest/doctest.h>
 
-using namespace tn34xx;
+using namespace em34xx;
 
 TEST_CASE("RAM, ROM and open bus") {
     Bus bus(20);

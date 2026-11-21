@@ -5,7 +5,7 @@
 #include "util/log.hpp"
 #include "util/strings.hpp"
 
-namespace tn34xx {
+namespace em34xx {
 
 namespace {
 constexpr uint8_t kHold = 0x01;
@@ -151,4 +151,4 @@ std::string Ibm3477KeyboardInterface::describe() const {
                   (unsigned long long)received_, kbd_.output_size(), kbd_.id1(), kbd_.id2());
 }
 
-} // namespace tn34xx
+} // namespace em34xx

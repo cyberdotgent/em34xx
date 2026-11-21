@@ -3,7 +3,7 @@
 
 #include "util/strings.hpp"
 
-namespace tn34xx {
+namespace em34xx {
 
 namespace {
 
@@ -270,4 +270,4 @@ DisasmResult disassemble(const DisasmReader& read, uint16_t cs, uint16_t ip, Cpu
     return d.run();
 }
 
-} // namespace tn34xx
+} // namespace em34xx

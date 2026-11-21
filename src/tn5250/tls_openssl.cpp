@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // TLS transport, OpenSSL backend (Linux and the BSDs): the host's own
-// libssl/libcrypto, found by CMake outside vcpkg (TN34XX_TLS). Implicit TLS
+// libssl/libcrypto, found by CMake outside vcpkg (EM34XX_TLS). Implicit TLS
 // from the first byte, port 992 by convention.
 //
 // The socket stays in net/socket.cpp; OpenSSL reaches it through a small
@@ -38,7 +38,7 @@
 #error "the TLS transport needs OpenSSL 1.1.1 or newer"
 #endif
 
-namespace tn34xx {
+namespace em34xx {
 namespace tn5250 {
 
 namespace {
@@ -84,7 +84,7 @@ long sock_bio_ctrl(BIO*, int cmd, long, void*) { return cmd == BIO_CTRL_FLUSH ? 
 
 BIO_METHOD* socket_bio_method() {
     static BIO_METHOD* method = [] {
-        BIO_METHOD* m = BIO_meth_new(BIO_get_new_index() | BIO_TYPE_SOURCE_SINK, "tn34xx socket");
+        BIO_METHOD* m = BIO_meth_new(BIO_get_new_index() | BIO_TYPE_SOURCE_SINK, "em34xx socket");
         if (m) {
             BIO_meth_set_write(m, sock_bio_write);
             BIO_meth_set_read(m, sock_bio_read);
@@ -425,4 +425,4 @@ std::unique_ptr<Transport> make_tls_transport(const Tn5250Config& cfg, std::stri
 }
 
 } // namespace tn5250
-} // namespace tn34xx
+} // namespace em34xx

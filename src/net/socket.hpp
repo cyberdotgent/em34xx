@@ -7,7 +7,7 @@
 #include <cstdint>
 #include <string>
 
-namespace tn34xx {
+namespace em34xx {
 
 class TcpSocket {
 public:
@@ -42,4 +42,4 @@ private:
     std::string peer_;
 };
 
-} // namespace tn34xx
+} // namespace em34xx

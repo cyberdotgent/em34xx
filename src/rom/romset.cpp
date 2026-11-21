@@ -10,7 +10,7 @@
 #include <windows.h>
 #endif
 
-namespace tn34xx {
+namespace em34xx {
 
 namespace {
 // fopen with a UTF-8 path, also on Windows (where fopen takes the ANSI
@@ -138,4 +138,4 @@ const RomSpec* rom_spec_for_data(const std::vector<RomSpec>& specs, const std::v
     return nullptr;
 }
 
-} // namespace tn34xx
+} // namespace em34xx

@@ -27,42 +27,42 @@ layers below it. `cmake/check_layers.cmake` (the `layering` test) fails when
 an `#include` crosses the layering.
 
 ```
-tn34xx_emu        util, cpu, bus, rom, machine   (Machine, Emulator, Cpu, interfaces)
-  ^-- tn34xx_net        net                      sockets
-  ^-- tn34xx_machines   devices, models, input   terminal hardware, model registry
-  ^-- tn34xx_host       host (minus the bridge)  Twinax hosts, workstation controller
-  |     ^-- tn34xx_tn5250   tn5250 (+ net)       TN5250 client, TLS
-  |     ^-- tn34xx_bridge   host/wsc/tn5250_bridge  controller + TN5250 sessions
-  ^-- tn34xx_present    present                  CRT rendering, display profiles
-tn34xx_runtime    config, app                    Application, HostLink  (-> machines, bridge, present)
-  ^-- tn34xx_devtools   monitor, gdb, devtools   monitor, replxx console, GDB stub, probes
-  ^-- tn34xx_frontend_sdl  frontend/sdl          SDL3 front end
-  ^-- tn34xx_frontend_win32 frontend/win32       Win32 front end (WIN32 only)
+em34xx_emu        util, cpu, bus, rom, machine   (Machine, Emulator, Cpu, interfaces)
+  ^-- em34xx_net        net                      sockets
+  ^-- em34xx_machines   devices, models, input   terminal hardware, model registry
+  ^-- em34xx_host       host (minus the bridge)  Twinax hosts, workstation controller
+  |     ^-- em34xx_tn5250   tn5250 (+ net)       TN5250 client, TLS
+  |     ^-- em34xx_bridge   host/wsc/tn5250_bridge  controller + TN5250 sessions
+  ^-- em34xx_present    present                  CRT rendering, display profiles
+em34xx_runtime    config, app                    Application, HostLink  (-> machines, bridge, present)
+  ^-- em34xx_devtools   monitor, gdb, devtools   monitor, replxx console, GDB stub, probes
+  ^-- em34xx_frontend_sdl  frontend/sdl          SDL3 front end
+  ^-- em34xx_frontend_win32 frontend/win32       Win32 front end (WIN32 only)
 ```
 
 Front ends may include everything the runtime links (models, input, the
 TN5250 client's headers) but never the tooling.
 
-Executables, one per front end (names are CMake variables `TN34XX_EXE_*`):
+Executables, one per front end (names are CMake variables `EM34XX_EXE_*`):
 
 | Executable | Links | Notes |
 | --- | --- | --- |
-| `tn34xx` | frontend_sdl, devtools, runtime | only when SDL3 is found (`TN34XX_FRONTEND_SDL`) |
-| `tn34xx-headless` | devtools, runtime | always built; no SDL |
-| `tn34xxw` | frontend_win32, runtime | WIN32 only, GUI subsystem, end-user build; see [frontend-win32.md](frontend-win32.md) |
-| `tn34xx.app` (future) | frontend_cocoa, runtime (devtools optional) | APPLE only, MACOSX_BUNDLE, end-user build |
+| `em34xx` | frontend_sdl, devtools, runtime | only when SDL3 is found (`EM34XX_FRONTEND_SDL`) |
+| `em34xx-headless` | devtools, runtime | always built; no SDL |
+| `em34xxw` | frontend_win32, runtime | WIN32 only, GUI subsystem, end-user build; see [frontend-win32.md](frontend-win32.md) |
+| `em34xx.app` (future) | frontend_cocoa, runtime (devtools optional) | APPLE only, MACOSX_BUNDLE, end-user build |
 
 End-user GUI builds expose only the emulator (display, keyboard, sound,
 settings) and connect/disconnect to a TN5250 host. Their user interface
 offers no monitor console, GDB stub, probes, memory tools or screenshots.
-They **may** still link `tn34xx_devtools` (for example to enable a GDB stub
+They **may** still link `em34xx_devtools` (for example to enable a GDB stub
 from the command line or a config file when diagnosing a problem); the
 requirement is only that the GUI does not surface it. The runtime libraries
 must not *need* the dev tooling: the `runtime_only` test links a minimal
-application against `tn34xx_runtime` alone to keep that true.
+application against `em34xx_runtime` alone to keep that true.
 The core keeps its debug hooks generic and optional (breakpoints,
 watchpoints, `Machine::trace_hook`, the unmapped-access log); nothing in
-`tn34xx_emu`..`tn34xx_runtime` refers to the monitor or the GDB stub.
+`em34xx_emu`..`em34xx_runtime` refers to the monitor or the GDB stub.
 
 ## Application
 
@@ -132,7 +132,7 @@ What it uses:
   (host, port, station, certificate details, reason) on the session's I/O
   thread and returns Reject, AcceptOnce or AcceptPermanently; it may block
   while the UI asks. The front end records a permanent decision itself
-  (tn34xxw pins the fingerprint in the profile). It must answer pending
+  (em34xxw pins the fingerprint in the profile). It must answer pending
   requests before it disconnects (the session threads are joined). The
   layers: `tn5250/tls_trust.hpp` (types), `Transport::set_trust_handler()`
   and `tls_accept_peer()` (both backends), `tn5250::Client`,
@@ -145,8 +145,8 @@ What it uses:
   under the machine lock; queue them for the audio thread.
 - **Control.** The Application API above.
 
-To add `tn34xx.app` (as `tn34xxw` was): a `tn34xx_frontend_<name>` library
-linking `tn34xx_runtime`, a `main` that constructs the front end and
+To add `em34xx.app` (as `em34xxw` was): a `em34xx_frontend_<name>` library
+linking `em34xx_runtime`, a `main` that constructs the front end and
 `Application(frontend, nullptr)`, and an executable target guarded by
 `if(APPLE)`; `CMakeLists.txt` has a commented stub. End-user data
 (settings, profiles, the user folder, ROM status, keymap files as text) is
@@ -192,7 +192,7 @@ What is in place so a protected-mode core slots in:
 - `SystemRegs` (MSW, GDTR, IDTR, LDTR, TR and the segment descriptor
   caches) via `Cpu::system_regs()` / `protected_mode()`. The monitor's
   `regs` prints them when present; the GDB stub then appends an
-  `org.tn34xx.i286.system` feature (msw, gdtr/idtr base and limit, ldtr,
+  `org.em34xx.i286.system` feature (msw, gdtr/idtr base and limit, ldtr,
   tr as registers 32..38, read-only).
 - 24-bit addressing: `ModelInfo::address_bits` sizes the Bus page table
   (65536 pages for 16 MiB), the breakpoint bitmap (2 MiB) and the CPU's

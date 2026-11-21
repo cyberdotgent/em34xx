@@ -7,7 +7,7 @@
 
 #include <set>
 
-namespace tn34xx {
+namespace em34xx {
 
 void TlsTrustBroker::set_handler(tn5250::TlsTrustHandler fn) {
     std::lock_guard<std::mutex> g(mu_);
@@ -121,9 +121,9 @@ std::string HostLink::status() const {
     return emu_.with_machine([](Machine& m) { return m.twinax_host() ? m.twinax_host()->describe() : std::string(); });
 }
 
-} // namespace tn34xx
+} // namespace em34xx
 
-namespace tn34xx {
+namespace em34xx {
 
 std::vector<TwinaxSessionStatus> HostLink::sessions() const {
     return emu_.with_machine([](Machine& m) {
@@ -131,4 +131,4 @@ std::vector<TwinaxSessionStatus> HostLink::sessions() const {
     });
 }
 
-} // namespace tn34xx
+} // namespace em34xx

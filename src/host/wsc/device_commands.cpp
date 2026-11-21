@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "host/wsc/device_commands.hpp"
 
-namespace tn34xx {
+namespace em34xx {
 namespace wsc {
 
 namespace {
@@ -119,4 +119,4 @@ TwinaxMessage make_poll(uint8_t station, bool reset_lpe) {
 }
 
 } // namespace wsc
-} // namespace tn34xx
+} // namespace em34xx

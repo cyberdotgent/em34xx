@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: GPL-3.0-or-later
-"""Generate the tn34xxw icons and toolbar bitmaps (original artwork).
+"""Generate the em34xxw icons and toolbar bitmaps (original artwork).
 
 Writes into src/frontend/win32/res/:
-  tn34xxw.ico      application icon: a terminal (16, 24, 32, 48, 64 px)
-  profile.ico      .tn34xx document icon (16, 32, 48 px)
+  em34xxw.ico      application icon: a terminal (16, 24, 32, 48, 64 px)
+  profile.ico      .em34xx document icon (16, 32, 48 px)
   toolbar16.bmp    toolbar strip, 6 glyphs, 32-bit BGRA with alpha
   toolbar24.bmp    the same at 24 px (picked at 120-167 dpi)
   toolbar32.bmp    the same at 32 px (168 dpi and more)
@@ -250,7 +250,7 @@ def write_strip(path, glyphs, size):
 
 def main():
     os.makedirs(OUT, exist_ok=True)
-    write_ico(os.path.join(OUT, "tn34xxw.ico"), g_terminal(), [16, 24, 32, 48, 64])
+    write_ico(os.path.join(OUT, "em34xxw.ico"), g_terminal(), [16, 24, 32, 48, 64])
     write_ico(os.path.join(OUT, "profile.ico"), g_document(), [16, 32, 48])
     glyphs = [g_profiles(), g_connect(), g_save(), g_disconnect(), g_settings(), g_keymap()]
     for s in (16, 24, 32):

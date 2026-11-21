@@ -6,7 +6,7 @@
 
 #include <array>
 
-namespace tn34xx {
+namespace em34xx {
 namespace win32 {
 
 std::wstring widen(const std::string& s) {
@@ -241,4 +241,4 @@ std::string module_path() {
 }
 
 } // namespace win32
-} // namespace tn34xx
+} // namespace em34xx

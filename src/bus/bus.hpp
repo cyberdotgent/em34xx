@@ -17,7 +17,7 @@
 #include <string>
 #include <vector>
 
-namespace tn34xx {
+namespace em34xx {
 
 enum class UnmappedPolicy { Stop, Log, Ignore };
 const char* unmapped_policy_name(UnmappedPolicy p);
@@ -164,4 +164,4 @@ private:
     }
 };
 
-} // namespace tn34xx
+} // namespace em34xx

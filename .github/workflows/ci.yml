@@ -24,7 +24,7 @@ jobs:
     name: Linux build and tests
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Install build dependencies
         run: |
@@ -66,7 +66,7 @@ jobs:
     name: Windows x64 build
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Install MinGW-w64 and build tools
         run: |
@@ -95,15 +95,15 @@ jobs:
         run: cmake --preset mingw-x64-release
 
       - name: Build
-        run: cmake --build --preset mingw-x64-release --target tn34xxw tn34xx-headless
+        run: cmake --build --preset mingw-x64-release --target em34xxw em34xx-headless
 
       - name: Package
         id: package
         run: |
-          version=$(sed -n 's/^#define TN34XX_VERSION_STRING "\(.*\)"$/\1/p' build/mingw-x64-release/generated/tn34xx_version.h)
-          name="tn34xx-${version}-win64"
+          version=$(sed -n 's/^#define EM34XX_VERSION_STRING "\(.*\)"$/\1/p' build/mingw-x64-release/generated/em34xx_version.h)
+          name="em34xx-${version}-win64"
           mkdir -p "dist/$name"
-          cp build/mingw-x64-release/tn34xxw.exe build/mingw-x64-release/tn34xx-headless.exe "dist/$name/"
+          cp build/mingw-x64-release/em34xxw.exe build/mingw-x64-release/em34xx-headless.exe "dist/$name/"
           cp LICENSE README.md "dist/$name/"
           (cd dist && zip -qr "$name.zip" "$name")
           echo "name=$name" >> "$GITHUB_OUTPUT"
@@ -150,6 +150,6 @@ jobs:
         run: |
           gh release create "$GITHUB_REF_NAME" \
             --repo "$GITHUB_REPOSITORY" \
-            --title "tn34xx $GITHUB_REF_NAME" \
+            --title "em34xx $GITHUB_REF_NAME" \
             --generate-notes \
             "dist/${{ needs.windows.outputs.name }}.zip"

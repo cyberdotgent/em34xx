@@ -27,7 +27,7 @@ static void close_sock(sock_t s) { ::close(s); }
 static bool ensure_init() { return true; }
 #endif
 
-namespace tn34xx {
+namespace em34xx {
 
 namespace {
 
@@ -173,4 +173,4 @@ bool TcpSocket::send_all(const void* buf, size_t len) {
     return true;
 }
 
-} // namespace tn34xx
+} // namespace em34xx

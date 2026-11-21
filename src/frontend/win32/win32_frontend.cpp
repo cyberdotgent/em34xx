@@ -26,7 +26,7 @@
 #include <mutex>
 #include <set>
 
-namespace tn34xx {
+namespace em34xx {
 
 namespace {
 
@@ -46,7 +46,7 @@ constexpr UINT_PTR kTimerRaster = 1;
 constexpr UINT_PTR kTimerStatus = 2;
 constexpr auto kMinRasterInterval = std::chrono::milliseconds(15);
 
-const wchar_t kWindowClass[] = L"tn34xxw.Terminal";
+const wchar_t kWindowClass[] = L"em34xxw.Terminal";
 
 // --- TLS trust requests: I/O threads wait, the UI thread answers ------------
 
@@ -601,7 +601,7 @@ void Win32Frontend::update_title() {
     if (!prof.empty()) t = prof + " - ";
     {
         std::lock_guard<std::mutex> g(text_mu_);
-        t += title_.empty() ? "IBM " + model_name_ + " - tn34xx" : title_;
+        t += title_.empty() ? "IBM " + model_name_ + " - em34xx" : title_;
         if (!status_note_.empty()) t += " - " + status_note_;
     }
     SetWindowTextW(hwnd_.load(), widen(t).c_str());
@@ -667,7 +667,7 @@ void Win32Frontend::connect_profile(const Profile& p) {
     HWND h = hwnd_.load();
     if (p.model != model_name_) {
         error_box(h, "This profile is for the IBM " + p.model + "; the emulator runs an IBM " + model_name_ +
-                         ". Change the model in Settings and start tn34xxw again.");
+                         ". Change the model in Settings and start em34xxw again.");
         return;
     }
     AppConfig cfg;
@@ -801,7 +801,7 @@ void Win32Frontend::edit_keymap() {
     }
     if (!keymap_dialog(h, file)) return;
     if (!write_text_file(dirs().keymap_file(),
-                         keymap_file_to_toml(file, "tn34xx host keymap (written by tn34xxw; docs/keyboard.md).\n"
+                         keymap_file_to_toml(file, "em34xx host keymap (written by em34xxw; docs/keyboard.md).\n"
                                                    "Applies to every profile."),
                          error)) {
         error_box(h, error);
@@ -1120,10 +1120,10 @@ bool win32_prepare(Win32Launch& launch) {
     icc.dwICC = ICC_BAR_CLASSES | ICC_LISTVIEW_CLASSES | ICC_STANDARD_CLASSES | ICC_WIN95_CLASSES | ICC_LINK_CLASS;
     InitCommonControlsEx(&icc);
 
-    // The user folder: %APPDATA%\tn34xx, or TN34XX_USER_DIR (portable use, tests).
+    // The user folder: %APPDATA%\em34xx, or EM34XX_USER_DIR (portable use, tests).
     std::string root;
     wchar_t env[MAX_PATH * 2];
-    const DWORD n = GetEnvironmentVariableW(L"TN34XX_USER_DIR", env, DWORD(sizeof env / sizeof env[0]));
+    const DWORD n = GetEnvironmentVariableW(L"EM34XX_USER_DIR", env, DWORD(sizeof env / sizeof env[0]));
     if (n > 0 && n < sizeof env / sizeof env[0]) {
         root = narrow(env);
     } else {
@@ -1147,7 +1147,7 @@ bool win32_prepare(Win32Launch& launch) {
         launch.settings = AppSettings();
     }
 
-    // Command line: an optional .tn34xx profile to open and connect.
+    // Command line: an optional .em34xx profile to open and connect.
     int argc = 0;
     LPWSTR* argv = CommandLineToArgvW(GetCommandLineW(), &argc);
     for (int i = 1; argv && i < argc; ++i) {
@@ -1155,7 +1155,7 @@ bool win32_prepare(Win32Launch& launch) {
         if (launch.profile_path.empty() && !a.empty() && a[0] != '-') launch.profile_path = a;
         else {
             error_box(nullptr, "Unknown command-line argument: " + a +
-                                   "\n\nUsage: tn34xxw [PROFILE.tn34xx]");
+                                   "\n\nUsage: em34xxw [PROFILE.em34xx]");
         }
     }
     if (argv) LocalFree(argv);
@@ -1175,8 +1175,8 @@ bool win32_prepare(Win32Launch& launch) {
     // First start (or ROMs gone): the ROM manager.
     if (!model_roms_ready(*model, launch.dirs->roms()) &&
         !win32::rom_manager_dialog(nullptr, *launch.dirs, model)) {
-        error_box(nullptr, "tn34xxw cannot start the IBM " + model->info().name +
-                               " without its ROM images. Import them when you start tn34xxw again.");
+        error_box(nullptr, "em34xxw cannot start the IBM " + model->info().name +
+                               " without its ROM images. Import them when you start em34xxw again.");
         launch.exit_code = 1;
         return false;
     }
@@ -1194,7 +1194,7 @@ bool win32_prepare(Win32Launch& launch) {
             error_box(nullptr, error + "\n\nThe default (PCOMM) keymap is used.");
     }
 
-    launch.args = {"tn34xxw",
+    launch.args = {"em34xxw",
                    "--model",
                    model->info().name,
                    "--rom-dir",
@@ -1210,7 +1210,7 @@ bool win32_prepare(Win32Launch& launch) {
                    "--log",
                    "info",
                    "--log-file",
-                   runtime_path(launch.dirs->root() + "\\tn34xxw.log")};
+                   runtime_path(launch.dirs->root() + "\\em34xxw.log")};
     if (!launch.settings.crt) launch.args.push_back("--no-crt");
     return true;
 }
@@ -1226,4 +1226,4 @@ int win32_run(Application& app, Win32Launch& launch) {
     return app.run();
 }
 
-} // namespace tn34xx
+} // namespace em34xx

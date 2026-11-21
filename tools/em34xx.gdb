@@ -1,8 +1,8 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
-# GDB helper for the tn34xx GDB stub.
+# GDB helper for the em34xx GDB stub.
 #
-#   gdb-multiarch -x tools/tn34xx.gdb -ex 'target remote :1234'
-#   gdb-multiarch -x tools/tn34xx.gdb        # then: tnc [port]
+#   gdb-multiarch -x tools/em34xx.gdb -ex 'target remote :1234'
+#   gdb-multiarch -x tools/em34xx.gdb        # then: tnc [port]
 #
 # Can be sourced before connecting; nothing here talks to the target until a
 # command is used or the target stops.
@@ -21,15 +21,15 @@
 #   wseg SEG OFF [LEN]    write watchpoint on LEN (default 1) bytes at SEG:OFF
 #   tnc  [PORT]           target remote :PORT (default 1234)
 #
-# SEG and OFF are hexadecimal like in the tn34xx monitor ("f000", "0x54",
+# SEG and OFF are hexadecimal like in the em34xx monitor ("f000", "0x54",
 # "54h"; "#123" is decimal) or a register name ("cs", "ds", "si", ...).
 # "SEG:OFF" as a single argument also works. Anything else is evaluated as a
 # GDB expression. Without Python, simple CLI versions are defined instead;
 # they take GDB expressions (write 0xf000, not f000).
 #
-# On every stop the hook prints the tn34xx register view ("monitor regs",
+# On every stop the hook prints the em34xx register view ("monitor regs",
 # which includes the current instruction) and the next few instructions.
-# "monitor <cmd>" runs any tn34xx monitor command (see docs/monitor.md).
+# "monitor <cmd>" runs any em34xx monitor command (see docs/monitor.md).
 
 set osabi none
 set architecture i8086
@@ -122,7 +122,7 @@ define tnc
   end
 end
 document tnc
-Connect to the tn34xx GDB stub.  Usage: tnc [PORT]  (default 1234)
+Connect to the em34xx GDB stub.  Usage: tnc [PORT]  (default 1234)
 end
 
 # --- Python versions with monitor-style argument parsing ---
@@ -238,7 +238,7 @@ class TnWseg(_TnCommand):
 
 
 class TnConnect(gdb.Command):
-    """Connect to the tn34xx GDB stub.  Usage: tnc [PORT|HOST:PORT]  (default :1234)"""
+    """Connect to the em34xx GDB stub.  Usage: tnc [PORT|HOST:PORT]  (default :1234)"""
 
     def __init__(self):
         super().__init__("tnc", gdb.COMMAND_USER)

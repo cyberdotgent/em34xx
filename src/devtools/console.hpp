@@ -8,7 +8,7 @@
 #include <memory>
 #include <string>
 
-namespace tn34xx {
+namespace em34xx {
 
 class Emulator;
 class Monitor;
@@ -27,4 +27,4 @@ public:
 // no history file).
 std::unique_ptr<Console> make_terminal_console(Monitor& monitor, Emulator& emu, const std::string& history_file);
 
-} // namespace tn34xx
+} // namespace em34xx

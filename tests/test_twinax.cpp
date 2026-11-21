@@ -8,7 +8,7 @@
 
 #include <doctest/doctest.h>
 
-using namespace tn34xx;
+using namespace em34xx;
 
 TEST_CASE("twinax frame encoding round-trips") {
     for (unsigned addr = 0; addr < 8; ++addr) {
@@ -94,7 +94,7 @@ TEST_CASE("message station and host events") {
 }
 
 TEST_CASE("station list from the command line") {
-    const char* argv[] = {"tn34xx", "--station", "0:display", "--station", "1:printer:PRT01", "--station", "3"};
+    const char* argv[] = {"em34xx", "--station", "0:display", "--station", "1:printer:PRT01", "--station", "3"};
     AppConfig cfg;
     std::string err;
     REQUIRE(parse_command_line(7, const_cast<char**>(argv), cfg, err));
@@ -118,15 +118,15 @@ TEST_CASE("station list from the command line") {
     dp.stations[0].type = StationType::Printer;
     CHECK(dp.validate(2, 1).find("at most 1") != std::string::npos);
 
-    const char* bad[] = {"tn34xx", "--station", "7:display"};
+    const char* bad[] = {"em34xx", "--station", "7:display"};
     AppConfig b;
     CHECK_FALSE(parse_command_line(3, const_cast<char**>(bad), b, err));
-    const char* badtype[] = {"tn34xx", "--station", "2:plotter"};
+    const char* badtype[] = {"em34xx", "--station", "2:plotter"};
     CHECK_FALSE(parse_command_line(3, const_cast<char**>(badtype), b, err));
 }
 
 TEST_CASE("legacy station address and duplicate addresses") {
-    const char* argv[] = {"tn34xx", "--station-address", "5"};
+    const char* argv[] = {"em34xx", "--station-address", "5"};
     AppConfig cfg;
     std::string err;
     REQUIRE(parse_command_line(3, const_cast<char**>(argv), cfg, err));
@@ -142,7 +142,7 @@ TEST_CASE("legacy station address and duplicate addresses") {
 }
 
 TEST_CASE("station list from TOML") {
-    const auto path = std::filesystem::temp_directory_path() / "tn34xx_test_stations.toml";
+    const auto path = std::filesystem::temp_directory_path() / "em34xx_test_stations.toml";
     {
         std::ofstream f(path);
         f << "[twinax]\nhost = \"script\"\n"
@@ -162,7 +162,7 @@ TEST_CASE("station list from TOML") {
     const std::string toml = config_to_toml(cfg);
     CHECK(toml.find("[[twinax.station]]") != std::string::npos);
     const std::string arg = "--config=" + path.string();
-    const char* argv[] = {"tn34xx", arg.c_str(), "--station", "2"};
+    const char* argv[] = {"em34xx", arg.c_str(), "--station", "2"};
     AppConfig c2;
     REQUIRE(parse_command_line(4, const_cast<char**>(argv), c2, err));
     REQUIRE(c2.twinax.stations.size() == 1);

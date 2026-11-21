@@ -13,7 +13,7 @@
 #include <string>
 #include <vector>
 
-namespace tn34xx {
+namespace em34xx {
 namespace wsc {
 
 class LinkScheduler : public TwinaxHost {
@@ -40,4 +40,4 @@ private:
 };
 
 } // namespace wsc
-} // namespace tn34xx
+} // namespace em34xx

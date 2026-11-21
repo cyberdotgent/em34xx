@@ -17,8 +17,8 @@
 #include <string>
 #include <vector>
 
-using namespace tn34xx;
-using namespace tn34xx::tn5250;
+using namespace em34xx;
+using namespace em34xx::tn5250;
 
 namespace {
 
@@ -149,7 +149,7 @@ TEST_CASE("TLS config: verify modes, versions and validation") {
 TEST_CASE("TLS config: TOML [tn5250], station overrides and the command line") {
     const std::string pin = format_sha256_fingerprint(sample_digest());
     {
-        const std::string path = write_temp("tn34xx_test_tls1.toml",
+        const std::string path = write_temp("em34xx_test_tls1.toml",
                                             "[tn5250]\nhost = \"h\"\nport = 992\ntls = true\n"
                                             "tls_verify = \"none\"\ntls_min_version = \"1.0\"\n"
                                             "tls_max_version = \"1.2\"\n");
@@ -162,7 +162,7 @@ TEST_CASE("TLS config: TOML [tn5250], station overrides and the command line") {
         CHECK(cfg.tn5250.tls_max_version == TlsVersion::Tls1_2);
         CHECK(cfg.tn5250.validate().empty());
         // round trip through --dump-config
-        const std::string again = write_temp("tn34xx_test_tls1b.toml", config_to_toml(cfg));
+        const std::string again = write_temp("em34xx_test_tls1b.toml", config_to_toml(cfg));
         AppConfig cfg2;
         REQUIRE(load_config_file(again, cfg2, err));
         CHECK(cfg2.tn5250.tls_verify == TlsVerify::None);
@@ -171,14 +171,14 @@ TEST_CASE("TLS config: TOML [tn5250], station overrides and the command line") {
     }
     {
         const std::string path =
-            write_temp("tn34xx_test_tls2.toml", "[tn5250]\nhost = \"h\"\ntls = true\ntls_verify = false\n");
+            write_temp("em34xx_test_tls2.toml", "[tn5250]\nhost = \"h\"\ntls = true\ntls_verify = false\n");
         AppConfig cfg;
         std::string err;
         REQUIRE(load_config_file(path, cfg, err));
         CHECK(cfg.tn5250.tls_verify == TlsVerify::None);   // the old boolean form
     }
     {
-        const std::string path = write_temp("tn34xx_test_tls3.toml",
+        const std::string path = write_temp("em34xx_test_tls3.toml",
                                             "[tn5250]\nhost = \"h\"\ntls = true\ntls_cert_sha256 = \"" + pin +
                                                 "\"\n[[twinax.station]]\naddress = 0\n"
                                                 "[[twinax.station]]\naddress = 1\ntls_min_version = \"1.1\"\n");
@@ -199,14 +199,14 @@ TEST_CASE("TLS config: TOML [tn5250], station overrides and the command line") {
         CHECK(cfg.twinax.validate().find("tls_min_version") != std::string::npos);
     }
     {
-        const std::string path = write_temp("tn34xx_test_tls4.toml", "[tn5250]\ntls_verify = \"maybe\"\n");
+        const std::string path = write_temp("em34xx_test_tls4.toml", "[tn5250]\ntls_verify = \"maybe\"\n");
         AppConfig cfg;
         std::string err;
         CHECK_FALSE(load_config_file(path, cfg, err));
         CHECK(err.find("tls_verify") != std::string::npos);
     }
     {
-        const std::string path = write_temp("tn34xx_test_tls5.toml", "[tn5250]\ntls_min_version = \"9\"\n");
+        const std::string path = write_temp("em34xx_test_tls5.toml", "[tn5250]\ntls_min_version = \"9\"\n");
         AppConfig cfg;
         std::string err;
         CHECK_FALSE(load_config_file(path, cfg, err));
@@ -215,7 +215,7 @@ TEST_CASE("TLS config: TOML [tn5250], station overrides and the command line") {
         std::string bare;
         for (char ch : pin)
             if (ch != ':') bare += char(std::tolower(static_cast<unsigned char>(ch)));
-        const char* argv[] = {"tn34xx", "--tn5250-host", "h", "--tn5250-port", "992", "--tn5250-tls",
+        const char* argv[] = {"em34xx", "--tn5250-host", "h", "--tn5250-port", "992", "--tn5250-tls",
                               "--tn5250-tls-pin", bare.c_str(), "--tn5250-tls-min", "1.0", "--tn5250-tls-max=1.2"};
         AppConfig cfg;
         std::string err;
@@ -227,18 +227,18 @@ TEST_CASE("TLS config: TOML [tn5250], station overrides and the command line") {
         CHECK(cfg.tn5250.validate().empty());
     }
     {
-        const char* argv[] = {"tn34xx", "--tn5250-tls", "--tn5250-tls-insecure"};
+        const char* argv[] = {"em34xx", "--tn5250-tls", "--tn5250-tls-insecure"};
         AppConfig cfg;
         std::string err;
         REQUIRE(parse_command_line(3, const_cast<char**>(argv), cfg, err));
         CHECK(cfg.tn5250.tls_verify == TlsVerify::None);
     }
     {
-        const char* argv[] = {"tn34xx", "--tn5250-tls-pin", "abc"};
+        const char* argv[] = {"em34xx", "--tn5250-tls-pin", "abc"};
         AppConfig cfg;
         std::string err;
         CHECK_FALSE(parse_command_line(3, const_cast<char**>(argv), cfg, err));
-        const char* argv2[] = {"tn34xx", "--tn5250-tls-min", "any"};
+        const char* argv2[] = {"em34xx", "--tn5250-tls-min", "any"};
         CHECK_FALSE(parse_command_line(3, const_cast<char**>(argv2), cfg, err));
     }
 }
@@ -416,7 +416,7 @@ TEST_CASE("TLS transport: plain TCP stays the default") {
     }
 }
 
-#ifdef TN34XX_TLS_OPENSSL
+#ifdef EM34XX_TLS_OPENSSL
 // --- live handshake against an in-process OpenSSL server ------------------
 
 #include <openssl/err.h>
@@ -450,7 +450,7 @@ struct TestCert {
         X509_gmtime_adj(X509_getm_notAfter(cert), 86400);
         X509_set_pubkey(cert, key);
         X509_NAME* name = X509_get_subject_name(cert);
-        X509_NAME_add_entry_by_txt(name, "CN", MBSTRING_ASC, reinterpret_cast<const unsigned char*>("tn34xx test"),
+        X509_NAME_add_entry_by_txt(name, "CN", MBSTRING_ASC, reinterpret_cast<const unsigned char*>("em34xx test"),
                                    -1, -1, 0);
         X509_set_issuer_name(cert, name);
         X509V3_CTX ctx;
@@ -462,7 +462,7 @@ struct TestCert {
         X509_sign(cert, key, EVP_sha256());
         unsigned int len = 0;
         X509_digest(cert, EVP_sha256(), sha256.data(), &len);
-        pem_path = (std::filesystem::temp_directory_path() / "tn34xx_test_tls_ca.pem").string();
+        pem_path = (std::filesystem::temp_directory_path() / "em34xx_test_tls_ca.pem").string();
         FILE* f = std::fopen(pem_path.c_str(), "wb");
         PEM_write_X509(f, cert);
         std::fclose(f);
@@ -638,7 +638,7 @@ TEST_CASE("TLS transport (OpenSSL): handshake with a self-signed server certific
         REQUIRE(asked.size() == 1);
         CHECK(asked[0].port == srv.port);
         CHECK(asked[0].peer.sha256 == tc.sha256);
-        CHECK(asked[0].peer.subject.find("tn34xx test") != std::string::npos);
+        CHECK(asked[0].peer.subject.find("em34xx test") != std::string::npos);
         CHECK_FALSE(asked[0].peer.valid_from.empty());
         CHECK_FALSE(asked[0].peer.expires.empty());
         CHECK_FALSE(asked[0].reason.empty());

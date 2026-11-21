@@ -22,11 +22,11 @@
 #include <string>
 #include <thread>
 
-using namespace tn34xx;
-using namespace tn34xx::wsc;
-using namespace tn34xx::tn5250::telnet;
-using tn34xx::test::FakeStation;
-using tn34xx::test::FakeStationOptions;
+using namespace em34xx;
+using namespace em34xx::wsc;
+using namespace em34xx::tn5250::telnet;
+using em34xx::test::FakeStation;
+using em34xx::test::FakeStationOptions;
 using tn5250_test::Bytes;
 
 namespace {
@@ -54,7 +54,7 @@ struct ServerScript {
     }
 };
 
-class ScriptTransport : public tn34xx::tn5250::Transport {
+class ScriptTransport : public em34xx::tn5250::Transport {
 public:
     explicit ScriptTransport(std::shared_ptr<ServerScript> s) : s_(std::move(s)) {}
     bool connect(const std::string& host, uint16_t port, std::string&) override {
@@ -94,16 +94,16 @@ Bytes negotiation() {
             IAC, DO, OPT_BINARY, IAC, WILL, OPT_BINARY};
 }
 
-Bytes framed_record(const Bytes& data, uint8_t opcode = tn34xx::tn5250::kOpPutGet) {
-    tn34xx::tn5250::Record r;
+Bytes framed_record(const Bytes& data, uint8_t opcode = em34xx::tn5250::kOpPutGet) {
+    em34xx::tn5250::Record r;
     r.opcode = opcode;
     r.data = data;
-    return tn34xx::tn5250::TelnetCodec::frame(encode_record(r));
+    return em34xx::tn5250::TelnetCodec::frame(encode_record(r));
 }
 
 // Records in the client's byte stream (telnet commands skipped).
-std::vector<tn34xx::tn5250::Record> client_records(const Bytes& in) {
-    std::vector<tn34xx::tn5250::Record> out;
+std::vector<em34xx::tn5250::Record> client_records(const Bytes& in) {
+    std::vector<em34xx::tn5250::Record> out;
     Bytes cur;
     for (size_t i = 0; i < in.size(); ++i) {
         if (in[i] != IAC) { cur.push_back(in[i]); continue; }
@@ -111,9 +111,9 @@ std::vector<tn34xx::tn5250::Record> client_records(const Bytes& in) {
         const uint8_t c = in[i + 1];
         if (c == IAC) { cur.push_back(IAC); ++i; }
         else if (c == EOR) {
-            tn34xx::tn5250::Record r;
+            em34xx::tn5250::Record r;
             std::string why;
-            if (tn34xx::tn5250::decode_record(cur, r, why)) out.push_back(r);
+            if (em34xx::tn5250::decode_record(cur, r, why)) out.push_back(r);
             cur.clear();
             ++i;
         } else if (c == SB) {
@@ -175,7 +175,7 @@ struct Bench {
 };
 
 std::string row_text(const FakeStation& f, unsigned row, unsigned col, size_t n) {
-    const auto* cp = tn34xx::tn5250::CodePage::find("37");
+    const auto* cp = em34xx::tn5250::CodePage::find("37");
     std::string s;
     for (size_t k = 0; k < n; ++k) {
         const uint8_t b = f.cell(row, unsigned(col + k));
@@ -189,8 +189,8 @@ std::string row_text(const FakeStation& f, unsigned row, unsigned col, size_t n)
 TEST_CASE("tn5250 bridge: sign-on screen to the station, keystrokes back to the host") {
     TwinaxConfig tw;
     tw.host = TwinaxHostKind::Tn5250;
-    tw.stations = {StationConfig{0, StationType::Display, "TN34XXA", ""},
-                   StationConfig{1, StationType::Printer, "TN34XXP", ""}};
+    tw.stations = {StationConfig{0, StationType::Display, "EM34XXA", ""},
+                   StationConfig{1, StationType::Printer, "EM34XXP", ""}};
     Tn5250Config tn;
     tn.host = "ibmi.example";
     tn.port = 2323;
@@ -202,7 +202,7 @@ TEST_CASE("tn5250 bridge: sign-on screen to the station, keystrokes back to the 
     opt.model = "3477";
     opt.display = DisplaySubtype::Green;
     opt.reconnect_min_ms = 400;
-    opt.transport = [&](const StationConfig& st, std::string&) -> std::unique_ptr<tn34xx::tn5250::Transport> {
+    opt.transport = [&](const StationConfig& st, std::string&) -> std::unique_ptr<em34xx::tn5250::Transport> {
         ++connects;
         station_devnames.push_back(st.device_name);
         return std::make_unique<ScriptTransport>(server);
@@ -216,7 +216,7 @@ TEST_CASE("tn5250 bridge: sign-on screen to the station, keystrokes back to the 
     REQUIRE(bridge.printer(1));
     CHECK(bridge.display(1) == nullptr);
     CHECK(bridge.display(0)->config().terminal_type == "IBM-3477-FG");
-    CHECK(bridge.display(0)->config().device_name == "TN34XXA");
+    CHECK(bridge.display(0)->config().device_name == "EM34XXA");
 
     Bench b(bridge);
     FakeStation f(0);
@@ -242,7 +242,7 @@ TEST_CASE("tn5250 bridge: sign-on screen to the station, keystrokes back to the 
     CHECK(connects == 1);
     CHECK(bridge.describe().find("station 0 display: cable plugged") != std::string::npos);
     REQUIRE(station_devnames.size() == 1);
-    CHECK(station_devnames[0] == "TN34XXA");
+    CHECK(station_devnames[0] == "EM34XXA");
     CHECK(server->host == "ibmi.example");
     CHECK(server->port == 2323);
     CHECK(row_text(f, 5, 16, 4) == "User");
@@ -261,13 +261,13 @@ TEST_CASE("tn5250 bridge: sign-on screen to the station, keystrokes back to the 
     REQUIRE(b.run_until([&] { return (f.indicators() & 0x02) == 0; }));   // keyboard unlocked
     f.press(0x1C);
     f.press(0x58);
-    std::vector<tn34xx::tn5250::Record> recs;
+    std::vector<em34xx::tn5250::Record> recs;
     REQUIRE(b.run_until([&] {
         recs = client_records(server->sent());
         return !recs.empty();
     }));
     REQUIRE(recs.size() == 1);
-    CHECK(recs[0].opcode == tn34xx::tn5250::kOpPutGet);
+    CHECK(recs[0].opcode == em34xx::tn5250::kOpPutGet);
     // Cursor 06/36, AID Enter, then SBA 06/35 and the field's data.
     CHECK(recs[0].data == Bytes{0x06, 0x36, 0xF1, 0x11, 0x06, 0x35, 0xC1});
     // The typed character was painted on the station as well.
@@ -390,7 +390,7 @@ TEST_CASE("tn5250 bridge: make_twinax_host uses the bridge factory") {
     auto h = make_twinax_host(tw, tn, err, [&](const TwinaxConfig& t, const Tn5250Config& c, std::string& e) {
         called = true;
         BridgeOptions o;
-        o.transport = [](const StationConfig&, std::string& why) -> std::unique_ptr<tn34xx::tn5250::Transport> {
+        o.transport = [](const StationConfig&, std::string& why) -> std::unique_ptr<em34xx::tn5250::Transport> {
             why = "no network in this test";
             return nullptr;
         };
@@ -412,7 +412,7 @@ TEST_CASE("tn5250 bridge: typing on the 122-key keyboard echoes and reaches the 
     server->push(negotiation());
     server->push(framed_record(tn5250_test::signon_stream()));
     BridgeOptions opt;
-    opt.transport = [&](const StationConfig&, std::string&) -> std::unique_ptr<tn34xx::tn5250::Transport> {
+    opt.transport = [&](const StationConfig&, std::string&) -> std::unique_ptr<em34xx::tn5250::Transport> {
         return std::make_unique<ScriptTransport>(server);
     };
     std::string err;
@@ -430,7 +430,7 @@ TEST_CASE("tn5250 bridge: typing on the 122-key keyboard echoes and reaches the 
     // The characters are echoed on the station (monocase field: A D).
     REQUIRE(b.run_until([&] { return f.cell(5, 52) == 0xC1 && f.cell(5, 53) == 0xC4; }));
     f.press(0x68);   // Enter
-    std::vector<tn34xx::tn5250::Record> recs;
+    std::vector<em34xx::tn5250::Record> recs;
     REQUIRE(b.run_until([&] {
         recs = client_records(server->sent());
         return !recs.empty();
@@ -473,7 +473,7 @@ TEST_CASE("tn5250 bridge: the first paint of a long run arrives whole by Activat
                                                   tn5250_test::eb("Welcome")})));
     BridgeOptions opt;
     opt.model = "3477";
-    opt.transport = [&](const StationConfig&, std::string&) -> std::unique_ptr<tn34xx::tn5250::Transport> {
+    opt.transport = [&](const StationConfig&, std::string&) -> std::unique_ptr<em34xx::tn5250::Transport> {
         return std::make_unique<ScriptTransport>(server);
     };
     std::string err;

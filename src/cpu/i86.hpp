@@ -14,7 +14,7 @@
 #include <cstdint>
 #include <string>
 
-namespace tn34xx {
+namespace em34xx {
 
 class I86 : public Cpu {
 public:
@@ -138,4 +138,4 @@ private:
     bool rewind_ = false;        // REP interrupted, IP already rewound
 };
 
-} // namespace tn34xx
+} // namespace em34xx

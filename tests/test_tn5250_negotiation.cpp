@@ -11,9 +11,9 @@
 #include <string>
 #include <vector>
 
-using namespace tn34xx;
-using namespace tn34xx::tn5250;
-using namespace tn34xx::tn5250::telnet;
+using namespace em34xx;
+using namespace em34xx::tn5250;
+using namespace em34xx::tn5250::telnet;
 
 namespace {
 
@@ -41,7 +41,7 @@ struct Harness {
 TelnetSettings settings_3477() {
     Tn5250Config cfg;
     cfg.host = "example";
-    cfg.device_name = "TN34XX01";
+    cfg.device_name = "EM34XX01";
     return telnet_settings_for(cfg);
 }
 
@@ -55,7 +55,7 @@ TEST_CASE("tn5250 negotiation: iSeries-style bundled transcript (RFC 4777 sectio
     // SEND VAR USERVAR: everything we have.
     const Bytes env = h.feed({IAC, SB, OPT_NEW_ENVIRON, ENV_SEND, ENV_VAR, ENV_USERVAR, IAC, SE});
     CHECK(env == cat({{IAC, SB, OPT_NEW_ENVIRON, ENV_IS},
-                      {ENV_USERVAR}, str("DEVNAME"), {ENV_VALUE}, str("TN34XX01"),
+                      {ENV_USERVAR}, str("DEVNAME"), {ENV_VALUE}, str("EM34XX01"),
                       {ENV_USERVAR}, str("KBDTYPE"), {ENV_VALUE}, str("USB"),
                       {ENV_USERVAR}, str("CODEPAGE"), {ENV_VALUE}, str("37"),
                       {ENV_USERVAR}, str("CHARSET"), {ENV_VALUE}, str("697"),
@@ -120,7 +120,7 @@ TEST_CASE("tn5250 negotiation: SEND for one variable answers only that one") {
     const Bytes reply =
         h.feed(cat({{IAC, SB, OPT_NEW_ENVIRON, ENV_SEND, ENV_USERVAR}, str("DEVNAME"), {IAC, SE}}));
     CHECK(reply == cat({{IAC, SB, OPT_NEW_ENVIRON, ENV_IS, ENV_USERVAR}, str("DEVNAME"), {ENV_VALUE},
-                        str("TN34XX01"), {IAC, SE}}));
+                        str("EM34XX01"), {IAC, SE}}));
 }
 
 TEST_CASE("tn5250 settings: DEVNAME only when configured; KBDTYPE only when known") {
@@ -190,7 +190,7 @@ TEST_CASE("tn5250 records: header encode/decode, RFC 1205 message light example"
 }
 
 TEST_CASE("tn5250 terminal type: derived from model and display, overridable per station") {
-    using tn34xx::DisplaySubtype;
+    using em34xx::DisplaySubtype;
     CHECK(derived_terminal_type("3477", DisplaySubtype::Color) == "IBM-3477-FC");
     CHECK(derived_terminal_type("3477", DisplaySubtype::Green) == "IBM-3477-FG");
     CHECK(derived_terminal_type("3477", DisplaySubtype::Amber) == "IBM-3477-FG");

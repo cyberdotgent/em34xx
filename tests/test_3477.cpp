@@ -16,7 +16,7 @@
 #include <string>
 #include <vector>
 
-using namespace tn34xx;
+using namespace em34xx;
 using Src = Ibm3477Interrupts::Source;
 
 namespace {
@@ -76,7 +76,7 @@ bool odd_parity_bit(uint8_t b) {
 }
 
 std::string temp_path(const char* name) {
-    return std::string("tn34xx_test_") + name;
+    return std::string("em34xx_test_") + name;
 }
 
 // Bit-banging master, as the firmware drives the bus.

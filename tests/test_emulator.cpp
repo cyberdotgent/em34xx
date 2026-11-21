@@ -9,7 +9,7 @@
 #include <atomic>
 #include <thread>
 
-using namespace tn34xx;
+using namespace em34xx;
 
 namespace {
 

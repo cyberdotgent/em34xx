@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Built when no TLS stack was found at configure time (TN34XX_TLS=AUTO
-// without the OpenSSL development files, or TN34XX_TLS=OFF).
+// Built when no TLS stack was found at configure time (EM34XX_TLS=AUTO
+// without the OpenSSL development files, or EM34XX_TLS=OFF).
 #include "tn5250/tls_policy.hpp"
 
-namespace tn34xx {
+namespace em34xx {
 namespace tn5250 {
 
 const char* tls_backend_name() { return nullptr; }
@@ -15,4 +15,4 @@ std::unique_ptr<Transport> make_tls_transport(const Tn5250Config&, std::string& 
 }
 
 } // namespace tn5250
-} // namespace tn34xx
+} // namespace em34xx

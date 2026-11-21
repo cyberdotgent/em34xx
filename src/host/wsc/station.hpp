@@ -24,7 +24,7 @@
 #include <string>
 #include <vector>
 
-namespace tn34xx {
+namespace em34xx {
 namespace wsc {
 
 enum class StationState { Absent, PowerOn, Identify, Init, Online, Recover };
@@ -139,4 +139,4 @@ private:
 };
 
 } // namespace wsc
-} // namespace tn34xx
+} // namespace em34xx

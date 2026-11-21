@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "tn5250/codepage.hpp"
 
-namespace tn34xx {
+namespace em34xx {
 namespace tn5250 {
 
 namespace {
@@ -114,4 +114,4 @@ void append_utf8(std::string& out, char32_t cp) {
 }
 
 } // namespace tn5250
-} // namespace tn34xx
+} // namespace em34xx

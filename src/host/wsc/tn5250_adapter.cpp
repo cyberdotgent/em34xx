@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "host/wsc/tn5250_adapter.hpp"
 
-namespace tn34xx {
+namespace em34xx {
 namespace wsc {
 
 uint8_t indicator_bits(const tn5250::Indicators& ind) {
@@ -83,4 +83,4 @@ void Tn5250DisplayAdapter::operator_action(const OperatorAction& a) {
 }
 
 } // namespace wsc
-} // namespace tn34xx
+} // namespace em34xx

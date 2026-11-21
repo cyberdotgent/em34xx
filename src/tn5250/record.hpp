@@ -13,7 +13,7 @@
 #include <string>
 #include <vector>
 
-namespace tn34xx {
+namespace em34xx {
 namespace tn5250 {
 
 constexpr uint16_t kGdsRecordType = 0x12A0;
@@ -31,4 +31,4 @@ const char* opcode_name(uint8_t opcode);
 std::string flags_text(uint8_t flags);
 
 } // namespace tn5250
-} // namespace tn34xx
+} // namespace em34xx

@@ -7,7 +7,7 @@
 
 #include <string>
 
-namespace tn34xx {
+namespace em34xx {
 
 enum class DisplaySubtype {
     Green,       // monochrome, green phosphor
@@ -21,4 +21,4 @@ const char* display_subtype_name(DisplaySubtype s);
 bool parse_display_subtype(const std::string& text, DisplaySubtype& out);
 bool is_monochrome(DisplaySubtype s);
 
-} // namespace tn34xx
+} // namespace em34xx

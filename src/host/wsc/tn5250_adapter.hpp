@@ -6,7 +6,7 @@
 #include "host/wsc/session_port.hpp"
 #include "tn5250/session_api.hpp"
 
-namespace tn34xx {
+namespace em34xx {
 namespace wsc {
 
 class Tn5250DisplayAdapter : public DisplaySessionPort {
@@ -34,4 +34,4 @@ private:
 uint8_t indicator_bits(const tn5250::Indicators& ind);
 
 } // namespace wsc
-} // namespace tn34xx
+} // namespace em34xx

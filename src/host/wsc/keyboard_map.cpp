@@ -3,7 +3,7 @@
 
 #include <cstddef>
 
-namespace tn34xx {
+namespace em34xx {
 namespace wsc {
 
 namespace {
@@ -432,4 +432,4 @@ bool KeyboardMap::translate_typewriter(uint8_t key, bool brk, OperatorAction& ou
 }
 
 } // namespace wsc
-} // namespace tn34xx
+} // namespace em34xx

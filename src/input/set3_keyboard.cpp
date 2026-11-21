@@ -3,7 +3,7 @@
 
 #include "util/log.hpp"
 
-namespace tn34xx {
+namespace em34xx {
 
 namespace {
 
@@ -421,4 +421,4 @@ void Set3Keyboard::advance_us(uint64_t us) {
     }
 }
 
-} // namespace tn34xx
+} // namespace em34xx

@@ -25,7 +25,7 @@
 #include <string>
 #include <vector>
 
-namespace tn34xx {
+namespace em34xx {
 
 // What happens to one of the terminal's modifier groups (both Shift keys, or
 // both Alt keys) while a mapped key is down.
@@ -209,4 +209,4 @@ private:
     int shift_off_ = 0, shift_on_ = 0, alt_off_ = 0, alt_on_ = 0;
 };
 
-} // namespace tn34xx
+} // namespace em34xx

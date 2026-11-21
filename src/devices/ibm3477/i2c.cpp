@@ -9,7 +9,7 @@
 #include <fstream>
 #include <iterator>
 
-namespace tn34xx {
+namespace em34xx {
 
 I2cEeprom::I2cEeprom(std::string name, size_t size, size_t page_size)
     : Device(std::move(name)), data_(size, 0xFF), page_size_(page_size) {}
@@ -157,4 +157,4 @@ void I2cLogDevice::i2c_stop() {
     cur_.clear();
 }
 
-} // namespace tn34xx
+} // namespace em34xx

@@ -2,7 +2,7 @@
 #include "frontend/win32/win32_dialogs.hpp"
 
 #include "frontend/win32/resource.h"
-#include "tn34xx_version.h"
+#include "em34xx_version.h"
 #include "models/model.hpp"
 #include "tn5250/tls_policy.hpp"
 #include "util/fingerprint.hpp"
@@ -17,7 +17,7 @@
 #include <mutex>
 #include <thread>
 
-namespace tn34xx {
+namespace em34xx {
 namespace win32 {
 
 namespace {
@@ -1117,12 +1117,12 @@ INT_PTR CALLBACK about_proc(HWND dlg, UINT msg, WPARAM wp, LPARAM lp) {
     case WM_INITDIALOG: {
         const UserDirs* dirs = reinterpret_cast<const UserDirs*>(lp);
         set_text(dlg, IDC_ABOUT_TEXT,
-                 std::string("tn34xxw version ") + TN34XX_VERSION_STRING +
+                 std::string("em34xxw version ") + EM34XX_VERSION_STRING +
                      "\r\nHardware emulator for IBM 34xx twinax terminals, connected to IBM i over "
                      "TN5250.\r\nFree software under the GNU GPL, version 3 or later; no warranty."
                      "\r\n\r\nUser folder: " +
                      dirs->root() + "\r\nTLS: " + (tn5250::tls_backend_name() ? tn5250::tls_backend_name() : "none"));
-        const std::string url = TN34XX_HOMEPAGE_URL;
+        const std::string url = EM34XX_HOMEPAGE_URL;
         set_text(dlg, IDC_ABOUT_LINK,
                  url.empty() ? std::string("Project page: to be announced")
                              : "Project page: <a href=\"" + url + "\">" + url + "</a>");
@@ -1178,8 +1178,8 @@ bool set_reg(const std::wstring& key, const std::wstring& value, std::string& er
 bool register_file_association(std::string& error) {
     const std::wstring exe = widen(module_path());
     const std::wstring base = L"Software\\Classes\\";
-    const std::wstring prog = L"tn34xx.Profile";
-    if (!set_reg(base + L".tn34xx", prog, error)) return false;
+    const std::wstring prog = L"em34xx.Profile";
+    if (!set_reg(base + L".em34xx", prog, error)) return false;
     if (!set_reg(base + prog, load_string(IDS_FILE_TYPE_NAME), error)) return false;
     if (!set_reg(base + prog + L"\\DefaultIcon", L"\"" + exe + L"\",-" + std::to_wstring(IDI_PROFILE), error))
         return false;
@@ -1189,4 +1189,4 @@ bool register_file_association(std::string& error) {
 }
 
 } // namespace win32
-} // namespace tn34xx
+} // namespace em34xx

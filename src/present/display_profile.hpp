@@ -9,7 +9,7 @@
 
 #include <cstdint>
 
-namespace tn34xx {
+namespace em34xx {
 
 class Machine;
 
@@ -25,4 +25,4 @@ void apply_display_subtype(DisplaySubtype s, Framebuffer& fb);
 // ends and the monitor's screenshot show.
 void render_presented(Machine& m, Framebuffer& fb);
 
-} // namespace tn34xx
+} // namespace em34xx

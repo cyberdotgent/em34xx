@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Static description of a terminal model: CPU, address space, ROM set and
 // notes. The Machine core needs this; the Model registry that builds
-// machines from it lives in src/models (tn34xx_machines).
+// machines from it lives in src/models (em34xx_machines).
 #pragma once
 
 #include "cpu/cpu.hpp"
@@ -11,7 +11,7 @@
 #include <string>
 #include <vector>
 
-namespace tn34xx {
+namespace em34xx {
 
 enum class ModelStatus {
     Bringup,        // ROMs good, hardware being reverse engineered
@@ -36,4 +36,4 @@ struct ModelInfo {
     std::vector<std::string> notes;  // hypotheses and open questions
 };
 
-} // namespace tn34xx
+} // namespace em34xx

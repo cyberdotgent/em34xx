@@ -90,5 +90,5 @@ exits with code 2.
 sent as GDB console-output packets (at most 1 KiB of text each) while the
 command runs, so long output such as `monitor trace #500` arrives complete.
 The reply is always `OK`; a failed command shows `error: ...` in its output.
-`tools/tn34xx.gdb` runs `monitor regs` at every stop. GDB addresses are
+`tools/em34xx.gdb` runs `monitor regs` at every stop. GDB addresses are
 linear: use `lin`, `bseg`, `useg` and `wseg` from that file for `seg:off`.

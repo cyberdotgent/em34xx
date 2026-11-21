@@ -14,7 +14,7 @@
 #include <string>
 #include <vector>
 
-namespace tn34xx {
+namespace em34xx {
 
 // How the TLS transport checks the server certificate (see docs/tn5250.md).
 enum class TlsVerify {
@@ -143,4 +143,4 @@ struct TwinaxConfig {
     static constexpr unsigned kMaxStationsPerBus = 7;
 };
 
-} // namespace tn34xx
+} // namespace em34xx

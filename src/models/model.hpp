@@ -16,7 +16,7 @@
 #include <string>
 #include <vector>
 
-namespace tn34xx {
+namespace em34xx {
 
 class Machine;
 
@@ -41,4 +41,4 @@ const Model& model_3477();
 const Model& model_3486();
 const Model& model_3489();
 
-} // namespace tn34xx
+} // namespace em34xx

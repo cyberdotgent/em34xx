@@ -11,7 +11,7 @@
 #include <cstdint>
 #include <string>
 
-namespace tn34xx {
+namespace em34xx {
 
 struct AppConfig {
     // Machine
@@ -68,4 +68,4 @@ std::string usage_text(const char* argv0);
 // Write the effective configuration back out as TOML.
 std::string config_to_toml(const AppConfig& cfg);
 
-} // namespace tn34xx
+} // namespace em34xx

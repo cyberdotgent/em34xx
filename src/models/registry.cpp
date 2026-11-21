@@ -3,7 +3,7 @@
 
 #include "util/strings.hpp"
 
-namespace tn34xx {
+namespace em34xx {
 
 std::string Model::can_build() const {
     if (info().status == ModelStatus::Placeholder)
@@ -32,4 +32,4 @@ std::vector<const Model*> runnable_models() {
     return out;
 }
 
-} // namespace tn34xx
+} // namespace em34xx

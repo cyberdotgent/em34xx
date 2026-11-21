@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Small Win32 helpers for tn34xxw: UTF-8 <-> UTF-16, DPI (newer APIs loaded
+// Small Win32 helpers for em34xxw: UTF-8 <-> UTF-16, DPI (newer APIs loaded
 // at run time so the program still starts on Windows 7), the keyboard scan
 // code -> USB HID usage table, message boxes, file dialogs.
 #pragma once
@@ -13,7 +13,7 @@
 #include <string>
 #include <vector>
 
-namespace tn34xx {
+namespace em34xx {
 namespace win32 {
 
 std::wstring widen(const std::string& utf8);
@@ -57,4 +57,4 @@ std::string appdata_folder();
 std::string module_path();
 
 } // namespace win32
-} // namespace tn34xx
+} // namespace em34xx

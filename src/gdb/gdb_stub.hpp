@@ -7,7 +7,7 @@
 //     current CS (if the address is inside that segment's 64 KiB window);
 //   - memory addresses in m/M/Z packets are linear (physical) addresses;
 //   - cs/ss/ds/es hold the real segment values.
-// "monitor <cmd>" in GDB runs a tn34xx monitor command. Its output is
+// "monitor <cmd>" in GDB runs a em34xx monitor command. Its output is
 // streamed to GDB as console-output ("O<hex>") packets while the command
 // runs, followed by a final "OK".
 #pragma once
@@ -19,7 +19,7 @@
 #include <string>
 #include <thread>
 
-namespace tn34xx {
+namespace em34xx {
 
 class Emulator;
 class Monitor;
@@ -64,4 +64,4 @@ private:
     int last_signal_ = 5;
 };
 
-} // namespace tn34xx
+} // namespace em34xx

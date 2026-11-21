@@ -4,7 +4,7 @@
 #include "util/fingerprint.hpp"
 #include "util/strings.hpp"
 
-namespace tn34xx {
+namespace em34xx {
 
 std::string Tn5250Config::validate() const {
     if (!configured()) return {};
@@ -213,4 +213,4 @@ std::string TwinaxConfig::validate(unsigned max_sessions, int max_printers) cons
     return {};
 }
 
-} // namespace tn34xx
+} // namespace em34xx

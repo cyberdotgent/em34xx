@@ -3,7 +3,7 @@
 
 #include "cpu/i86.hpp"
 
-namespace tn34xx {
+namespace em34xx {
 
 std::unique_ptr<Cpu> make_cpu(CpuBus& bus, CpuLevel level) {
     // TODO(80286): return a protected-mode core for CpuLevel::I80286 once
@@ -11,4 +11,4 @@ std::unique_ptr<Cpu> make_cpu(CpuBus& bus, CpuLevel level) {
     return std::make_unique<I86>(bus, level);
 }
 
-} // namespace tn34xx
+} // namespace em34xx

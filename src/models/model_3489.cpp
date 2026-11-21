@@ -9,7 +9,7 @@
 
 #include "machine/machine.hpp"
 
-namespace tn34xx {
+namespace em34xx {
 
 namespace {
 
@@ -55,4 +55,4 @@ const Model& model_3489() {
     return m;
 }
 
-} // namespace tn34xx
+} // namespace em34xx

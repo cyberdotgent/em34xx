@@ -7,7 +7,7 @@
 #include <cctype>
 #include <cstring>
 
-namespace tn34xx {
+namespace em34xx {
 
 namespace {
 
@@ -221,4 +221,4 @@ bool eval_address(Machine& m, const std::string& text, uint32_t& linear, std::st
     return true;
 }
 
-} // namespace tn34xx
+} // namespace em34xx

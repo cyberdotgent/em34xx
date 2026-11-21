@@ -14,7 +14,7 @@ set(allowed_input ${emu} input)
 set(allowed_devices ${emu} input devices)
 set(allowed_models ${emu} input devices models)
 # The workstation controller drives a tn5250::DisplaySession, a header-only
-# interface (tn5250/session_api.hpp); tn34xx_host does not link the client.
+# interface (tn5250/session_api.hpp); em34xx_host does not link the client.
 set(allowed_host ${emu} host tn5250/session_api.hpp)
 set(allowed_tn5250 ${emu} net host tn5250)
 set(allowed_bridge ${emu} host tn5250)
@@ -26,7 +26,7 @@ set(allowed_app ${app_layer} frontend/frontend.hpp)
 # Front ends see the runtime (Application, HostLink, everything it links:
 # models, input, the TN5250 client) but never the tooling.
 set(allowed_frontend ${app_layer} frontend)
-# Developer tooling (tn34xx_devtools): may use everything but front ends.
+# Developer tooling (em34xx_devtools): may use everything but front ends.
 set(devtools_layer ${app_layer} net monitor gdb devtools)
 set(allowed_monitor ${devtools_layer})
 set(allowed_gdb ${devtools_layer})
@@ -41,7 +41,7 @@ foreach(f IN LISTS sources)
   endif()
   string(REGEX MATCH "^[^/]+" dir "${f}")
   if(f MATCHES "^host/wsc/tn5250_bridge\\.")
-    set(dir bridge)   # tn34xx_bridge: the controller plus the TN5250 client
+    set(dir bridge)   # em34xx_bridge: the controller plus the TN5250 client
   endif()
   if(NOT DEFINED allowed_${dir})
     string(APPEND violations "  ${f}: directory '${dir}' has no layer in cmake/check_layers.cmake\n")

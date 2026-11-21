@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-/* Resource identifiers shared by tn34xxw.rc and the Win32 front end.
+/* Resource identifiers shared by em34xxw.rc and the Win32 front end.
    Plain C preprocessor only: windres reads this file too. */
-#ifndef TN34XX_WIN32_RESOURCE_H
-#define TN34XX_WIN32_RESOURCE_H
+#ifndef EM34XX_WIN32_RESOURCE_H
+#define EM34XX_WIN32_RESOURCE_H
 
 /* Icons */
 #define IDI_APP                 1

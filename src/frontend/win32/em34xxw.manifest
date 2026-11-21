@@ -1,8 +1,8 @@
 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <assembly xmlns="urn:schemas-microsoft-com:asm.v1" manifestVersion="1.0"
           xmlns:asmv3="urn:schemas-microsoft-com:asm.v3">
-  <assemblyIdentity type="win32" name="tn34xx.tn34xxw" version="0.0.0.0" processorArchitecture="*"/>
-  <description>tn34xxw: IBM 34xx terminal emulator</description>
+  <assemblyIdentity type="win32" name="em34xx.em34xxw" version="0.0.0.0" processorArchitecture="*"/>
+  <description>em34xxw: IBM 34xx terminal emulator</description>
   <!-- Common Controls 6: visual styles (themed controls). -->
   <dependency>
     <dependentAssembly>

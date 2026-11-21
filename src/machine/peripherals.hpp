@@ -6,7 +6,7 @@
 #include <string>
 #include <vector>
 
-namespace tn34xx {
+namespace em34xx {
 
 // 32-bit pixels, 0xAARRGGBB.
 struct Framebuffer {
@@ -141,4 +141,4 @@ public:
     void host_key(const HostKeyEvent& ev) override;
 };
 
-} // namespace tn34xx
+} // namespace em34xx

@@ -6,7 +6,7 @@
 #include "util/log.hpp"
 #include "util/strings.hpp"
 
-namespace tn34xx {
+namespace em34xx {
 namespace tn5250 {
 
 const char* conn_state_name(ConnState s) {
@@ -209,4 +209,4 @@ void Client::run() {
 }
 
 } // namespace tn5250
-} // namespace tn34xx
+} // namespace em34xx

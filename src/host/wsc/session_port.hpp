@@ -15,7 +15,7 @@
 #include <string>
 #include <vector>
 
-namespace tn34xx {
+namespace em34xx {
 namespace wsc {
 
 // What discovery learned about the device on one station address.
@@ -129,4 +129,4 @@ public:
 };
 
 } // namespace wsc
-} // namespace tn34xx
+} // namespace em34xx

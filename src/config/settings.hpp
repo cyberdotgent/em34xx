@@ -26,7 +26,7 @@
 
 #include <string>
 
-namespace tn34xx {
+namespace em34xx {
 
 struct WindowPlacement {
     bool valid = false;
@@ -59,4 +59,4 @@ bool save_settings(const std::string& path, const AppSettings& s, std::string& e
 bool read_text_file(const std::string& path, std::string& out, std::string& error);
 bool write_text_file(const std::string& path, const std::string& text, std::string& error);
 
-} // namespace tn34xx
+} // namespace em34xx

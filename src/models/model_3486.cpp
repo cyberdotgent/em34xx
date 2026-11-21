@@ -39,7 +39,7 @@
 
 #include <stdexcept>
 
-namespace tn34xx {
+namespace em34xx {
 
 namespace {
 
@@ -214,4 +214,4 @@ const Model& model_3486() {
     return m;
 }
 
-} // namespace tn34xx
+} // namespace em34xx

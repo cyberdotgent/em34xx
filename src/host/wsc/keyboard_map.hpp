@@ -21,7 +21,7 @@
 
 #include <cstdint>
 
-namespace tn34xx {
+namespace em34xx {
 namespace wsc {
 
 class KeyboardMap {
@@ -55,4 +55,4 @@ private:
 };
 
 } // namespace wsc
-} // namespace tn34xx
+} // namespace em34xx

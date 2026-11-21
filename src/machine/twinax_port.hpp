@@ -7,14 +7,14 @@
 // This file fixes the protocol unit both sides exchange (the 16-bit 5250
 // workstation frame) and the controller contract. It belongs to the
 // emulator core, which owns the line; the controllers themselves live in
-// src/host (tn34xx_host, tn34xx_bridge).
+// src/host (em34xx_host, em34xx_bridge).
 #pragma once
 
 #include <cstdint>
 #include <string>
 #include <vector>
 
-namespace tn34xx {
+namespace em34xx {
 
 // One 5250 workstation frame. On the wire (after the bit-sync and code
 // violation preamble) it is 16 bit cells:
@@ -114,4 +114,4 @@ public:
     std::string describe() const override { return "twinax: no controller attached\n"; }
 };
 
-} // namespace tn34xx
+} // namespace em34xx

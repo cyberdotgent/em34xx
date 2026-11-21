@@ -12,7 +12,7 @@
 #include <cstdint>
 #include <string>
 
-namespace tn34xx {
+namespace em34xx {
 
 class Machine;
 
@@ -23,4 +23,4 @@ bool eval_address(Machine& m, const std::string& text, uint32_t& linear, std::st
 bool get_register(Machine& m, const std::string& name, uint16_t& value);
 bool set_register(Machine& m, const std::string& name, uint16_t value);
 
-} // namespace tn34xx
+} // namespace em34xx

@@ -1,4 +1,4 @@
-# Example tn34xx configuration. Command-line options override these values.
+# Example em34xx configuration. Command-line options override these values.
 
 model = "3477"
 rom_dir = "roms"
@@ -33,7 +33,7 @@ keymap = "pcomm"         # host keymap: pcomm, positional or a TOML file (keymap
 
 [monitor]
 rc = ""                  # monitor script run at start-up
-history = ""             # e.g. "~/.tn34xx_history"
+history = ""             # e.g. "~/.em34xx_history"
 
 [gdb]
 enabled = false

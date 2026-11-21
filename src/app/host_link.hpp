@@ -15,7 +15,7 @@
 #include <string>
 #include <vector>
 
-namespace tn34xx {
+namespace em34xx {
 
 class Emulator;
 
@@ -85,4 +85,4 @@ private:
     std::shared_ptr<TlsTrustBroker> trust_;
 };
 
-} // namespace tn34xx
+} // namespace em34xx

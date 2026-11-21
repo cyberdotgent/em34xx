@@ -16,7 +16,7 @@
 #include <mutex>
 #include <vector>
 
-namespace tn34xx {
+namespace em34xx {
 
 namespace {
 
@@ -334,4 +334,4 @@ bool SdlFrontend::run(Application& app, const FrontendOptions& opts, std::string
     return true;
 }
 
-} // namespace tn34xx
+} // namespace em34xx

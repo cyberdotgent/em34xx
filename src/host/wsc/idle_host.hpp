@@ -16,7 +16,7 @@
 #include <string>
 #include <vector>
 
-namespace tn34xx {
+namespace em34xx {
 namespace wsc {
 
 // A local display session: blank 24x80 screen, keyboard not inhibited,
@@ -57,4 +57,4 @@ private:
 std::unique_ptr<TwinaxHost> make_local_controller(const TwinaxConfig& twinax, std::string& error);
 
 } // namespace wsc
-} // namespace tn34xx
+} // namespace em34xx

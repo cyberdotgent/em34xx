@@ -3,7 +3,7 @@
 
 #include "util/strings.hpp"
 
-namespace tn34xx {
+namespace em34xx {
 
 const char* display_subtype_name(DisplaySubtype s) {
     switch (s) {
@@ -27,4 +27,4 @@ bool parse_display_subtype(const std::string& text, DisplaySubtype& out) {
 
 bool is_monochrome(DisplaySubtype s) { return s != DisplaySubtype::Color; }
 
-} // namespace tn34xx
+} // namespace em34xx

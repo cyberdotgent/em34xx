@@ -28,7 +28,7 @@
 #include <cstdint>
 #include <string>
 
-namespace tn34xx {
+namespace em34xx {
 
 class Ibm3477Interrupts;
 
@@ -88,4 +88,4 @@ private:
     uint64_t sent_ = 0, received_ = 0;
 };
 
-} // namespace tn34xx
+} // namespace em34xx

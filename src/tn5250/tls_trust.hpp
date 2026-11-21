@@ -21,7 +21,7 @@
 #include <functional>
 #include <string>
 
-namespace tn34xx {
+namespace em34xx {
 namespace tn5250 {
 
 struct PeerCertificate {
@@ -63,4 +63,4 @@ const char* tls_trust_decision_name(TlsTrustDecision d);
 using TlsTrustHandler = std::function<TlsTrustDecision(const TlsTrustRequest&)>;
 
 } // namespace tn5250
-} // namespace tn34xx
+} // namespace em34xx

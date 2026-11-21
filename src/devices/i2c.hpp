@@ -12,7 +12,7 @@
 #include <string>
 #include <vector>
 
-namespace tn34xx {
+namespace em34xx {
 
 // A slave on the bus, addressed by one or more 7-bit addresses.
 class I2cDevice {
@@ -72,4 +72,4 @@ private:
     uint64_t transactions_ = 0;
 };
 
-} // namespace tn34xx
+} // namespace em34xx

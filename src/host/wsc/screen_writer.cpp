@@ -3,7 +3,7 @@
 
 #include "util/strings.hpp"
 
-namespace tn34xx {
+namespace em34xx {
 namespace wsc {
 
 void DeviceMirror::set_format(unsigned r, unsigned c) {
@@ -170,4 +170,4 @@ std::vector<Step> plan_flush(const ScreenState& shadow, const DeviceMirror& mirr
 }
 
 } // namespace wsc
-} // namespace tn34xx
+} // namespace em34xx

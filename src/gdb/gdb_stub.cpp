@@ -11,7 +11,7 @@
 #include <cstring>
 #include <vector>
 
-namespace tn34xx {
+namespace em34xx {
 
 namespace {
 
@@ -67,7 +67,7 @@ constexpr unsigned kNumCoreRegs = 32;
 std::string target_xml(bool system_regs) {
     std::string xml = kTargetXml;
     if (system_regs) {
-        xml += "  <feature name=\"org.tn34xx.i286.system\">\n";
+        xml += "  <feature name=\"org.em34xx.i286.system\">\n";
         for (unsigned i = 0; i < kNumSystemRegs; ++i)
             xml += format("    <reg name=\"%s\" bitsize=\"32\" type=\"int32\" group=\"system\"%s/>\n",
                           kSystemRegNames[i], i == 0 ? format(" regnum=\"%u\"", kNumCoreRegs).c_str() : "");
@@ -529,4 +529,4 @@ std::string GdbStub::handle(const std::string& p, TcpSocket& client, bool& detac
     }
 }
 
-} // namespace tn34xx
+} // namespace em34xx

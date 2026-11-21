@@ -4,7 +4,7 @@
 #include "machine/machine.hpp"
 #include "util/strings.hpp"
 
-namespace tn34xx {
+namespace em34xx {
 
 const std::vector<KeyboardLayoutInfo>& keyboard_layouts() {
     // Source: IBM InfoWindow II 3489 Maintenance Information, SY18-2345-0,
@@ -137,4 +137,4 @@ std::string keyboard_layout_list() {
     return out;
 }
 
-} // namespace tn34xx
+} // namespace em34xx

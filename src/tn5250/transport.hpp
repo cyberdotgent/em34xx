@@ -2,7 +2,7 @@
 // Byte transport under the TN5250 telnet layer: plain TCP, or TLS from the
 // first byte (implicit TLS, port 992 by convention; no STARTTLS).
 //
-// TLS uses the host's own stack, chosen at configure time (TN34XX_TLS):
+// TLS uses the host's own stack, chosen at configure time (EM34XX_TLS):
 //   - tls_openssl.cpp: the system libssl/libcrypto (Linux, the BSDs;
 //     OpenSSL 3 is Apache-2.0, 1.1.1 OpenSSL/SSLeay). Optional: without the
 //     development files the build has no TLS.
@@ -23,7 +23,7 @@
 #include <memory>
 #include <string>
 
-namespace tn34xx {
+namespace em34xx {
 namespace tn5250 {
 
 class Transport {
@@ -73,4 +73,4 @@ std::unique_ptr<Transport> make_transport(const Tn5250Config& cfg, std::string& 
 std::unique_ptr<Transport> make_tls_transport(const Tn5250Config& cfg, std::string& error);
 
 } // namespace tn5250
-} // namespace tn34xx
+} // namespace em34xx

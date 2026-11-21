@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Connection profiles: what tn34xxw saves as a `.tn34xx` file (TOML) and
+// Connection profiles: what em34xxw saves as a `.em34xx` file (TOML) and
 // connects with. A profile names the terminal model and up to two TN5250
 // display sessions (Twinax station addresses 0 and 1) with their TLS
 // settings. It never holds a password. Format (docs/frontend-win32.md):
@@ -34,7 +34,7 @@
 #include <cstdint>
 #include <string>
 
-namespace tn34xx {
+namespace em34xx {
 
 enum class ProfileTlsMode {
     System,        // verify against the certificate store and the host name
@@ -89,4 +89,4 @@ bool profile_connect_config(const Profile& p, const AppConfig& base, TlsVersion 
 // session's own cert_sha256.
 void profile_trust_certificate(Profile& p, unsigned station, const Sha256Digest& sha256);
 
-} // namespace tn34xx
+} // namespace em34xx

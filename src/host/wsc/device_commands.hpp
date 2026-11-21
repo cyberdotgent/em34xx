@@ -11,7 +11,7 @@
 #include <cstdint>
 #include <vector>
 
-namespace tn34xx {
+namespace em34xx {
 namespace wsc {
 
 namespace cmd {
@@ -125,4 +125,4 @@ constexpr size_t kQueueBytes = 16;
 constexpr size_t kQueueBytes3477 = 64;
 
 } // namespace wsc
-} // namespace tn34xx
+} // namespace em34xx

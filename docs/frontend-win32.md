@@ -1,10 +1,10 @@
-# tn34xxw: the Win32 front end
+# em34xxw: the Win32 front end
 
-`tn34xxw.exe` is the end-user build for Windows 7 and later (x86 and x64):
+`em34xxw.exe` is the end-user build for Windows 7 and later (x86 and x64):
 a GUI-subsystem program with menus, a toolbar and a status bar, connection
-profiles, a ROM manager and a keymap editor. It links `tn34xx_runtime` and
-`tn34xx_frontend_win32` only; the monitor, the GDB stub and the other
-developer tools are not part of it (use `tn34xx.exe` / `tn34xx-headless.exe`
+profiles, a ROM manager and a keymap editor. It links `em34xx_runtime` and
+`em34xx_frontend_win32` only; the monitor, the GDB stub and the other
+developer tools are not part of it (use `em34xx.exe` / `em34xx-headless.exe`
 for those).
 
 Sources: `src/main_win32.cpp`, `src/frontend/win32/`:
@@ -15,9 +15,9 @@ Sources: `src/main_win32.cpp`, `src/frontend/win32/`:
 | `win32_dialogs.*` | ROM images, Settings, profile manager and editor, TLS Settings, the trust prompt, Keymap, About, file association |
 | `win32_util.*` | UTF-8/UTF-16, DPI helpers (newer APIs loaded at run time), scan code -> HID table, message boxes, the open-file dialog |
 | `res/notices.txt` | third-party licence notices, embedded as RCDATA and shown in Help > About (no separate notices file ships) |
-| `version.h.in` | generated `tn34xxw_version.h`: version (from `project(VERSION)`) and project page (`TN34XX_HOMEPAGE_URL`, empty = "to be announced") for VERSIONINFO and About |
-| `tn34xxw.rc`, `resource.h` | menu, accelerators, dialog templates (`DIALOGEX`), string table, icons, toolbar bitmaps, version information, manifest; compiled by windres |
-| `tn34xxw.manifest` | Common Controls 6 (visual styles), DPI awareness, `supportedOS`, `asInvoker` |
+| `version.h.in` | generated `em34xxw_version.h`: version (from `project(VERSION)`) and project page (`EM34XX_HOMEPAGE_URL`, empty = "to be announced") for VERSIONINFO and About |
+| `em34xxw.rc`, `resource.h` | menu, accelerators, dialog templates (`DIALOGEX`), string table, icons, toolbar bitmaps, version information, manifest; compiled by windres |
+| `em34xxw.manifest` | Common Controls 6 (visual styles), DPI awareness, `supportedOS`, `asInvoker` |
 | `res/` | icons and toolbar strips, drawn by `tools/gen_win32_assets.py` (original artwork) |
 
 Unicode (W) APIs only (`UNICODE`/`_UNICODE`); nothing newer than Windows 7
@@ -28,7 +28,7 @@ with `GetProcAddress` and fall back to the system DPI.
 ## Start-up
 
 1. The user folder (below) is created if needed and `settings.toml` read.
-2. The command line: `tn34xxw [PROFILE.tn34xx]`. A profile path opens and
+2. The command line: `em34xxw [PROFILE.em34xx]`. A profile path opens and
    connects that profile once the window is up, so a file association can
    start it. Anything else is reported in a message box.
 3. The model: the settings' `model` when it is runnable
@@ -41,25 +41,25 @@ with `GetProcAddress` and fall back to the system DPI.
    and the built-in PCOMM map is used.
 6. The `Application` starts with a command line built from all this
    (`--model`, `--rom-dir`, `--display`, `--speed`, `--keymap`, `--nvram`,
-   `--log info --log-file <folder>\tn34xxw.log`, `--no-crt`). Errors from it
+   `--log info --log-file <folder>\em34xxw.log`, `--no-crt`). Errors from it
    go to a message box (`Application::last_error()`).
 
 ## The user folder
 
-`%APPDATA%\tn34xx` (`SHGetFolderPathW(CSIDL_APPDATA)`, available on
+`%APPDATA%\em34xx` (`SHGetFolderPathW(CSIDL_APPDATA)`, available on
 Windows 7), or the folder named by the environment variable
-`TN34XX_USER_DIR` (portable use and tests). The layout is
+`EM34XX_USER_DIR` (portable use and tests). The layout is
 `config/user_dirs.hpp`, platform independent and tested with an injected
 root:
 
 ```
-%APPDATA%\tn34xx\
+%APPDATA%\em34xx\
   settings.toml        application settings
   keymap.toml          the global keymap (only once edited; else PCOMM)
   roms\                ROM images (the emulator's rom-dir)
-  profiles\*.tn34xx    connection profiles
+  profiles\*.em34xx    connection profiles
   3477.nvram           battery-backed RAM of the terminal (its setup)
-  tn34xxw.log          the log of the last run
+  em34xxw.log          the log of the last run
 ```
 
 The emulator core opens files by narrow name; for a user folder with
@@ -92,7 +92,7 @@ maximized = false
 Unknown keys are ignored and missing ones take defaults. Files are written
 to a temporary name and renamed over the old one.
 
-## Profiles (`.tn34xx`)
+## Profiles (`.em34xx`)
 
 TOML, read and written by `config/profile.*`. A profile never contains a
 password.
@@ -149,7 +149,7 @@ message.
 | Terminal | Power Cycle | | `Application::power_on()` |
 | Help | About... | | version, user folder, TLS backend, project page, third-party notices |
 
-The window title is `<profile>[*] - IBM 3477 - tn34xx`; `*` marks a
+The window title is `<profile>[*] - IBM 3477 - em34xx`; `*` marks a
 profile that differs from its file (or was never saved). The status bar
 shows session 1, session 2 (state and host:port, with the last error), the
 TLS state (off, not connected, verified, trusted fingerprint, not
@@ -241,14 +241,14 @@ rectangle and rebuilds the toolbar images.
 
 ## File association
 
-Settings > "Open .tn34xx files with tn34xxw..." asks first, then writes
+Settings > "Open .em34xx files with em34xxw..." asks first, then writes
 per-user keys (never automatically, never for all users):
 
 ```
-HKCU\Software\Classes\.tn34xx                         = tn34xx.Profile
-HKCU\Software\Classes\tn34xx.Profile                  = tn34xx connection profile
-HKCU\Software\Classes\tn34xx.Profile\DefaultIcon      = "<exe>",-2
-HKCU\Software\Classes\tn34xx.Profile\shell\open\command = "<exe>" "%1"
+HKCU\Software\Classes\.em34xx                         = em34xx.Profile
+HKCU\Software\Classes\em34xx.Profile                  = em34xx connection profile
+HKCU\Software\Classes\em34xx.Profile\DefaultIcon      = "<exe>",-2
+HKCU\Software\Classes\em34xx.Profile\shell\open\command = "<exe>" "%1"
 ```
 
 ## Testing (wine)
@@ -256,7 +256,7 @@ HKCU\Software\Classes\tn34xx.Profile\shell\open\command = "<exe>" "%1"
 Tests never touch the user's desktop or `~/.wine`: a private `Xvfb`, a
 `WINEPREFIX` in a scratch folder, `wine explorer /desktop=...` for window
 decorations. In that virtual desktop wine stacks popups below the main
-window in X, so screenshots capture each tn34xxw window (`xwd -id`) and
+window in X, so screenshots capture each em34xxw window (`xwd -id`) and
 composite them. Observed (November 2026, wine 9.0, x86 and x64 builds):
 
 - First start without ROMs: the ROM dialog; importing renamed dumps stores
@@ -264,7 +264,7 @@ composite them. Observed (November 2026, wine 9.0, x86 and x64 builds):
   boots (Offline Setup with a blank NVRAM, the on-line screen with a
   configured one).
 - Ad-hoc Connect to pub400.com:23: "Untitled Profile*", sign-on screen,
-  typing reaches the field; Save As writes `profiles\PUB400.tn34xx`; the
+  typing reaches the field; Save As writes `profiles\PUB400.em34xx`; the
   profile manager's Copy, Rename and Delete; a profile path on the command
   line connects at start; closing asks to save an untitled profile.
 - TLS: pub400.com:992 verifies (no prompt). A local self-signed
@@ -290,13 +290,13 @@ non-ASCII user folder.
 
 ## Version and notices
 
-The version comes from `project(tn34xx VERSION ...)` in CMakeLists.txt and
+The version comes from `project(em34xx VERSION ...)` in CMakeLists.txt and
 appears in the VERSIONINFO resource and Help > About (major.minor). Set the
-project page with `-DTN34XX_HOMEPAGE_URL=https://...`; About then shows it as
+project page with `-DEM34XX_HOMEPAGE_URL=https://...`; About then shows it as
 a link, which opens in the default browser.
 
 `res/notices.txt` holds the licence notices of the third-party code linked
-into tn34xxw (toml++, the mingw-w64 runtime, winpthreads, the GCC runtime).
+into em34xxw (toml++, the mingw-w64 runtime, winpthreads, the GCC runtime).
 No separate notices file is shipped; the About dialog is where they are
 displayed. Update the file when a dependency is added to the Win32 build
 (`x86_64-w64-mingw32-objdump -p` lists the DLLs; static libraries come from

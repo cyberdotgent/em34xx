@@ -7,7 +7,7 @@
 #include <functional>
 #include <string>
 
-namespace tn34xx {
+namespace em34xx {
 
 enum class LogLevel { Off = 0, Error, Warn, Info, Debug, Trace };
 
@@ -38,12 +38,12 @@ using LogSink = std::function<void(const std::string& line)>;
 void log_set_sink(LogSink sink);      // nullptr restores stderr
 bool log_open_file(const std::string& path, std::string& error);
 
-} // namespace tn34xx
+} // namespace em34xx
 
 #define TN_LOG(cat, lvl, ...)                                                   \
     do {                                                                        \
-        if (::tn34xx::log_enabled(cat, ::tn34xx::LogLevel::lvl))                \
-            ::tn34xx::log_write(cat, ::tn34xx::LogLevel::lvl, __VA_ARGS__);     \
+        if (::em34xx::log_enabled(cat, ::em34xx::LogLevel::lvl))                \
+            ::em34xx::log_write(cat, ::em34xx::LogLevel::lvl, __VA_ARGS__);     \
     } while (0)
 
 #define LOG_ERROR(cat, ...) TN_LOG(cat, Error, __VA_ARGS__)

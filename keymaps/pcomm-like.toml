@@ -1,4 +1,4 @@
-# tn34xx host keymap: the built-in "pcomm" map written out.
+# em34xx host keymap: the built-in "pcomm" map written out.
 #
 # Loading this file (--keymap keymaps/pcomm-like.toml) gives the same result
 # as --keymap pcomm (the default); a unit test keeps the two in step. Copy it

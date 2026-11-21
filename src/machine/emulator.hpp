@@ -16,7 +16,7 @@
 #include <mutex>
 #include <thread>
 
-namespace tn34xx {
+namespace em34xx {
 
 class Emulator {
 public:
@@ -115,4 +115,4 @@ private:
     std::thread thread_;
 };
 
-} // namespace tn34xx
+} // namespace em34xx

@@ -7,7 +7,7 @@
 #include <functional>
 #include <string>
 
-namespace tn34xx {
+namespace em34xx {
 
 struct DisasmResult {
     std::string text;      // e.g. "mov word [es:bx+0x10], ax"
@@ -23,4 +23,4 @@ using DisasmReader = std::function<uint8_t(uint32_t)>;
 DisasmResult disassemble(const DisasmReader& read, uint16_t cs, uint16_t ip, CpuLevel level,
                          uint32_t address_mask = 0xFFFFF);
 
-} // namespace tn34xx
+} // namespace em34xx

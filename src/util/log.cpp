@@ -8,7 +8,7 @@
 #include <map>
 #include <mutex>
 
-namespace tn34xx {
+namespace em34xx {
 
 namespace {
 
@@ -152,4 +152,4 @@ bool log_open_file(const std::string& path, std::string& error) {
     return true;
 }
 
-} // namespace tn34xx
+} // namespace em34xx

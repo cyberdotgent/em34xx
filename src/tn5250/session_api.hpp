@@ -19,7 +19,7 @@
 #include <string>
 #include <vector>
 
-namespace tn34xx {
+namespace em34xx {
 namespace tn5250 {
 
 // ---------------------------------------------------------------------------
@@ -328,4 +328,4 @@ public:
 };
 
 } // namespace tn5250
-} // namespace tn34xx
+} // namespace em34xx

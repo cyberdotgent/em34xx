@@ -8,7 +8,7 @@
 #include <filesystem>
 #include <system_error>
 
-namespace tn34xx {
+namespace em34xx {
 
 namespace fs = std::filesystem;
 
@@ -31,7 +31,7 @@ std::string join(const std::string& dir, const std::string& name) { return ustr(
 
 UserDirs::UserDirs(std::string root) : root_(std::move(root)) {}
 
-std::string user_dirs_root(const std::string& appdata) { return join(appdata, "tn34xx"); }
+std::string user_dirs_root(const std::string& appdata) { return join(appdata, "em34xx"); }
 
 std::string UserDirs::roms() const { return join(root_, "roms"); }
 std::string UserDirs::profiles() const { return join(root_, "profiles"); }
@@ -260,4 +260,4 @@ bool model_roms_ready(const Model& model, const std::string& rom_dir) {
     return true;
 }
 
-} // namespace tn34xx
+} // namespace em34xx

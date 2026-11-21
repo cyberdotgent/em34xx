@@ -3,7 +3,7 @@
 
 #include "util/log.hpp"
 
-namespace tn34xx {
+namespace em34xx {
 namespace wsc {
 
 LinkScheduler::LinkScheduler(const std::vector<StationConfig>& stations, const WscTiming& timing) {
@@ -64,4 +64,4 @@ std::string LinkScheduler::describe() const {
 }
 
 } // namespace wsc
-} // namespace tn34xx
+} // namespace em34xx

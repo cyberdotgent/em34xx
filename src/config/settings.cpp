@@ -10,7 +10,7 @@
 #include <sstream>
 #include <system_error>
 
-namespace tn34xx {
+namespace em34xx {
 
 namespace fs = std::filesystem;
 
@@ -117,7 +117,7 @@ std::string settings_to_toml(const AppSettings& s) {
         {"window", window},
     };
     std::ostringstream os;
-    os << "# tn34xx application settings (written by tn34xxw; docs/frontend-win32.md)\n\n" << root << "\n";
+    os << "# em34xx application settings (written by em34xxw; docs/frontend-win32.md)\n\n" << root << "\n";
     return os.str();
 }
 
@@ -136,4 +136,4 @@ bool save_settings(const std::string& path, const AppSettings& s, std::string& e
     return write_text_file(path, settings_to_toml(s), error);
 }
 
-} // namespace tn34xx
+} // namespace em34xx

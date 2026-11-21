@@ -39,7 +39,7 @@
 #include <sstream>
 #include <vector>
 
-namespace tn34xx {
+namespace em34xx {
 namespace tn5250 {
 
 namespace {
@@ -606,4 +606,4 @@ std::unique_ptr<Transport> make_tls_transport(const Tn5250Config& cfg, std::stri
 }
 
 } // namespace tn5250
-} // namespace tn34xx
+} // namespace em34xx

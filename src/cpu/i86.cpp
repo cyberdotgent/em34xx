@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "cpu/i86.hpp"
 
-namespace tn34xx {
+namespace em34xx {
 
 namespace {
 
@@ -1163,4 +1163,4 @@ void I86::execute_186(uint8_t op) {
     }
 }
 
-} // namespace tn34xx
+} // namespace em34xx

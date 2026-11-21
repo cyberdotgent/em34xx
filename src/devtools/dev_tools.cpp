@@ -20,7 +20,7 @@
 #define tn_fileno fileno
 #endif
 
-namespace tn34xx {
+namespace em34xx {
 
 namespace {
 
@@ -41,7 +41,7 @@ public:
             std::string error;
             gdb_ = std::make_unique<GdbStub>(emu, monitor_.get());
             if (!gdb_->start(cfg.gdb_port, error)) {
-                std::fprintf(stderr, "tn34xx: gdb: %s\n", error.c_str());
+                std::fprintf(stderr, "em34xx: gdb: %s\n", error.c_str());
                 exit_code = 2;
                 return false;
             }
@@ -113,4 +113,4 @@ private:
 
 std::unique_ptr<AppTooling> make_dev_tools() { return std::make_unique<DevTools>(); }
 
-} // namespace tn34xx
+} // namespace em34xx

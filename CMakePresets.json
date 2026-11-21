@@ -9,7 +9,7 @@
       "toolchainFile": "$env{VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake",
       "cacheVariables": {
         "VCPKG_MANIFEST_FEATURES": "tests",
-        "TN34XX_BUILD_TESTS": "ON"
+        "EM34XX_BUILD_TESTS": "ON"
       }
     },
     {
@@ -61,7 +61,7 @@
       "name": "mingw-x86-release",
       "inherits": "mingw-x86",
       "displayName": "Release (Windows x86, MinGW-w64 cross)",
-      "cacheVariables": { "CMAKE_BUILD_TYPE": "RelWithDebInfo" }
+      "cacheVariables": { "CMAKE_BUILD_TYPE": "Release" }
     },
     {
       "name": "mingw-x64-debug",
@@ -73,7 +73,7 @@
       "name": "mingw-x64-release",
       "inherits": "mingw-x64",
       "displayName": "Release (Windows x64, MinGW-w64 cross)",
-      "cacheVariables": { "CMAKE_BUILD_TYPE": "RelWithDebInfo" }
+      "cacheVariables": { "CMAKE_BUILD_TYPE": "Release" }
     }
   ],
   "buildPresets": [

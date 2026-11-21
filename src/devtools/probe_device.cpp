@@ -4,7 +4,7 @@
 #include "util/log.hpp"
 #include "util/strings.hpp"
 
-namespace tn34xx {
+namespace em34xx {
 
 ProbeDevice::ProbeDevice(std::string name, uint32_t size, bool latch, uint8_t fixed_value)
     : Device(std::move(name)), latch_(latch), fixed_(fixed_value), data_(size, fixed_value) {}
@@ -44,4 +44,4 @@ std::string ProbeDevice::describe() const {
     return out;
 }
 
-} // namespace tn34xx
+} // namespace em34xx

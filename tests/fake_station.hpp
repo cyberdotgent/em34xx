@@ -17,7 +17,7 @@
 #include <deque>
 #include <vector>
 
-namespace tn34xx {
+namespace em34xx {
 namespace test {
 
 struct FakeStationOptions {
@@ -108,4 +108,4 @@ private:
 };
 
 } // namespace test
-} // namespace tn34xx
+} // namespace em34xx

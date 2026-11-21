@@ -7,7 +7,7 @@
 
 #include <string>
 
-using namespace tn34xx;
+using namespace em34xx;
 
 TEST_CASE("sha256 known answers") {
     CHECK(sha256_hex(reinterpret_cast<const uint8_t*>(""), 0) ==
@@ -43,7 +43,7 @@ TEST_CASE("word splitting honours quotes") {
 TEST_CASE("command line overrides") {
     AppConfig cfg;
     std::string err;
-    const char* argv[] = {"tn34xx", "--model", "3486", "--gdb=4321", "--unmapped", "log",
+    const char* argv[] = {"em34xx", "--model", "3486", "--gdb=4321", "--unmapped", "log",
                           "--tn5250-host", "ibmi.example", "--tn5250-env", "KBDTYPE=USB", "--batch"};
     REQUIRE(parse_command_line(int(sizeof argv / sizeof argv[0]), const_cast<char**>(argv), cfg, err));
     CHECK(cfg.model == "3486");
@@ -56,6 +56,6 @@ TEST_CASE("command line overrides") {
     CHECK(cfg.headless);
 
     AppConfig bad;
-    const char* argv2[] = {"tn34xx", "--station-address", "7"};
+    const char* argv2[] = {"em34xx", "--station-address", "7"};
     CHECK_FALSE(parse_command_line(3, const_cast<char**>(argv2), bad, err));
 }

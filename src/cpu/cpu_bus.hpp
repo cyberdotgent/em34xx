@@ -4,7 +4,7 @@
 
 #include <cstdint>
 
-namespace tn34xx {
+namespace em34xx {
 
 // The CPU sees physical memory and I/O ports only through this interface.
 // Word accesses are split into byte accesses by the CPU core according to
@@ -28,4 +28,4 @@ public:
     virtual uint8_t interrupt_ack() { return 0xFF; }
 };
 
-} // namespace tn34xx
+} // namespace em34xx

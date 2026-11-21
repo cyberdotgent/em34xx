@@ -9,7 +9,7 @@
 #include <iterator>
 #include <stdexcept>
 
-namespace tn34xx {
+namespace em34xx {
 
 BatteryBackedRam::BatteryBackedRam(std::string name, Bus& bus, uint32_t base, uint32_t size)
     : Device(std::move(name)), bus_(bus), base_(base), size_(size) {
@@ -107,4 +107,4 @@ std::string BatteryBackedRam::nv_status() const {
                   path_.empty() ? "volatile (no battery image)" : ("kept in " + path_).c_str());
 }
 
-} // namespace tn34xx
+} // namespace em34xx

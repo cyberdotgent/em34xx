@@ -3,7 +3,7 @@
 
 #include "util/strings.hpp"
 
-namespace tn34xx {
+namespace em34xx {
 namespace tn5250 {
 
 using namespace telnet;
@@ -272,4 +272,4 @@ std::vector<uint8_t> TelnetCodec::frame(const std::vector<uint8_t>& record) {
 }
 
 } // namespace tn5250
-} // namespace tn34xx
+} // namespace em34xx

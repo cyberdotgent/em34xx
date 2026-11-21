@@ -1,6 +1,6 @@
 {
   "$schema": "https://raw.githubusercontent.com/microsoft/vcpkg-tool/main/docs/vcpkg.schema.json",
-  "name": "tn34xx",
+  "name": "em34xx",
   "version-string": "0.0.0",
   "description": "Hardware emulator for IBM 34xx-family 5250 terminals",
   "builtin-baseline": "52d80838fb40c755b1615fbc9c7b994a33742a22",

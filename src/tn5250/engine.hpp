@@ -17,7 +17,7 @@
 #include <string>
 #include <vector>
 
-namespace tn34xx {
+namespace em34xx {
 namespace tn5250 {
 
 // Operator error codes the engine posts. FR SC30-3533-04 names only some of
@@ -214,4 +214,4 @@ private:
 };
 
 } // namespace tn5250
-} // namespace tn34xx
+} // namespace em34xx

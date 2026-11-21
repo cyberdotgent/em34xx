@@ -3,7 +3,7 @@
 
 #include "util/strings.hpp"
 
-namespace tn34xx {
+namespace em34xx {
 
 namespace {
 
@@ -46,4 +46,4 @@ std::string format_twinax_message(const TwinaxMessage& msg) {
     return out;
 }
 
-} // namespace tn34xx
+} // namespace em34xx

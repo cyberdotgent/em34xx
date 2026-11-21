@@ -9,7 +9,7 @@
 #include <fstream>
 #include <sstream>
 
-namespace tn34xx {
+namespace em34xx {
 
 namespace {
 
@@ -830,4 +830,4 @@ bool HostKeymapEngine::host_key(KeyboardType type, uint32_t hid, bool pressed, c
     return true;
 }
 
-} // namespace tn34xx
+} // namespace em34xx

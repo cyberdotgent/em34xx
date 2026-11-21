@@ -11,7 +11,7 @@
 #include <cerrno>
 #include <cstdio>
 
-namespace tn34xx {
+namespace em34xx {
 
 namespace {
 
@@ -35,11 +35,11 @@ public:
         });
         log_set_sink([this](const std::string& line) { rx_.print("%s\n", line.c_str()); });
 
-        std::fputs("tn34xx monitor; 'help' lists commands, Ctrl-D or 'quit' exits.\n", stdout);
+        std::fputs("em34xx monitor; 'help' lists commands, Ctrl-D or 'quit' exits.\n", stdout);
         std::fflush(stdout);
         while (!monitor_.quit_requested() && !emu_.quit_requested()) {
             errno = 0;
-            const char* input = rx_.input(emu_.running() ? "tn34xx (running)> " : "tn34xx> ");
+            const char* input = rx_.input(emu_.running() ? "em34xx (running)> " : "em34xx> ");
             if (!input) {
                 if (errno == EAGAIN) continue;  // Ctrl-C at the prompt or interrupt()
                 emu_.request_quit(int(emu_.exit_code()));
@@ -68,4 +68,4 @@ std::unique_ptr<Console> make_terminal_console(Monitor& monitor, Emulator& emu, 
     return std::make_unique<ReplxxConsole>(monitor, emu, history_file);
 }
 
-} // namespace tn34xx
+} // namespace em34xx

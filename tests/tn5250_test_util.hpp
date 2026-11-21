@@ -13,7 +13,7 @@
 namespace tn5250_test {
 
 using Bytes = std::vector<uint8_t>;
-using namespace tn34xx::tn5250;
+using namespace em34xx::tn5250;
 
 // ASCII text to EBCDIC (CCSID 37).
 inline Bytes eb(const std::string& s) {

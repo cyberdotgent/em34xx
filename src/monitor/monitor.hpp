@@ -18,7 +18,7 @@
 #include <thread>
 #include <vector>
 
-namespace tn34xx {
+namespace em34xx {
 
 class Emulator;
 class HostLink;
@@ -143,4 +143,4 @@ private:
     CrtParams crt_params_;
 };
 
-} // namespace tn34xx
+} // namespace em34xx

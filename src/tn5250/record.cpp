@@ -3,7 +3,7 @@
 
 #include "util/strings.hpp"
 
-namespace tn34xx {
+namespace em34xx {
 namespace tn5250 {
 
 std::vector<uint8_t> encode_record(const Record& rec) {
@@ -82,4 +82,4 @@ std::string flags_text(uint8_t flags) {
 }
 
 } // namespace tn5250
-} // namespace tn34xx
+} // namespace em34xx

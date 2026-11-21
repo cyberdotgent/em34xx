@@ -21,7 +21,7 @@
 #include <string>
 #include <vector>
 
-namespace tn34xx {
+namespace em34xx {
 
 // Frames are queued by the monitor and responses are recorded for
 // inspection. This is the bring-up path for the link device.
@@ -58,7 +58,7 @@ private:
     Tn5250Config cfg_;
 };
 
-// Builds the TN5250 bridge (wsc::make_tn5250_bridge, in the tn34xx_bridge
+// Builds the TN5250 bridge (wsc::make_tn5250_bridge, in the em34xx_bridge
 // library, which needs the TN5250 client). make_twinax_host() validates the
 // configuration and then calls it; without one it falls back to the
 // configuration-only Tn5250TwinaxHost placeholder.
@@ -68,4 +68,4 @@ using Tn5250HostFactory = std::function<std::unique_ptr<TwinaxHost>(const Twinax
 std::unique_ptr<TwinaxHost> make_twinax_host(const TwinaxConfig& twinax, const Tn5250Config& tn5250,
                                              std::string& error, const Tn5250HostFactory& tn5250_factory = nullptr);
 
-} // namespace tn34xx
+} // namespace em34xx

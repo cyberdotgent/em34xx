@@ -3,7 +3,7 @@
 
 #include "machine/machine.hpp"
 
-namespace tn34xx {
+namespace em34xx {
 
 uint32_t phosphor_color(DisplaySubtype s) {
     switch (s) {
@@ -32,4 +32,4 @@ void render_presented(Machine& m, Framebuffer& fb) {
     apply_display_subtype(m.options().display, fb);
 }
 
-} // namespace tn34xx
+} // namespace em34xx

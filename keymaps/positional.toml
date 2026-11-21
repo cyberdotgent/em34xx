@@ -1,4 +1,4 @@
-# tn34xx host keymap: physical positions only.
+# em34xx host keymap: physical positions only.
 #
 # Every PC key presses the terminal key at the same place on the keyboard
 # (docs/keyboard.md, "Positional fallback"), so the PC's Enter is the

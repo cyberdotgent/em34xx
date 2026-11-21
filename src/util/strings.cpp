@@ -5,7 +5,7 @@
 #include <cstdarg>
 #include <cstdio>
 
-namespace tn34xx {
+namespace em34xx {
 
 std::string trim(const std::string& s) {
     size_t b = 0, e = s.size();
@@ -106,4 +106,4 @@ std::string hex_bytes(const uint8_t* data, size_t len) {
     return out;
 }
 
-} // namespace tn34xx
+} // namespace em34xx

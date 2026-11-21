@@ -18,7 +18,7 @@
 #include <cstdio>
 #include <fstream>
 
-namespace tn34xx {
+namespace em34xx {
 
 namespace {
 
@@ -1065,4 +1065,4 @@ bool Monitor::cmd_quit(const std::vector<std::string>& a) {
     return true;
 }
 
-} // namespace tn34xx
+} // namespace em34xx

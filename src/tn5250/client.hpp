@@ -22,7 +22,7 @@
 #include <thread>
 #include <vector>
 
-namespace tn34xx {
+namespace em34xx {
 namespace tn5250 {
 
 enum class ConnState { Idle, Connecting, Negotiating, Ready, Closed, Failed };
@@ -98,4 +98,4 @@ private:
 };
 
 } // namespace tn5250
-} // namespace tn34xx
+} // namespace em34xx

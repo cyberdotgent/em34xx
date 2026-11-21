@@ -20,7 +20,7 @@
 #include <cstdint>
 #include <vector>
 
-namespace tn34xx {
+namespace em34xx {
 
 struct CrtParams {
     bool enabled = true;      // false: sharp pixels, no scan-line structure
@@ -82,4 +82,4 @@ private:
     std::vector<float> spread_;
 };
 
-} // namespace tn34xx
+} // namespace em34xx

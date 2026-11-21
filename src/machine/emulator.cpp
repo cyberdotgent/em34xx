@@ -7,7 +7,7 @@
 #include <algorithm>
 #include <chrono>
 
-namespace tn34xx {
+namespace em34xx {
 
 namespace {
 // Instructions per execution slice. Display changes are published and the
@@ -251,4 +251,4 @@ void Emulator::thread_main() {
     }
 }
 
-} // namespace tn34xx
+} // namespace em34xx

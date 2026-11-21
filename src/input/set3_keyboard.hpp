@@ -22,7 +22,7 @@
 #include <deque>
 #include <memory>
 
-namespace tn34xx {
+namespace em34xx {
 
 class Set3Keyboard : public KeyboardSink {
 public:
@@ -137,4 +137,4 @@ private:
     uint64_t repeat_wait_us_ = 0;
 };
 
-} // namespace tn34xx
+} // namespace em34xx

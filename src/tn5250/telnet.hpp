@@ -25,7 +25,7 @@
 #include <utility>
 #include <vector>
 
-namespace tn34xx {
+namespace em34xx {
 namespace tn5250 {
 
 namespace telnet {
@@ -97,4 +97,4 @@ private:
 };
 
 } // namespace tn5250
-} // namespace tn34xx
+} // namespace em34xx

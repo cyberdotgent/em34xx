@@ -7,7 +7,7 @@
 
 #include <algorithm>
 
-namespace tn34xx {
+namespace em34xx {
 
 const char* stop_reason_name(StopEvent::Reason r) {
     switch (r) {
@@ -194,4 +194,4 @@ void LoggingKeyboard::host_key(const HostKeyEvent& ev) {
               ev.hid_usage, ev.pressed ? "down" : "up");
 }
 
-} // namespace tn34xx
+} // namespace em34xx

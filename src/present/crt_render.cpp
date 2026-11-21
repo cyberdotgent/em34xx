@@ -4,7 +4,7 @@
 #include <algorithm>
 #include <cmath>
 
-namespace tn34xx {
+namespace em34xx {
 
 void crt_fit(const Framebuffer& fb, int max_w, int max_h, int& out_w, int& out_h) {
     const double aspect = fb.display_aspect > 0.0
@@ -228,4 +228,4 @@ CrtRenderer::Rows CrtRenderer::render(const Framebuffer& fb, int out_w, int out_
     return rows;
 }
 
-} // namespace tn34xx
+} // namespace em34xx

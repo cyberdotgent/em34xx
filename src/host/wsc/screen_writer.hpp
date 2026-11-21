@@ -12,7 +12,7 @@
 #include <string>
 #include <vector>
 
-namespace tn34xx {
+namespace em34xx {
 namespace wsc {
 
 struct DeviceMirror {
@@ -61,4 +61,4 @@ uint8_t wcd_byte1_for(const ScreenState& shadow);
 uint8_t wcd_byte2_for(const ScreenState& shadow, const FlushOptions& opt);
 
 } // namespace wsc
-} // namespace tn34xx
+} // namespace em34xx

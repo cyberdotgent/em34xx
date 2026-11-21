@@ -36,7 +36,7 @@
 #include <string>
 #include <vector>
 
-namespace tn34xx {
+namespace em34xx {
 
 class Bus;
 
@@ -191,4 +191,4 @@ private:
     uint8_t misc_ = 0;   // last value written to 20015
 };
 
-} // namespace tn34xx
+} // namespace em34xx

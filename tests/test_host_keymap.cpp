@@ -9,7 +9,7 @@
 #include <string>
 #include <vector>
 
-using namespace tn34xx;
+using namespace em34xx;
 
 namespace {
 
@@ -365,7 +365,7 @@ TEST_CASE("keymap: Set3Keyboard applies the keymap") {
 }
 
 TEST_CASE("keymap files: built-ins written out match") {
-    const std::string dir = TN34XX_SOURCE_DIR "/keymaps/";
+    const std::string dir = EM34XX_SOURCE_DIR "/keymaps/";
     for (bool sf : {true, false}) {
         Keymap file, builtin;
         std::string error;
@@ -461,8 +461,8 @@ TEST_CASE("keymap files as text: round trip, PCOMM default, names") {
     const KeymapFile pc = pcomm_keymap_file();
     CHECK(pc.base == "positional");
     REQUIRE_FALSE(pc.entries.empty());
-    const std::string text = keymap_file_to_toml(pc, "tn34xx keymap\nline two");
-    CHECK(text.rfind("# tn34xx keymap\n# line two\n", 0) == 0);
+    const std::string text = keymap_file_to_toml(pc, "em34xx keymap\nline two");
+    CHECK(text.rfind("# em34xx keymap\n# line two\n", 0) == 0);
     Keymap from_text, builtin;
     std::string error;
     INFO(error);

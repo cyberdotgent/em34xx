@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "fake_station.hpp"
 
-namespace tn34xx {
+namespace em34xx {
 namespace test {
 
 FakeStation::FakeStation(uint8_t address, FakeStationOptions opt) : address_(address), opt_(opt) {
@@ -277,4 +277,4 @@ void FakeStation::run_load(const std::vector<uint8_t>& b) {
 }
 
 } // namespace test
-} // namespace tn34xx
+} // namespace em34xx

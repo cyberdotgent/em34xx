@@ -4,7 +4,7 @@
 #include "util/log.hpp"
 #include "util/strings.hpp"
 
-namespace tn34xx {
+namespace em34xx {
 
 void I2cBus::attach(uint8_t addr7, I2cDevice* dev) { slots_.push_back(Slot{uint8_t(addr7 & 0x7F), dev}); }
 
@@ -138,4 +138,4 @@ std::string I2cBus::describe() const {
     return t + "\n";
 }
 
-} // namespace tn34xx
+} // namespace em34xx

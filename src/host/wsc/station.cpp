@@ -5,7 +5,7 @@
 #include "util/log.hpp"
 #include "util/strings.hpp"
 
-namespace tn34xx {
+namespace em34xx {
 namespace wsc {
 
 const char* station_state_name(StationState s) {
@@ -579,4 +579,4 @@ std::string Station::describe() const {
 }
 
 } // namespace wsc
-} // namespace tn34xx
+} // namespace em34xx

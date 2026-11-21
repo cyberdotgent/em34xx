@@ -5,7 +5,7 @@
 
 #include <doctest/doctest.h>
 
-using namespace tn34xx;
+using namespace em34xx;
 
 namespace {
 ModelInfo test_model() {

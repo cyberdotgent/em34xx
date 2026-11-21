@@ -5,7 +5,7 @@
 
 #include <doctest/doctest.h>
 
-using namespace tn34xx;
+using namespace em34xx;
 
 TEST_CASE("display subtype names and shorthands") {
     DisplaySubtype s;
@@ -44,7 +44,7 @@ TEST_CASE("monochrome rendering maps luminance onto the phosphor") {
 TEST_CASE("display and keyboard options from the command line") {
     AppConfig cfg;
     std::string err;
-    const char* argv[] = {"tn34xx", "--amber", "--keyboard", "enhanced", "--keyboard-layout", "be", "--keyboard-id", "7f"};
+    const char* argv[] = {"em34xx", "--amber", "--keyboard", "enhanced", "--keyboard-layout", "be", "--keyboard-id", "7f"};
     REQUIRE(parse_command_line(8, const_cast<char**>(argv), cfg, err));
     CHECK(cfg.terminal.display == DisplaySubtype::Amber);
     CHECK(cfg.terminal.keyboard_type == "enhanced");
@@ -52,7 +52,7 @@ TEST_CASE("display and keyboard options from the command line") {
     CHECK(cfg.terminal.keyboard_id == 0x7F);
 
     AppConfig c2;
-    const char* argv2[] = {"tn34xx", "--display", "colour"};
+    const char* argv2[] = {"em34xx", "--display", "colour"};
     REQUIRE(parse_command_line(3, const_cast<char**>(argv2), c2, err));
     CHECK(c2.terminal.display == DisplaySubtype::Color);
 }

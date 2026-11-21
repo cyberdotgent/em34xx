@@ -5,7 +5,7 @@
 #include <string>
 #include <vector>
 
-namespace tn34xx {
+namespace em34xx {
 
 std::string trim(const std::string& s);
 std::string to_lower(std::string s);
@@ -31,4 +31,4 @@ std::string format(const char* fmt, ...)
 
 std::string hex_bytes(const uint8_t* data, size_t len);
 
-} // namespace tn34xx
+} // namespace em34xx

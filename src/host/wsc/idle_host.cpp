@@ -4,7 +4,7 @@
 #include "util/log.hpp"
 #include "util/strings.hpp"
 
-namespace tn34xx {
+namespace em34xx {
 namespace wsc {
 
 ScreenState LocalDisplayPort::blank_screen() {
@@ -90,4 +90,4 @@ std::unique_ptr<TwinaxHost> make_local_controller(const TwinaxConfig& twinax, st
 }
 
 } // namespace wsc
-} // namespace tn34xx
+} // namespace em34xx

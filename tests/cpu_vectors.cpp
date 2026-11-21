@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Runs the SingleStepTests 8088 V2 JSON test vectors against the I86 core.
 //
-// usage: tn34xx_cpu_vectors <testdata/8088> [opcode-file-prefix ...] [-v] [--max-fail N]
+// usage: em34xx_cpu_vectors <testdata/8088> [opcode-file-prefix ...] [-v] [--max-fail N]
 //
 // Only architectural state is compared (registers, flags under the
 // per-opcode undefined-flag mask, and memory). Bus-cycle traces are ignored.
@@ -18,7 +18,7 @@
 #include <vector>
 #include <dirent.h>
 
-using namespace tn34xx;
+using namespace em34xx;
 using nlohmann::json;
 
 namespace {

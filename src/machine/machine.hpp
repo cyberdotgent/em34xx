@@ -16,7 +16,7 @@
 #include <string>
 #include <vector>
 
-namespace tn34xx {
+namespace em34xx {
 
 struct ModelInfo;
 
@@ -180,4 +180,4 @@ private:
     LoggingKeyboard fallback_keyboard_;
 };
 
-} // namespace tn34xx
+} // namespace em34xx

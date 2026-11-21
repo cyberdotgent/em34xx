@@ -18,8 +18,8 @@
 #include <string>
 #include <vector>
 
-using namespace tn34xx;
-using namespace tn34xx::wsc;
+using namespace em34xx;
+using namespace em34xx::wsc;
 
 namespace {
 

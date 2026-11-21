@@ -9,7 +9,7 @@
 
 #include <sstream>
 
-namespace tn34xx {
+namespace em34xx {
 
 const char* profile_tls_mode_name(ProfileTlsMode m) {
     switch (m) {
@@ -84,7 +84,7 @@ bool parse_profile(const std::string& text, const std::string& origin, Profile& 
     Profile p;
     if (auto f = root["format"].value<int64_t>()) {
         if (*f > Profile::kFormat) {
-            error = origin + ": written by a newer tn34xx (profile format " + std::to_string(*f) + ")";
+            error = origin + ": written by a newer em34xx (profile format " + std::to_string(*f) + ")";
             return false;
         }
     }
@@ -149,7 +149,7 @@ std::string profile_to_toml(const Profile& p) {
     }
     toml::table root{{"format", int64_t(Profile::kFormat)}, {"model", p.model}, {"tls", tls}, {"session", sessions}};
     std::ostringstream os;
-    os << "# tn34xx connection profile (docs/frontend-win32.md). Passwords are never stored.\n\n" << root << "\n";
+    os << "# em34xx connection profile (docs/frontend-win32.md). Passwords are never stored.\n\n" << root << "\n";
     return os.str();
 }
 
@@ -215,4 +215,4 @@ void profile_trust_certificate(Profile& p, unsigned station, const Sha256Digest&
     p.sessions[0].cert_sha256.clear();
 }
 
-} // namespace tn34xx
+} // namespace em34xx

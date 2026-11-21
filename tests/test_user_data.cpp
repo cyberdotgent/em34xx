@@ -14,7 +14,7 @@
 #include <fstream>
 #include <random>
 
-using namespace tn34xx;
+using namespace em34xx;
 namespace fs = std::filesystem;
 
 namespace {
@@ -24,7 +24,7 @@ struct TempRoot {
     fs::path path;
     TempRoot() {
         std::random_device rd;
-        path = fs::temp_directory_path() / ("tn34xx_userdata_" + std::to_string(rd()));
+        path = fs::temp_directory_path() / ("em34xx_userdata_" + std::to_string(rd()));
         fs::remove_all(path);
         fs::create_directories(path);
     }
@@ -50,13 +50,13 @@ Sha256Digest digest(uint8_t seed) {
 TEST_CASE("user folder: layout under an injected root") {
     TempRoot tmp;
     const std::string root = user_dirs_root(tmp.str());
-    CHECK(fs::path(root) == tmp.path / "tn34xx");
+    CHECK(fs::path(root) == tmp.path / "em34xx");
     UserDirs dirs(root);
-    CHECK(fs::path(dirs.roms()) == tmp.path / "tn34xx" / "roms");
-    CHECK(fs::path(dirs.profiles()) == tmp.path / "tn34xx" / "profiles");
-    CHECK(fs::path(dirs.settings_file()) == tmp.path / "tn34xx" / "settings.toml");
-    CHECK(fs::path(dirs.keymap_file()) == tmp.path / "tn34xx" / "keymap.toml");
-    CHECK(fs::path(dirs.nvram_file("3477")) == tmp.path / "tn34xx" / "3477.nvram");
+    CHECK(fs::path(dirs.roms()) == tmp.path / "em34xx" / "roms");
+    CHECK(fs::path(dirs.profiles()) == tmp.path / "em34xx" / "profiles");
+    CHECK(fs::path(dirs.settings_file()) == tmp.path / "em34xx" / "settings.toml");
+    CHECK(fs::path(dirs.keymap_file()) == tmp.path / "em34xx" / "keymap.toml");
+    CHECK(fs::path(dirs.nvram_file("3477")) == tmp.path / "em34xx" / "3477.nvram");
     std::string err;
     REQUIRE(dirs.ensure(err));
     CHECK(fs::is_directory(dirs.roms()));
@@ -156,7 +156,7 @@ TEST_CASE("user folder: ROM status and import") {
 
     // The real dumps, when the repository has them: recognised by hash under
     // any name, and then the model is ready.
-    const fs::path repo_roms = fs::path(TN34XX_SOURCE_DIR) / "roms";
+    const fs::path repo_roms = fs::path(EM34XX_SOURCE_DIR) / "roms";
     bool have_all = true;
     for (const RomSpec& s : m3477->info().roms) have_all = have_all && fs::exists(repo_roms / s.file);
     if (have_all) {
@@ -229,11 +229,11 @@ TEST_CASE("profile: TOML round trip and validation") {
     CHECK(text.find("password") == std::string::npos);   // never stored (the comment says "Passwords")
     Profile back;
     std::string err;
-    REQUIRE(parse_profile(text, "rt.tn34xx", back, err));
+    REQUIRE(parse_profile(text, "rt.em34xx", back, err));
     CHECK(back == p);
 
     TempRoot tmp;
-    const std::string path = (tmp.path / "x.tn34xx").string();
+    const std::string path = (tmp.path / "x.em34xx").string();
     REQUIRE(save_profile(path, p, err));
     REQUIRE(load_profile(path, back, err));
     CHECK(back == p);

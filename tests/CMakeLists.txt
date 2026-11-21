@@ -5,7 +5,7 @@ find_package(ZLIB REQUIRED)
 
 # Emulator core, devices and the workstation controller: no monitor, no
 # configuration, no front end.
-add_executable(tn34xx_unit_tests
+add_executable(em34xx_unit_tests
   unit_main.cpp
   test_cpu.cpp
   test_bus.cpp
@@ -19,12 +19,12 @@ add_executable(tn34xx_unit_tests
   test_wsc.cpp
   fake_station.cpp
 )
-target_link_libraries(tn34xx_unit_tests PRIVATE tn34xx_machines tn34xx_host tn34xx_warnings doctest::doctest)
-target_compile_definitions(tn34xx_unit_tests PRIVATE TN34XX_SOURCE_DIR="${PROJECT_SOURCE_DIR}")
-add_test(NAME unit COMMAND tn34xx_unit_tests)
+target_link_libraries(em34xx_unit_tests PRIVATE em34xx_machines em34xx_host em34xx_warnings doctest::doctest)
+target_compile_definitions(em34xx_unit_tests PRIVATE EM34XX_SOURCE_DIR="${PROJECT_SOURCE_DIR}")
+add_test(NAME unit COMMAND em34xx_unit_tests)
 
 # Runtime and developer tooling: configuration, monitor, probes, presentation.
-add_executable(tn34xx_app_tests
+add_executable(em34xx_app_tests
   unit_main.cpp
   test_monitor_expr.cpp
   test_twinax.cpp
@@ -34,37 +34,37 @@ add_executable(tn34xx_app_tests
   test_probe.cpp
   test_user_data.cpp
 )
-target_link_libraries(tn34xx_app_tests PRIVATE tn34xx_devtools tn34xx_warnings doctest::doctest)
-target_compile_definitions(tn34xx_app_tests PRIVATE TN34XX_SOURCE_DIR="${PROJECT_SOURCE_DIR}")
+target_link_libraries(em34xx_app_tests PRIVATE em34xx_devtools em34xx_warnings doctest::doctest)
+target_compile_definitions(em34xx_app_tests PRIVATE EM34XX_SOURCE_DIR="${PROJECT_SOURCE_DIR}")
 
 # GUI link check: a minimal application linked against the runtime only.
-add_executable(tn34xx_runtime_only runtime_only_main.cpp)
-target_link_libraries(tn34xx_runtime_only PRIVATE tn34xx_runtime tn34xx_warnings)
-add_test(NAME runtime_only COMMAND tn34xx_runtime_only)
-add_test(NAME app COMMAND tn34xx_app_tests)
+add_executable(em34xx_runtime_only runtime_only_main.cpp)
+target_link_libraries(em34xx_runtime_only PRIVATE em34xx_runtime em34xx_warnings)
+add_test(NAME runtime_only COMMAND em34xx_runtime_only)
+add_test(NAME app COMMAND em34xx_app_tests)
 
 # SingleStepTests runner. Fetch the vectors with tools/fetch-test-vectors.sh.
-add_executable(tn34xx_cpu_vectors cpu_vectors.cpp)
-target_link_libraries(tn34xx_cpu_vectors PRIVATE tn34xx_emu nlohmann_json::nlohmann_json ZLIB::ZLIB)
+add_executable(em34xx_cpu_vectors cpu_vectors.cpp)
+target_link_libraries(em34xx_cpu_vectors PRIVATE em34xx_emu nlohmann_json::nlohmann_json ZLIB::ZLIB)
 
-set(TN34XX_TESTDATA "${PROJECT_SOURCE_DIR}/testdata" CACHE PATH "Directory holding fetched test vectors")
-if(EXISTS "${TN34XX_TESTDATA}/8088/metadata.json")
-  add_test(NAME cpu_vectors_8088 COMMAND tn34xx_cpu_vectors "${TN34XX_TESTDATA}/8088")
+set(EM34XX_TESTDATA "${PROJECT_SOURCE_DIR}/testdata" CACHE PATH "Directory holding fetched test vectors")
+if(EXISTS "${EM34XX_TESTDATA}/8088/metadata.json")
+  add_test(NAME cpu_vectors_8088 COMMAND em34xx_cpu_vectors "${EM34XX_TESTDATA}/8088")
   set_tests_properties(cpu_vectors_8088 PROPERTIES LABELS "slow;vectors" TIMEOUT 1800)
 else()
-  message(STATUS "8088 test vectors not found in ${TN34XX_TESTDATA}; run tools/fetch-test-vectors.sh")
+  message(STATUS "8088 test vectors not found in ${EM34XX_TESTDATA}; run tools/fetch-test-vectors.sh")
 endif()
 
 # ROM smoke tests run only when the (never committed) ROM images are present.
 if(EXISTS "${PROJECT_SOURCE_DIR}/roms/95f4171.bin" AND EXISTS "${PROJECT_SOURCE_DIR}/roms/95f4172.bin")
   add_test(NAME rom_3477_smoke
-           COMMAND tn34xx-headless --model 3477 --rom-dir "${PROJECT_SOURCE_DIR}/roms" --batch
+           COMMAND em34xx-headless --model 3477 --rom-dir "${PROJECT_SOURCE_DIR}/roms" --batch
                    --rc "${CMAKE_CURRENT_SOURCE_DIR}/rc/3477-smoke.rc")
   set_tests_properties(rom_3477_smoke PROPERTIES LABELS "rom")
 endif()
 
 # TN5250 client (src/tn5250): negotiation, data stream, field editing.
-add_executable(tn34xx_tn5250_tests
+add_executable(em34xx_tn5250_tests
   unit_main.cpp
   test_tn5250_negotiation.cpp
   test_tn5250_datastream.cpp
@@ -73,13 +73,13 @@ add_executable(tn34xx_tn5250_tests
   test_bridge.cpp
   fake_station.cpp
 )
-target_link_libraries(tn34xx_tn5250_tests PRIVATE tn34xx_bridge tn34xx_runtime tn34xx_warnings doctest::doctest)
-if(TN34XX_TLS_BACKEND STREQUAL "openssl")
+target_link_libraries(em34xx_tn5250_tests PRIVATE em34xx_bridge em34xx_runtime em34xx_warnings doctest::doctest)
+if(EM34XX_TLS_BACKEND STREQUAL "openssl")
   # The TLS test runs its own in-process OpenSSL server.
-  target_compile_definitions(tn34xx_tn5250_tests PRIVATE TN34XX_TLS_OPENSSL=1)
-  target_link_libraries(tn34xx_tn5250_tests PRIVATE OpenSSL::SSL OpenSSL::Crypto)
+  target_compile_definitions(em34xx_tn5250_tests PRIVATE EM34XX_TLS_OPENSSL=1)
+  target_link_libraries(em34xx_tn5250_tests PRIVATE OpenSSL::SSL OpenSSL::Crypto)
 endif()
-add_test(NAME tn5250 COMMAND tn34xx_tn5250_tests)
+add_test(NAME tn5250 COMMAND em34xx_tn5250_tests)
 
 # Library layering (docs/architecture.md): includes must follow the
 # dependency direction of the CMake libraries.

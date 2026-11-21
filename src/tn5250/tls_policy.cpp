@@ -3,7 +3,7 @@
 
 #include "util/strings.hpp"
 
-namespace tn34xx {
+namespace em34xx {
 namespace tn5250 {
 
 std::string tls_fingerprint_line(const Sha256Digest& digest) {
@@ -119,4 +119,4 @@ bool tls_fetch_certificate(const Tn5250Config& cfg_in, PeerCertificate& out, std
 }
 
 } // namespace tn5250
-} // namespace tn34xx
+} // namespace em34xx

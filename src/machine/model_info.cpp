@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "machine/model_info.hpp"
 
-namespace tn34xx {
+namespace em34xx {
 
 const char* model_status_name(ModelStatus s) {
     switch (s) {
@@ -12,4 +12,4 @@ const char* model_status_name(ModelStatus s) {
     return "?";
 }
 
-} // namespace tn34xx
+} // namespace em34xx

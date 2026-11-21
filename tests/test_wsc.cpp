@@ -16,10 +16,10 @@
 #include <map>
 #include <memory>
 
-using namespace tn34xx;
-using namespace tn34xx::wsc;
-using tn34xx::test::FakeStation;
-using tn34xx::test::FakeStationOptions;
+using namespace em34xx;
+using namespace em34xx::wsc;
+using em34xx::test::FakeStation;
+using em34xx::test::FakeStationOptions;
 
 namespace {
 
@@ -785,7 +785,7 @@ TEST_CASE("tn5250 session adapter drives a station") {
 
 TEST_CASE("local controller: on line with a local screen, typed characters echo") {
     Bench b({display_at(0)});
-    b.host = std::make_unique<tn34xx::wsc::LocalController>(std::vector<StationConfig>{display_at(0)});
+    b.host = std::make_unique<em34xx::wsc::LocalController>(std::vector<StationConfig>{display_at(0)});
     FakeStation f(0);
     b.plug(f);
     REQUIRE(b.run_until([&] { return b.host->station(0)->state() == StationState::Online; }));

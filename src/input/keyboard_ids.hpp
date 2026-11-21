@@ -13,7 +13,7 @@
 #include <string>
 #include <vector>
 
-namespace tn34xx {
+namespace em34xx {
 
 enum class KeyboardType { Terminal122, Enhanced };
 
@@ -54,4 +54,4 @@ struct TerminalOptions;
 bool resolve_keyboard_id(const TerminalOptions& t, uint8_t& id1, uint8_t& id2, std::string& error);
 std::string keyboard_layout_list();
 
-} // namespace tn34xx
+} // namespace em34xx

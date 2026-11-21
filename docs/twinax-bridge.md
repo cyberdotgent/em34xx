@@ -1,7 +1,7 @@
 # Twinax bridge: the virtual workstation controller
 
 The emulated terminal talks 5250 Twinax. To reach an IBM i over the network,
-tn34xx plays the part a 5294, 5394, 5494 or a system workstation controller
+em34xx plays the part a 5294, 5394, 5494 or a system workstation controller
 plays on a real cable: it polls the terminal's station addresses, writes
 their buffers with device commands, reads keystrokes, and does the 5250
 field editing itself. On the other side it is a TN5250 client.
@@ -93,8 +93,8 @@ Rules from the documentation:
   need their own address. With **shared addressing** (3489, OS/400 V3R1 or
   5494 Release 3.0), all display sessions can share one address but the
   printer session cannot [doc 3489 UG 1.1.3, 5.2.21, App. G]. Shared
-  addressing needs session multiplexing that tn34xx does not model;
-  tn34xx gives each session its own address.
+  addressing needs session multiplexing that em34xx does not model;
+  em34xx gives each session its own address.
 - Keys go only to the session on the screen; hidden sessions must still be
   polled [obs]. The 3197 allows concurrent viewing only at 24x80 [doc PAI
   14.0]. The 3489 allows a 27x132 vertical split [doc 3489 UG 5.5.1].
@@ -176,7 +176,7 @@ using 3812 SCS emulation [doc 3489 UG 2.10]. The 3197 attaches its printer
 as a 4214-2 or a 5256 [doc PAI 14.0, 3.12]. The 3477 reports 5256, 4214-2
 or 5219, as set up [obs].
 
-In tn34xx, printer stations are discovered, identified, and polled for
+In em34xx, printer stations are discovered, identified, and polled for
 status. Their data path is the extension point `PrinterSessionPort`
 (`next_print_data` -> Write Data + Activate Write). The size of one transfer
 is a [hyp] (256 bytes) until a printer session engine exists. The bridge
@@ -242,7 +242,7 @@ the screen. It brings a terminal on line without an IBM i system, which is
 how the 3477 bring-up checks its link hardware:
 
 ```
-build/debug/tn34xx --model 3477 --nvram 3477.nvram --twinax-host wsc
+build/debug/em34xx --model 3477 --nvram 3477.nvram --twinax-host wsc
 ```
 
 `twinax status` shows each station's state, identity and counters.
@@ -250,9 +250,9 @@ build/debug/tn34xx --model 3477 --nvram 3477.nvram --twinax-host wsc
 ## Running the bridge
 
 ```
-build/debug/tn34xx --model 3477 --twinax-host tn5250 --tn5250-host HOST
-build/debug/tn34xx --model 3477 --twinax-host tn5250 --tn5250-host HOST \
-    --station 0:display:TN34XXA --station 1:printer:TN34XXP
+build/debug/em34xx --model 3477 --twinax-host tn5250 --tn5250-host HOST
+build/debug/em34xx --model 3477 --twinax-host tn5250 --tn5250-host HOST \
+    --station 0:display:EM34XXA --station 1:printer:EM34XXP
 ```
 
 or in a configuration file:
@@ -264,7 +264,7 @@ host = "tn5250"
 [[twinax.station]]
 address = 0
 type = "display"
-tn5250_device_name = "TN34XXA"
+tn5250_device_name = "EM34XXA"
 
 [tn5250]
 host = "pub400.com"
@@ -279,7 +279,7 @@ and device name.
 ### How it is wired
 
 `wsc::Tn5250Bridge` (src/host/wsc/tn5250_bridge.hpp, library
-`tn34xx_bridge`) is the `TwinaxHost`. `make_twinax_host()` validates the
+`em34xx_bridge`) is the `TwinaxHost`. `make_twinax_host()` validates the
 configuration and calls the factory `main()` hands it, so the core library
 does not depend on the TN5250 client. The bridge holds the
 `LinkScheduler`, a `Station` per configured address, and:
@@ -326,12 +326,12 @@ never polls them.
 ### Connecting at run time
 
 The monitor's `connect` command attaches the bridge while the emulator runs,
-for example with `build/debug/tn34xx --model 3477 --color` and no host
+for example with `build/debug/em34xx --model 3477 --color` and no host
 options:
 
 ```
 connect pub400.com
-connect 192.0.2.10:23 station 0 device TN34XXA
+connect 192.0.2.10:23 station 0 device EM34XXA
 connect ibmi.example tls tls-verify none
 disconnect 0
 disconnect
@@ -351,7 +351,7 @@ its cable unplugged (no reconnect) while the other stations carry on.
 
 ### Tests
 
-- `tests/test_bridge.cpp` (in `tn34xx_tn5250_tests`): a scripted
+- `tests/test_bridge.cpp` (in `em34xx_tn5250_tests`): a scripted
   in-process TN5250 server -> client (I/O thread) -> engine -> controller ->
   `FakeStation`. It checks that no session starts before the station is
   online, that the sign-on panel lands in the station's buffer with the

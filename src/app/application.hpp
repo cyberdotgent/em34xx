@@ -1,12 +1,12 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// The tn34xx application runtime: configuration -> ROMs -> machine -> Twinax
+// The em34xx application runtime: configuration -> ROMs -> machine -> Twinax
 // host or TN5250 bridge -> run loop -> shutdown and exit code.
 //
-// This is the lean part every executable links (tn34xx_runtime). Developer
+// This is the lean part every executable links (em34xx_runtime). Developer
 // tooling (monitor, console, GDB stub, start-up scripts) is an optional
-// AppTooling (src/devtools, tn34xx_devtools) that only the SDL `tn34xx` and
-// `tn34xx-headless` executables plug in; end-user GUI builds (tn34xxw,
-// tn34xx.app) run without it.
+// AppTooling (src/devtools, em34xx_devtools) that only the SDL `em34xx` and
+// `em34xx-headless` executables plug in; end-user GUI builds (em34xxw,
+// em34xx.app) run without it.
 //
 // Two ways to drive it:
 //   - Application::main(argc, argv) does everything: the front end (or,
@@ -23,7 +23,7 @@
 #include <memory>
 #include <string>
 
-namespace tn34xx {
+namespace em34xx {
 
 class Application;
 class Emulator;
@@ -127,4 +127,4 @@ private:
     std::string last_error_;
 };
 
-} // namespace tn34xx
+} // namespace em34xx

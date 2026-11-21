@@ -1,13 +1,13 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // The per-user data folder of an end-user GUI build: settings, ROM images,
 // the global keymap and connection profiles in one place. On Windows the
-// root is %APPDATA%\tn34xx (tn34xxw finds %APPDATA% with SHGetFolderPathW);
+// root is %APPDATA%\em34xx (em34xxw finds %APPDATA% with SHGetFolderPathW);
 // the root is injected, so tests use a temporary directory.
 //
 //   <root>/settings.toml     application settings (config/settings.hpp)
 //   <root>/keymap.toml       the global host keymap (docs/keyboard.md)
 //   <root>/roms/             ROM images, verified by SHA-256 (roms/ROMS.md)
-//   <root>/profiles/*.tn34xx connection profiles (config/profile.hpp)
+//   <root>/profiles/*.em34xx connection profiles (config/profile.hpp)
 //   <root>/<model>.nvram     battery-backed RAM image per model
 //
 // Paths are UTF-8 std::strings; std::filesystem::u8path makes them wide on
@@ -19,7 +19,7 @@
 #include <string>
 #include <vector>
 
-namespace tn34xx {
+namespace em34xx {
 
 class Model;
 
@@ -38,7 +38,7 @@ public:
     bool ensure(std::string& error) const;
 
     // --- profiles ---------------------------------------------------------
-    static constexpr const char* kProfileExtension = ".tn34xx";
+    static constexpr const char* kProfileExtension = ".em34xx";
     // Profile names (file names without the extension), sorted
     // case-insensitively.
     std::vector<std::string> list_profiles() const;
@@ -67,7 +67,7 @@ private:
     std::string root_;
 };
 
-// <appdata>/tn34xx
+// <appdata>/em34xx
 std::string user_dirs_root(const std::string& appdata);
 
 // One line of a ROM manager: a ROM some model needs, and its state in the
@@ -83,4 +83,4 @@ std::vector<RomStatusRow> rom_status(const std::string& rom_dir);
 // Whether every ROM `model` needs is present and loadable.
 bool model_roms_ready(const Model& model, const std::string& rom_dir);
 
-} // namespace tn34xx
+} // namespace em34xx

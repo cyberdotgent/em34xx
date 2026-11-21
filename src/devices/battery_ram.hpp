@@ -14,7 +14,7 @@
 #include <string>
 #include <vector>
 
-namespace tn34xx {
+namespace em34xx {
 
 class BatteryBackedRam : public Device, public NonVolatileStore {
 public:
@@ -48,4 +48,4 @@ private:
     mutable std::vector<uint8_t> snapshot_;
 };
 
-} // namespace tn34xx
+} // namespace em34xx

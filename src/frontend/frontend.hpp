@@ -14,8 +14,8 @@
 //     no host auto-repeat (the terminal does its own typematic);
 //   - lifetime: Emulator::request_quit() when the user closes the window;
 //     return from run() once Emulator::quit_requested() or request_quit().
-// Each front end is its own executable (tn34xx for SDL; tn34xxw for Win32
-// and tn34xx.app for Cocoa later): its main() constructs the Frontend and
+// Each front end is its own executable (em34xx for SDL; em34xxw for Win32
+// and em34xx.app for Cocoa later): its main() constructs the Frontend and
 // hands it to Application. See docs/architecture.md ("Front ends").
 #pragma once
 
@@ -23,7 +23,7 @@
 
 #include <string>
 
-namespace tn34xx {
+namespace em34xx {
 
 class Application;
 
@@ -53,4 +53,4 @@ public:
     virtual void set_status(const std::string& status) = 0;
 };
 
-} // namespace tn34xx
+} // namespace em34xx

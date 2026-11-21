@@ -9,7 +9,7 @@
 #include <map>
 #include <vector>
 
-namespace tn34xx {
+namespace em34xx {
 
 class ProbeDevice : public Device {
 public:
@@ -33,4 +33,4 @@ private:
     std::map<uint32_t, Stats> stats_;
 };
 
-} // namespace tn34xx
+} // namespace em34xx

@@ -15,7 +15,7 @@
 #include <memory>
 #include <string>
 
-namespace tn34xx {
+namespace em34xx {
 
 enum class CpuLevel {
     I8086,
@@ -126,4 +126,4 @@ public:
 // interpreter; an 80286 protected-mode core is created here once it exists.
 std::unique_ptr<Cpu> make_cpu(CpuBus& bus, CpuLevel level);
 
-} // namespace tn34xx
+} // namespace em34xx

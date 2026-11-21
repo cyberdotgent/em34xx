@@ -51,7 +51,7 @@
 #include <string>
 #include <vector>
 
-namespace tn34xx {
+namespace em34xx {
 namespace wsc {
 
 struct BridgeOptions {
@@ -200,4 +200,4 @@ std::unique_ptr<TwinaxHost> make_tn5250_bridge(const TwinaxConfig& twinax, const
                                                BridgeOptions opt, std::string& error);
 
 } // namespace wsc
-} // namespace tn34xx
+} // namespace em34xx

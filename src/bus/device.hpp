@@ -5,7 +5,7 @@
 #include <cstdint>
 #include <string>
 
-namespace tn34xx {
+namespace em34xx {
 
 class Device {
 public:
@@ -47,4 +47,4 @@ public:
     virtual uint8_t acknowledge() = 0;
 };
 
-} // namespace tn34xx
+} // namespace em34xx

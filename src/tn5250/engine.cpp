@@ -5,7 +5,7 @@
 
 #include <algorithm>
 
-namespace tn34xx {
+namespace em34xx {
 namespace tn5250 {
 
 namespace {
@@ -1429,4 +1429,4 @@ KeyResult Engine::key_function(Key key) {
 }
 
 } // namespace tn5250
-} // namespace tn34xx
+} // namespace em34xx

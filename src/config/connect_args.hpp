@@ -19,7 +19,7 @@
 #include <string>
 #include <vector>
 
-namespace tn34xx {
+namespace em34xx {
 
 // args[0] is the command name ("connect"). `base` is the start-up
 // configuration; on success `out` is base with the connect settings applied
@@ -27,4 +27,4 @@ namespace tn34xx {
 bool parse_connect_args(const std::vector<std::string>& args, const AppConfig& base, AppConfig& out,
                         std::string& error);
 
-} // namespace tn34xx
+} // namespace em34xx

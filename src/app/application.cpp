@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "app/application.hpp"
-#include "tn34xx_version.h"
+#include "em34xx_version.h"
 
 #include "app/host_link.hpp"
 #include "host/wsc/tn5250_bridge.hpp"
@@ -13,11 +13,11 @@
 #include <cstring>
 #include <exception>
 
-namespace tn34xx {
+namespace em34xx {
 
 namespace {
 
-const char* kVersion = TN34XX_VERSION_STRING;
+const char* kVersion = EM34XX_VERSION_STRING;
 
 void list_models() {
     std::printf("%-6s %-16s %-6s %s\n", "model", "status", "cpu", "description");
@@ -69,7 +69,7 @@ int Application::main(int argc, char** argv) {
 }
 
 bool Application::fail(const std::string& message, int code) {
-    std::fprintf(stderr, "tn34xx: %s\n", message.c_str());
+    std::fprintf(stderr, "em34xx: %s\n", message.c_str());
     last_error_ = message;
     exit_code_ = code;
     return false;
@@ -95,7 +95,7 @@ bool Application::configure(int argc, char** argv) {
         return false;
     }
     if (cfg_.show_version) {
-        std::printf("tn34xx %s\n", kVersion);
+        std::printf("em34xx %s\n", kVersion);
         return false;
     }
     for (int i = 1; i < argc; ++i) {
@@ -113,7 +113,7 @@ bool Application::configure(int argc, char** argv) {
         return false;
     }
     if (!tooling_ && AppTooling::requested(cfg_))
-        return fail("the monitor, scripts and the GDB stub are not part of this build; use tn34xx or tn34xx-headless");
+        return fail("the monitor, scripts and the GDB stub are not part of this build; use em34xx or em34xx-headless");
     if (!frontend_ && !tooling_) return fail("this build has neither a window nor a monitor");
     if (!frontend_) cfg_.headless = true;
     uint8_t kbd_id1 = 0, kbd_id2 = 0;
@@ -205,7 +205,7 @@ FrontendOptions Application::frontend_options() const {
     fo.crt.enabled = cfg_.crt;
     fo.crt.beam_sigma = cfg_.crt_beam;
     if (model_)
-        fo.title = "tn34xx: IBM " + model_->info().name + " (" + display_subtype_name(cfg_.terminal.display) + ")";
+        fo.title = "em34xx: IBM " + model_->info().name + " (" + display_subtype_name(cfg_.terminal.display) + ")";
     return fo;
 }
 
@@ -288,4 +288,4 @@ void Application::set_crt(const CrtParams& crt) {
     cfg_.crt_beam = crt.beam_sigma;
 }
 
-} // namespace tn34xx
+} // namespace em34xx

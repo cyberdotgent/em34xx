@@ -7,7 +7,7 @@
 
 #include <stdexcept>
 
-namespace tn34xx {
+namespace em34xx {
 
 // ---------------------------------------------------------------------------
 // Engine
@@ -319,4 +319,4 @@ std::string Ibm3477TwinaxRegisters::describe() const {
                   reg_[0x08], reg_[0x09], misc_, reg_[0x24], reg_[0x25], reg_[0x26], reg_[0x27], reg_[0x28]);
 }
 
-} // namespace tn34xx
+} // namespace em34xx

@@ -4,7 +4,7 @@
 
 #include <doctest/doctest.h>
 
-using namespace tn34xx;
+using namespace em34xx;
 
 namespace {
 bool parse(std::vector<std::string> args, AppConfig& out, std::string& err, const AppConfig& base = AppConfig()) {

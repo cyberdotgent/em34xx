@@ -1,4 +1,4 @@
-# tn34xx — notes for Claude
+# em34xx — notes for Claude
 
 - C++17 only (Windows 7 x86 must stay a viable target). vcpkg manifest
   dependencies; replxx, not GNU readline; MinGW-w64 later for Windows.

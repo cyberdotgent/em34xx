@@ -8,7 +8,7 @@
 #include <string>
 #include <vector>
 
-namespace tn34xx {
+namespace em34xx {
 
 struct RomSpec {
     std::string label;     // e.g. "system ROM (low)"
@@ -70,4 +70,4 @@ RomFileStatus check_rom_file(const std::string& dir, const RomSpec& spec, const 
 // the right file name for a dump saved under another name.
 const RomSpec* rom_spec_for_data(const std::vector<RomSpec>& specs, const std::vector<uint8_t>& data);
 
-} // namespace tn34xx
+} // namespace em34xx
