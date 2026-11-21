@@ -157,6 +157,7 @@ TEST_CASE("user folder: ROM status and import") {
         for (const RomSpec& s : m3477->info().roms) {
             const fs::path renamed = tmp.path / ("dump-" + s.file);
             fs::copy_file(repo_roms / s.file, renamed, fs::copy_options::overwrite_existing);
+            INFO(err);
             REQUIRE(dirs.import_rom(renamed.string(), stored, note, err));
             CHECK(stored == s.file);
             CHECK(note.find("known good") != std::string::npos);

@@ -127,7 +127,15 @@ bool UserDirs::rename_profile(const std::string& from, const std::string& to, st
         return false;
     }
     std::error_code ec;
-    fs::rename(upath(profile_path(from)), upath(profile_path(to)), ec);
+    if (from != to && to_lower(from) == to_lower(to)) {
+        // A case-only rename: through a temporary name, since a
+        // case-insensitive file system may treat it as a no-op.
+        const fs::path tmp = upath(profile_path(from + ".renaming"));
+        fs::rename(upath(profile_path(from)), tmp, ec);
+        if (!ec) fs::rename(tmp, upath(profile_path(to)), ec);
+    } else {
+        fs::rename(upath(profile_path(from)), upath(profile_path(to)), ec);
+    }
     if (ec) {
         error = "cannot rename \"" + from + "\": " + ec.message();
         return false;
@@ -203,7 +211,11 @@ bool UserDirs::import_rom(const std::string& source, std::string& stored_as, std
     const fs::path dest = upath(roms()) / upath(stored_as);
     if (fs::exists(dest, ec) && fs::equivalent(src, dest, ec)) return true;   // already in place
     fs::create_directories(upath(roms()), ec);
-    fs::copy_file(src, dest, fs::copy_options::overwrite_existing, ec);
+    // Replace an older image. (Removed first: MinGW's libstdc++ refuses
+    // copy_options::overwrite_existing on Windows with "File exists".)
+    fs::remove(dest, ec);
+    ec.clear();
+    fs::copy_file(src, dest, ec);
     if (ec) {
         error = "cannot copy " + source + " to " + ustr(dest) + ": " + ec.message();
         return false;
