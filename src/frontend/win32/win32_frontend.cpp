@@ -628,6 +628,9 @@ void Win32Frontend::update_status() {
     }
     if (!tls || !cur_.active) {
         text[2] = narrow(load_string(IDS_TLS_OFF));
+    } else if (showing_trust_) {
+        // The TCP connection is up but the handshake waits on the prompt.
+        text[2] = "TLS: certificate not trusted, waiting";
     } else if (!tls_up) {
         text[2] = "TLS: not connected";
     } else {
