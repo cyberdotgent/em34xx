@@ -33,6 +33,7 @@ add_executable(em34xx_app_tests
   test_connect.cpp
   test_probe.cpp
   test_user_data.cpp
+  test_application.cpp
 )
 target_link_libraries(em34xx_app_tests PRIVATE em34xx_devtools em34xx_warnings doctest::doctest)
 target_compile_definitions(em34xx_app_tests PRIVATE EM34XX_SOURCE_DIR="${PROJECT_SOURCE_DIR}")

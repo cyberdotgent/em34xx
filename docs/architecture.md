@@ -78,7 +78,14 @@ The control API a GUI calls directly: `host_link()` (`HostLink`:
 connect/disconnect, per-station disconnect, controller status as text and
 per session (`sessions()`), the TLS trust handler; the monitor's
 `connect`/`disconnect` are wrappers over it), `power_on()`,
-`power_off()`, `reset()`, `set_speed_percent()`, `set_crt()`, `config()`.
+`power_off()`, `reset()`, `set_speed_percent()`, `set_crt()`, `config()`;
+`connect_after_power_cycle()` (close the sessions, reset, connect: the
+terminal runs its POST while the controller probes the line) and
+`set_display_subtype()` (picture only, or, when
+`Model::display_change_needs_power_cycle()` says the firmware or the host
+would see it, `rebuild_machine()`: a new `Machine` built from the ROM files
+with the new `TerminalOptions`, swapped in with `Emulator::replace_machine()`,
+battery RAM written first so the new machine reads it back).
 `last_error()` holds the reason `start()` failed, for front ends without a
 console. Front ends that must own the process run loop (Cocoa) call `start()`,
 drive the emulator from their loop, then `request_quit()` and `finish()`

@@ -43,6 +43,20 @@ void Machine::reset() {
     for (auto& d : devices_) d->reset();
     cpu_->reset();
     display_dirty_ = true;
+    ++reset_count_;
+}
+
+bool Machine::flush_nonvolatile(std::string& error) {
+    bool ok = true;
+    for (auto& d : devices_) {
+        std::string e;
+        if (!d->flush_nonvolatile(e)) {
+            ok = false;
+            if (!error.empty()) error += "; ";
+            error += e;
+        }
+    }
+    return ok;
 }
 
 bool Machine::take_display_change() {

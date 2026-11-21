@@ -46,6 +46,7 @@ public:
 
     // Save pending changes to the backing file (no-op when ephemeral).
     bool flush(std::string& error);
+    bool flush_nonvolatile(std::string& error) override { return flush(error); }
 
     // I2cDevice
     bool i2c_select(uint8_t addr7, bool read) override;

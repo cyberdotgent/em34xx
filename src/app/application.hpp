@@ -20,6 +20,7 @@
 #include "frontend/frontend.hpp"
 #include "host/twinax_link.hpp"
 
+#include <atomic>
 #include <memory>
 #include <string>
 
@@ -92,6 +93,26 @@ public:
     void power_off();
     void reset();
     bool powered() const;
+    // Power-cycle the terminal and then put the TN5250 bridge on the line
+    // with cfg (HostLink::connect): any sessions are closed first, the
+    // terminal runs its power-on self test while the controller probes the
+    // line, and the sessions come up once it answers.
+    bool connect_after_power_cycle(const AppConfig& cfg, std::string& message, std::string& error);
+    // The display subtype (CRT type). Whether a change to `to` is visible to
+    // the firmware or the host (Model::display_change_needs_power_cycle):
+    // then set_display_subtype() rebuilds and power-cycles the machine and
+    // closes the TN5250 sessions (the caller reconnects); otherwise only the
+    // picture changes, at once, without a reset.
+    bool display_change_needs_power_cycle(DisplaySubtype to) const;
+    // False (with error) when the machine cannot be rebuilt; the old one
+    // then keeps running unchanged.
+    bool set_display_subtype(DisplaySubtype to, std::string& error);
+    // Rebuild the machine with new terminal options (as at start-up, from
+    // the ROM files) and power it on. A TN5250 bridge on the line is taken
+    // off (its sessions close); another controller moves to the new
+    // machine. Battery-backed RAM is written first and read back by the new
+    // machine. False (with error): the old machine keeps running.
+    bool rebuild_machine(const TerminalOptions& options, std::string& error);
     // Settings. The speed takes effect at once; CRT settings apply to the
     // next frontend_options() (a front end re-reads them when it wants).
     void set_speed_percent(unsigned pct);
@@ -111,6 +132,7 @@ public:
 private:
     bool configure(int argc, char** argv);
     bool build_machine();
+    std::unique_ptr<Machine> make_machine(const TerminalOptions& options, std::string& error);
     bool fail(const std::string& message, int code = 2);
     int final_status() const;
 
@@ -118,6 +140,9 @@ private:
     const Model* model_ = nullptr;
     std::unique_ptr<Emulator> emu_;
     std::unique_ptr<HostLink> host_link_;
+    // The display subtype new TN5250 bridges announce (terminal type); the
+    // bridge factory reads it, set_display_subtype() changes it.
+    std::shared_ptr<std::atomic<DisplaySubtype>> bridge_display_;
     // Declared after the emulator so they are destroyed first.
     std::unique_ptr<Frontend> frontend_;
     std::unique_ptr<AppTooling> tooling_;

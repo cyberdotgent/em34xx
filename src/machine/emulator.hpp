@@ -59,6 +59,12 @@ public:
         return f(*machine_);
     }
 
+    // Put another machine in place of the current one and return the old
+    // one (destroy it outside any lock). The machine must be stopped (not
+    // running()); the new one is then resumed as usual. Used to rebuild a
+    // unit with different hardware options (Application).
+    std::unique_ptr<Machine> replace_machine(std::unique_ptr<Machine> machine);
+
     // --- display change notification -------------------------------------
     // Incremented whenever the machine's picture may have changed (see
     // Machine::take_display_change); checked between execution slices, so

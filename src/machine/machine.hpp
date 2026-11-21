@@ -93,6 +93,10 @@ public:
     Device* find_device(const std::string& name) const;
 
     void reset();
+    // How many times reset() ran (the build's own reset included).
+    uint64_t reset_count() const { return reset_count_; }
+    // Device::flush_nonvolatile on every device (battery RAM, EEPROM).
+    bool flush_nonvolatile(std::string& error);
 
     // Execute up to max_instructions. Stops early on breakpoints,
     // watchpoints, bus faults or when user_stop becomes true. With
@@ -150,6 +154,9 @@ public:
     // (Bus::observe_writes), a new animation phase, a reset or a new
     // display device. Cheap; the Emulator calls it between slices.
     bool take_display_change();
+    // Report the picture as changed at the next take_display_change() (a
+    // presentation option such as the display subtype changed).
+    void mark_display_changed() { display_dirty_ = true; }
 
 private:
     bool breakpoint_hit(uint32_t pc, int& id);
@@ -168,6 +175,7 @@ private:
     NonVolatileStore* nvram_ = nullptr;
     std::unique_ptr<TwinaxHost> twinax_;
     bool display_dirty_ = true;
+    uint64_t reset_count_ = 0;
     uint64_t seen_display_writes_ = 0;
     uint64_t seen_animation_phase_ = 0;
     struct AudioForwarder : AudioSink {

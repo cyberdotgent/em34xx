@@ -30,6 +30,7 @@ public:
     uint32_t size() const { return size_; }
     // Write the backed range to the image file (no-op when volatile).
     bool flush(std::string& error);
+    bool flush_nonvolatile(std::string& error) override { return flush(error); }
 
     // NonVolatileStore
     std::string nv_status() const override;

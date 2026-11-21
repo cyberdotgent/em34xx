@@ -185,6 +185,14 @@ public:
         for (LoadedRom& r : roms) bus.map_rom(r.spec.file, r.spec.base, std::move(r.data));
     }
 
+    bool display_change_needs_power_cycle(const TerminalOptions& current, DisplaySubtype to) const override {
+        if (Model::display_change_needs_power_cycle(current, to)) return true;
+        // The display-type straps (2000A) follow the subtype unless they are
+        // given explicitly: paper-white is type 5 (FW0), green and amber
+        // type 4 (FE0); the firmware reads them at power-on.
+        return current.straps < 0 && ibm3477_default_straps(current.display) != ibm3477_default_straps(to);
+    }
+
 private:
     ModelInfo info_;
 };

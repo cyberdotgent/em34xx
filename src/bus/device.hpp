@@ -34,6 +34,10 @@ public:
     // Human-readable state for the monitor's "dev" command.
     virtual std::string describe() const { return {}; }
 
+    // Write any backing file (battery-backed RAM, an EEPROM image) now, as
+    // at power-off. False with error when it cannot be written.
+    virtual bool flush_nonvolatile(std::string& error) { (void)error; return true; }
+
 private:
     std::string name_;
 };

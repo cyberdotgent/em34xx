@@ -135,32 +135,43 @@ bool Application::configure(int argc, char** argv) {
     return true;
 }
 
+// ROMs and a machine built with these terminal options, reset; no Twinax
+// host yet.
+std::unique_ptr<Machine> Application::make_machine(const TerminalOptions& options, std::string& error) {
+    const ModelInfo& info = model_->info();
+    std::vector<LoadedRom> roms;
+    std::vector<std::string> warnings;
+    if (!load_roms(cfg_.rom_dir, info.roms, info.known_bad_roms, cfg_.allow_bad_rom, roms, warnings, error))
+        return nullptr;
+    for (const std::string& w : warnings) LOG_WARN("rom", "%s", w.c_str());
+
+    auto machine = std::make_unique<Machine>(info);
+    machine->set_options(options);
+    try {
+        model_->build(*machine, roms);
+    } catch (const std::exception& e) {
+        error = e.what();
+        return nullptr;
+    }
+    machine->bus().set_policy(cfg_.unmapped);
+    return machine;
+}
+
 // ROMs, machine, Twinax host and emulator.
 bool Application::build_machine() {
     const ModelInfo& info = model_->info();
     std::string error;
 
-    std::vector<LoadedRom> roms;
-    std::vector<std::string> warnings;
-    if (!load_roms(cfg_.rom_dir, info.roms, info.known_bad_roms, cfg_.allow_bad_rom, roms, warnings, error))
-        return fail(error);
-    for (const std::string& w : warnings) LOG_WARN("rom", "%s", w.c_str());
-
-    auto machine = std::make_unique<Machine>(info);
-    machine->set_options(cfg_.terminal);
-    try {
-        model_->build(*machine, roms);
-    } catch (const std::exception& e) {
-        return fail(e.what());
-    }
-    machine->bus().set_policy(cfg_.unmapped);
+    std::unique_ptr<Machine> machine = make_machine(cfg_.terminal, error);
+    if (!machine) return fail(error);
     error = cfg_.twinax.validate(info.max_sessions, info.max_printer_sessions);
     if (!error.empty()) return fail(error);
 
     // The TN5250 bridge: the virtual workstation controller with one TN5250
     // session per display station (src/host/wsc/tn5250_bridge.hpp).
     const std::string model_name = info.name;
-    const DisplaySubtype display = cfg_.terminal.display;
+    bridge_display_ = std::make_shared<std::atomic<DisplaySubtype>>(cfg_.terminal.display);
+    auto display = bridge_display_;
     // The front end's TLS trust handler (HostLink::set_tls_trust_handler)
     // reaches each new bridge through the broker.
     auto trust = std::make_shared<TlsTrustBroker>();
@@ -168,7 +179,7 @@ bool Application::build_machine() {
                                                             std::string& err) {
         wsc::BridgeOptions bo;
         bo.model = model_name;
-        bo.display = display;
+        bo.display = display->load();
         bo.tls_trust = trust->for_new_bridge();
         return wsc::make_tn5250_bridge(tw, tn, std::move(bo), err);
     };
@@ -277,6 +288,88 @@ void Application::reset() {
 }
 
 bool Application::powered() const { return emu_ && emu_->running(); }
+
+bool Application::connect_after_power_cycle(const AppConfig& cfg, std::string& message, std::string& error) {
+    if (!emu_) {
+        error = "connect: no machine";
+        return false;
+    }
+    // Close the running sessions first, so no session sees the terminal
+    // vanish mid-screen ("not connected" is fine).
+    std::string ignored;
+    host_link_->disconnect(ignored);
+    power_on();
+    LOG_INFO("machine", "power cycle before connecting: the terminal runs its self test");
+    return host_link_->connect(cfg, message, error);
+}
+
+bool Application::display_change_needs_power_cycle(DisplaySubtype to) const {
+    if (!emu_ || !model_) return false;
+    const TerminalOptions current = emu_->with_machine([](Machine& m) { return m.options(); });
+    return model_->display_change_needs_power_cycle(current, to);
+}
+
+bool Application::set_display_subtype(DisplaySubtype to, std::string& error) {
+    if (!emu_) {
+        error = "no machine";
+        return false;
+    }
+    TerminalOptions options = emu_->with_machine([](Machine& m) { return m.options(); });
+    if (options.display == to) return true;
+    if (model_->display_change_needs_power_cycle(options, to)) {
+        options.display = to;
+        return rebuild_machine(options, error);
+    }
+    // Only the picture: the presentation (render_presented) reads the
+    // subtype from the machine's options; mark the picture changed.
+    emu_->with_machine([to](Machine& m) {
+        TerminalOptions o = m.options();
+        o.display = to;
+        m.set_options(o);
+        m.mark_display_changed();
+    });
+    cfg_.terminal.display = to;
+    if (bridge_display_) bridge_display_->store(to);
+    LOG_INFO("machine", "display %s (picture only, no reset)", display_subtype_name(to));
+    return true;
+}
+
+bool Application::rebuild_machine(const TerminalOptions& options, std::string& error) {
+    if (!emu_) {
+        error = "no machine";
+        return false;
+    }
+    std::string ignored;
+    host_link_->disconnect(ignored);   // the sessions close (their terminal type may change)
+    emu_->request_stop();
+    emu_->wait_stopped();
+    // The new machine reads the battery-backed RAM image at build time:
+    // write the old machine's first (it is written again when the old one
+    // is destroyed, with the same contents, since it is stopped).
+    emu_->with_machine([](Machine& m) {
+        std::string err;
+        if (!m.flush_nonvolatile(err)) LOG_ERROR("nvram", "%s", err.c_str());
+    });
+    std::unique_ptr<Machine> machine = make_machine(options, error);
+    if (!machine) {
+        LOG_ERROR("machine", "rebuild failed: %s", error.c_str());
+        emu_->resume();
+        return false;
+    }
+    // Any other controller (a script host, nothing) moves to the new
+    // machine; the TN5250 bridge was taken off above.
+    std::unique_ptr<TwinaxHost> host =
+        emu_->with_machine([](Machine& m) { return m.swap_twinax_host(std::make_unique<NullTwinaxHost>()); });
+    machine->set_twinax_host(host ? std::move(host) : std::make_unique<NullTwinaxHost>());
+    machine->reset();
+    std::unique_ptr<Machine> old = emu_->replace_machine(std::move(machine));
+    old.reset();
+    cfg_.terminal = options;
+    if (bridge_display_) bridge_display_->store(options.display);
+    LOG_INFO("machine", "rebuilt with display %s; power on", display_subtype_name(options.display));
+    emu_->resume();
+    return true;
+}
 
 void Application::set_speed_percent(unsigned pct) {
     cfg_.speed_percent = pct;

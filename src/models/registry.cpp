@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "models/model.hpp"
 
+#include "machine/machine.hpp"
 #include "util/strings.hpp"
 
 namespace em34xx {
@@ -9,6 +10,13 @@ std::string Model::can_build() const {
     if (info().status == ModelStatus::Placeholder)
         return "model " + info().name + " is a placeholder and cannot run yet";
     return {};
+}
+
+bool Model::display_change_needs_power_cycle(const TerminalOptions& current, DisplaySubtype to) const {
+    // The colour/monochrome choice reaches the host as the device type
+    // (derived_terminal_type, the bridge) and the display renders colour
+    // from the field attributes.
+    return is_monochrome(current.display) != is_monochrome(to);
 }
 
 const std::vector<const Model*>& all_models() {

@@ -100,6 +100,25 @@ void Emulator::finish_run(const StopEvent& ev) {
     if (on_stop_) on_stop_(ev);
 }
 
+std::unique_ptr<Machine> Emulator::replace_machine(std::unique_ptr<Machine> machine) {
+    if (running_.load()) {
+        request_stop();
+        wait_stopped();
+    }
+    {
+        std::lock_guard<std::mutex> lock(machine_mutex_);
+        machine_.swap(machine);
+    }
+    {
+        std::lock_guard<std::mutex> lock(state_mutex_);
+        last_stop_ = StopEvent();
+        last_stop_.reason = StopEvent::Reason::Reset;
+        last_stop_.pc = machine_->cpu().pc_linear();
+    }
+    publish_display_change();   // a new machine reports its display as changed
+    return machine;
+}
+
 void Emulator::request_quit(int exit_code) {
     exit_code_.store(exit_code);
     quit_.store(true);
