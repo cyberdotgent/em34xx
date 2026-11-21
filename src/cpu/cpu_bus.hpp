@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 // Interface between an x86-family CPU core and the machine it lives in.
 #pragma once
 

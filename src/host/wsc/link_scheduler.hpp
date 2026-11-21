@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 // The link scheduler (layer d): one Twinax cable, several station addresses.
 // It plays the controller behind the TwinaxHost interface, in emulated time,
 // with at most one message outstanding on the half-duplex line. Stations are

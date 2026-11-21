@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 // TLS transport, Windows backend: SChannel through SSPI, certificates
 // through CryptoAPI. Nothing but system DLLs (secur32, crypt32), so the
 // Windows certificate store, including certificates an administrator has

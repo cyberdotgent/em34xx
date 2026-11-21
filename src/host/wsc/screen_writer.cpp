@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 #include "host/wsc/screen_writer.hpp"
 
 #include "util/strings.hpp"

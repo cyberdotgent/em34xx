@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 // What the virtual workstation controller needs from the layer above it
 // (the 5250 data-stream engine, src/tn5250/), per station address.
 //

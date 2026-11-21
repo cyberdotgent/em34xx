@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 #include "host/wsc/device_commands.hpp"
 
 namespace tn34xx {

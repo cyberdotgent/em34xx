@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 // A TN5250 display session driven by Tn5250Config: transport + telnet
 // negotiation on an I/O thread, the 5250 engine on the caller's thread.
 //

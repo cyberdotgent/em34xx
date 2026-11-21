@@ -1,0 +1,155 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# CI: Linux build and tests, Windows x64 build (MinGW cross-compile, the same
+# toolchain as the local mingw-x64-release preset) uploaded as an artifact.
+# A tag v* also publishes a GitHub release with the Windows build attached.
+name: CI
+
+on:
+  push:
+    branches: ["**"]
+    tags: ["v*"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  VCPKG_ROOT: ${{ github.workspace }}/vcpkg
+  VCPKG_BINARY_SOURCES: clear;files,${{ github.workspace }}/vcpkg-cache,readwrite
+  VCPKG_DISABLE_METRICS: "1"
+
+jobs:
+  linux:
+    name: Linux build and tests
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            ninja-build pkg-config autoconf automake libtool libltdl-dev \
+            libssl-dev openssl \
+            libx11-dev libxext-dev libxrandr-dev libxcursor-dev libxfixes-dev \
+            libxi-dev libxss-dev libxtst-dev libxkbcommon-dev libdrm-dev libgbm-dev \
+            libwayland-dev wayland-protocols libdecor-0-dev \
+            libegl1-mesa-dev libgl1-mesa-dev libgles2-mesa-dev \
+            libdbus-1-dev libibus-1.0-dev libudev-dev
+
+      - name: Set up vcpkg at the manifest baseline
+        run: |
+          baseline=$(python3 -c "import json;print(json.load(open('vcpkg.json'))['builtin-baseline'])")
+          git clone --quiet https://github.com/microsoft/vcpkg "$VCPKG_ROOT"
+          git -C "$VCPKG_ROOT" checkout --quiet "$baseline"
+          "$VCPKG_ROOT/bootstrap-vcpkg.sh" -disableMetrics
+          mkdir -p "${{ github.workspace }}/vcpkg-cache"
+
+      - name: Cache vcpkg binaries
+        uses: actions/cache@v4
+        with:
+          path: ${{ github.workspace }}/vcpkg-cache
+          key: vcpkg-linux-${{ hashFiles('vcpkg.json', 'cmake/triplets/**') }}
+          restore-keys: vcpkg-linux-
+
+      - name: Configure
+        run: cmake --preset debug
+
+      - name: Build
+        run: cmake --build --preset debug
+
+      - name: Test
+        run: ctest --preset debug -LE slow --output-on-failure
+
+  windows:
+    name: Windows x64 build
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install MinGW-w64 and build tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            ninja-build pkg-config zip g++-mingw-w64-x86-64-posix \
+            gcc-mingw-w64-x86-64-posix binutils-mingw-w64-x86-64
+
+      - name: Set up vcpkg at the manifest baseline
+        run: |
+          baseline=$(python3 -c "import json;print(json.load(open('vcpkg.json'))['builtin-baseline'])")
+          git clone --quiet https://github.com/microsoft/vcpkg "$VCPKG_ROOT"
+          git -C "$VCPKG_ROOT" checkout --quiet "$baseline"
+          "$VCPKG_ROOT/bootstrap-vcpkg.sh" -disableMetrics
+          mkdir -p "${{ github.workspace }}/vcpkg-cache"
+
+
+      - name: Cache vcpkg binaries
+        uses: actions/cache@v4
+        with:
+          path: ${{ github.workspace }}/vcpkg-cache
+          key: vcpkg-mingw-x64-${{ hashFiles('vcpkg.json', 'cmake/triplets/**', 'cmake/toolchains/**') }}
+          restore-keys: vcpkg-mingw-x64-
+
+      - name: Configure
+        run: cmake --preset mingw-x64-release
+
+      - name: Build
+        run: cmake --build --preset mingw-x64-release --target tn34xxw tn34xx-headless
+
+      - name: Package
+        id: package
+        run: |
+          version=$(sed -n 's/^#define TN34XX_VERSION_STRING "\(.*\)"$/\1/p' build/mingw-x64-release/generated/tn34xx_version.h)
+          name="tn34xx-${version}-win64"
+          mkdir -p "dist/$name"
+          cp build/mingw-x64-release/tn34xxw.exe build/mingw-x64-release/tn34xx-headless.exe "dist/$name/"
+          cp LICENSE README.md "dist/$name/"
+          (cd dist && zip -qr "$name.zip" "$name")
+          echo "name=$name" >> "$GITHUB_OUTPUT"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - name: Upload build
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.package.outputs.name }}
+          path: dist/${{ steps.package.outputs.name }}.zip
+          if-no-files-found: error
+
+    outputs:
+      name: ${{ steps.package.outputs.name }}
+      version: ${{ steps.package.outputs.version }}
+
+  release:
+    name: Release
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [linux, windows]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - name: Check that the tag matches the project version
+        env:
+          VERSION: ${{ needs.windows.outputs.version }}
+        run: |
+          tag="${GITHUB_REF_NAME#v}"
+          base="${VERSION%-*}"
+          if [ "$tag" != "$base" ]; then
+            echo "::error::tag $GITHUB_REF_NAME does not match project version $base"
+            exit 1
+          fi
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: ${{ needs.windows.outputs.name }}
+          path: dist
+
+      - name: Create the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" \
+            --repo "$GITHUB_REPOSITORY" \
+            --title "tn34xx $GITHUB_REF_NAME" \
+            --generate-notes \
+            "dist/${{ needs.windows.outputs.name }}.zip"

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 // TLS transport, OpenSSL backend (Linux and the BSDs): the host's own
 // libssl/libcrypto, found by CMake outside vcpkg (TN34XX_TLS). Implicit TLS
 // from the first byte, port 992 by convention.

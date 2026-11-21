@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 #include "config/config.hpp"
 #include "util/sha256.hpp"
 #include "util/strings.hpp"

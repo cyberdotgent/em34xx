@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 #include "app/host_link.hpp"
 
 #include "config/connect_args.hpp"

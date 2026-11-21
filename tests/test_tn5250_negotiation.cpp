@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 // TN5250 telnet negotiation and record framing (RFC 854/856/885/1091/
 // 1205/1572/4777). The transcripts are written by hand from the RFC
 // examples and option definitions.

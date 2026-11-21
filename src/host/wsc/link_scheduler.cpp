@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 #include "host/wsc/link_scheduler.hpp"
 
 #include "util/log.hpp"

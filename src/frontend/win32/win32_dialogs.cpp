@@ -1,7 +1,8 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 #include "frontend/win32/win32_dialogs.hpp"
 
 #include "frontend/win32/resource.h"
-#include "tn34xxw_version.h"
+#include "tn34xx_version.h"
 #include "models/model.hpp"
 #include "tn5250/tls_policy.hpp"
 #include "util/fingerprint.hpp"
@@ -1118,7 +1119,8 @@ INT_PTR CALLBACK about_proc(HWND dlg, UINT msg, WPARAM wp, LPARAM lp) {
         set_text(dlg, IDC_ABOUT_TEXT,
                  std::string("tn34xxw version ") + TN34XX_VERSION_STRING +
                      "\r\nHardware emulator for IBM 34xx twinax terminals, connected to IBM i over "
-                     "TN5250.\r\n\r\nUser folder: " +
+                     "TN5250.\r\nFree software under the GNU GPL, version 3 or later; no warranty."
+                     "\r\n\r\nUser folder: " +
                      dirs->root() + "\r\nTLS: " + (tn5250::tls_backend_name() ? tn5250::tls_backend_name() : "none"));
         const std::string url = TN34XX_HOMEPAGE_URL;
         set_text(dlg, IDC_ABOUT_LINK,

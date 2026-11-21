@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 // Interfaces between a machine model and the host front end.
 #pragma once
 

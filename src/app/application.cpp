@@ -1,4 +1,6 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 #include "app/application.hpp"
+#include "tn34xx_version.h"
 
 #include "app/host_link.hpp"
 #include "host/wsc/tn5250_bridge.hpp"
@@ -15,7 +17,7 @@ namespace tn34xx {
 
 namespace {
 
-const char* kVersion = "0.0.0";
+const char* kVersion = TN34XX_VERSION_STRING;
 
 void list_models() {
     std::printf("%-6s %-16s %-6s %s\n", "model", "status", "cpu", "description");

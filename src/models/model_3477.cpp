@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 // IBM 3477 InfoWindow.
 //
 // Primary bring-up target. See docs/bringup-3477.md for the memory and

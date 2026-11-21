@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 // Connects a tn5250::DisplaySession (the 5250 data-stream engine,
 // src/tn5250/session_api.hpp) to a station's DisplaySessionPort.
 #pragma once

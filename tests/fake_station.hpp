@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 // A fake 5250 station for unit tests of the virtual workstation controller.
 // It is written from the device-protocol description of the IBM 3477 (the
 // project's device spec, itself based on the 5250 Product Attachment

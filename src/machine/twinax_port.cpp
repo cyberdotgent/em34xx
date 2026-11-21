@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 #include "machine/twinax_port.hpp"
 
 #include "util/strings.hpp"

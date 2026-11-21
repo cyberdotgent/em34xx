@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
 find_package(doctest CONFIG REQUIRED)
 find_package(nlohmann_json CONFIG REQUIRED)
 find_package(ZLIB REQUIRED)

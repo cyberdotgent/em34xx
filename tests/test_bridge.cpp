@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 // End to end through the TN5250 bridge: a scripted in-process TN5250 server
 // -> tn5250::Client (its own I/O thread) -> engine -> station controller ->
 // link scheduler -> FakeStation, and keystrokes back the same way.

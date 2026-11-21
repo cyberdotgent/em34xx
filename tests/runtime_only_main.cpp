@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 // Link check for end-user GUI builds: a minimal application that links only
 // the runtime libraries (tn34xx_runtime and below), with a stub front end,
 // no developer tooling. Building it proves the runtime does not need the

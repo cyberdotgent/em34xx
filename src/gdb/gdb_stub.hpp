@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 // GDB remote serial protocol stub.
 //
 // GDB is told the target is an i8086 with the i386 core register set. Since

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 // The device mirror (what the controller believes the display holds) and
 // the flush planner that turns (shadow screen - mirror) into device
 // command steps.

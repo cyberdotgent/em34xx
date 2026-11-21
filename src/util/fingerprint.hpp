@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 // Certificate fingerprints as users write them in configuration files.
 //
 // The canonical form is upper-case hex pairs joined by colons

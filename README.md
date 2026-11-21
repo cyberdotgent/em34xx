@@ -243,9 +243,13 @@ roms/ROMS.md   expected ROM files and hashes
 
 ## Licence
 
-Not yet decided. It will be a free-software licence chosen to be compatible
-with the dependencies (all currently permissive: SDL3 zlib, replxx BSD,
-toml++ MIT, doctest MIT, nlohmann-json MIT, zlib). The optional TLS support
-links the system OpenSSL on Linux (OpenSSL 3: Apache-2.0, whose patent and
-NOTICE terms apply to binary distributions; 1.1.1: the OpenSSL/SSLeay
-licence) and Windows' own SChannel (part of the OS, nothing redistributed).
+tn34xx is free software, licensed under the GNU General Public License,
+version 3 or (at your option) any later version (`GPL-3.0-or-later`); see
+[LICENSE](LICENSE). It contains no IBM code or data: the terminal firmware
+ROMs are not part of this project and must be supplied by the user.
+
+Dependencies are under GPL-compatible licences: SDL3 (zlib), replxx (BSD),
+toml++ (MIT), and for tests doctest (MIT), nlohmann-json (MIT) and zlib. The
+optional TLS support uses the system OpenSSL on Linux (OpenSSL 3:
+Apache-2.0, compatible with GPLv3) and Windows' own SChannel. The licence
+notices of what is linked into `tn34xxw` are shown in its Help > About.

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 // Interactive monitor console (developer tooling): a line editor (replxx) in front of
 // Monitor::execute. Lives outside the monitor library so that the emulator
 // core, the monitor and the tests never link a line-editing library; native

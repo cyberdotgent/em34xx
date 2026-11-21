@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 // A machine: CPU, bus, devices and debug state for one terminal model.
 // Not thread-safe; the Emulator serialises access to it.
 #pragma once

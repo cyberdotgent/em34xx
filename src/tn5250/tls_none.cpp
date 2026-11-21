@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 // Built when no TLS stack was found at configure time (TN34XX_TLS=AUTO
 // without the OpenSSL development files, or TN34XX_TLS=OFF).
 #include "tn5250/tls_policy.hpp"

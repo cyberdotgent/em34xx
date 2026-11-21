@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 #include "tn5250/telnet.hpp"
 
 #include "util/strings.hpp"

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 // Interface between the TN5250 side of the bridge and its consumer.
 //
 // The consumer is the virtual workstation controller (src/host/wsc/), which

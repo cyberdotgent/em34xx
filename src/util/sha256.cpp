@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 // Straightforward FIPS 180-4 SHA-256, used only to identify ROM images.
 #include "util/sha256.hpp"
 

@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
 # Enforces the library layering (docs/architecture.md): every #include "..."
 # in src/<dir> must name a directory that <dir>'s library may depend on.
 # Run with: cmake -DSOURCE_DIR=<repo> -P cmake/check_layers.cmake

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 // IBM 3477 system hardware: interrupt controller, timer, keyboard interface,
 // two-wire bus and setup EEPROM.
 #include "bus/bus.hpp"

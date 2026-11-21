@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 // Minimal category/level logger. Output goes to a replaceable sink so the
 // interactive monitor can print log lines without corrupting its prompt.
 #pragma once

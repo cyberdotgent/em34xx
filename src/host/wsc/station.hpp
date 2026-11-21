@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 // One station address on the cable: the per-station state machine of the
 // virtual workstation controller (layer c, driven by the link scheduler,
 // layer d). See docs/twinax-bridge.md.

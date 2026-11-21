@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 #include "devtools/probe_device.hpp"
 
 #include "util/log.hpp"

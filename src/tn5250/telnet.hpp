@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 // Client-side telnet layer for TN5250.
 //
 // Pure state machine: bytes from the server go in, negotiation replies and

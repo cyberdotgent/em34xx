@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 // IBM 3477 system gate array, mapped at 20000-200FF.
 //
 // Registers are 16 bits wide at even addresses; where a register belongs to

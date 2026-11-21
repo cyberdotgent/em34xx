@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 // Small Win32 helpers for tn34xxw: UTF-8 <-> UTF-16, DPI (newer APIs loaded
 // at run time so the program still starts on Windows 7), the keyboard scan
 // code -> USB HID usage table, message boxes, file dialogs.

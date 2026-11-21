@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 // Runs the SingleStepTests 8088 V2 JSON test vectors against the I86 core.
 //
 // usage: tn34xx_cpu_vectors <testdata/8088> [opcode-file-prefix ...] [-v] [--max-fail N]

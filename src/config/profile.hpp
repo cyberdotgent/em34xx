@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 // Connection profiles: what tn34xxw saves as a `.tn34xx` file (TOML) and
 // connects with. A profile names the terminal model and up to two TN5250
 // display sessions (Twinax station addresses 0 and 1) with their TLS

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 // IBM 3477 keyboard interface (gate array registers 20012-20014, interrupt
 // enable 20007 bit 0, vector 0Eh), connected to a set-3 terminal keyboard.
 //

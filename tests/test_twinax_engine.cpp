@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 // Twinax link engine: programs, descriptors, data movers, events and the
 // 3477 loopback test registers. The engine programs below are written for
 // these tests from the opcode set documented in docs/bringup-3477.md.

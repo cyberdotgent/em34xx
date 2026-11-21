@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 // The monitor's `connect` command line (config/connect_args.hpp).
 #include "config/connect_args.hpp"
 

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 // IBM 3477 display controller (registers at 20100-2013F, mapped as the whole
 // 256-byte page 20100-201FF).
 //

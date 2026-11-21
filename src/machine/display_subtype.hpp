@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 // Display subtype of a terminal. The same firmware drives monochrome and
 // colour units, so the subtype is a configuration choice rather than a
 // separate model. How a subtype looks (phosphor colours) is presentation:

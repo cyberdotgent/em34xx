@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 // The TN5250 bridge: the virtual workstation controller (LinkScheduler and
 // one Station per configured address) with a TN5250 session behind each
 // display station. This is the TwinaxHost behind `--twinax-host tn5250` and

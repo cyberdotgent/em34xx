@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 // The virtual workstation controller on its own, without a TN5250 session:
 // `--twinax-host wsc`. The controller discovers, identifies and polls every
 // configured station, exactly as in the TN5250 bridge; display stations get

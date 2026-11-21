@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 // CPU-independent definitions shared by the CPU cores, the machine and the
 // debuggers (monitor, GDB stub).
 //

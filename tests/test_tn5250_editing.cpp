@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 // Operator field editing, keyboard states and error codes (FR chapter 16,
 // FFW semantics FR 15.6.12.1).
 #include "tn5250_test_util.hpp"

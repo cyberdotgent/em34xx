@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 /* Resource identifiers shared by tn34xxw.rc and the Win32 front end.
    Plain C preprocessor only: windres reads this file too. */
 #ifndef TN34XX_WIN32_RESOURCE_H

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 // The boundary between the emulated terminal's Twinax hardware and whatever
 // plays the controller (the primary station) on the other end of the cable.
 //

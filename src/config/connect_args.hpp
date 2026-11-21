@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 // The monitor's `connect HOST[:PORT] [options]` command, parsed into a
 // configuration for the TN5250 bridge.
 //

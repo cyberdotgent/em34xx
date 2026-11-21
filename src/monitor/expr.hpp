@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 // Expression evaluator for monitor commands.
 //
 //   numbers      hexadecimal by default (1f00, 0x1f00, 1f00h); #123 is decimal

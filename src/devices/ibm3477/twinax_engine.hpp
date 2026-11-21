@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 // Twinax link engine of the IBM 3477 family (one engine, N station channels).
 //
 // The engine sits between the Twinax line and the terminal's RAM. It is a

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 // Interpreter for the Intel 8086 family (8086/8088, 80186/80188). The 80286
 // level runs here in real mode only; protected mode belongs in a separate
 // core behind the Cpu interface (cpu/cpu.hpp, docs/architecture.md).

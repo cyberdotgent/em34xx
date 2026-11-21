@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 #include "input/host_keymap.hpp"
 
 #include "util/log.hpp"

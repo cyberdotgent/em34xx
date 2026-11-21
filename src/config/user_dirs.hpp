@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 // The per-user data folder of an end-user GUI build: settings, ROM images,
 // the global keymap and connection profiles in one place. On Windows the
 // root is %APPDATA%\tn34xx (tn34xxw finds %APPDATA% with SHGetFolderPathW);

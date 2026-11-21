@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 // Small end-to-end programs; exhaustive per-instruction coverage comes from
 // the SingleStepTests vectors (cpu_vectors).
 #include "cpu/i86.hpp"

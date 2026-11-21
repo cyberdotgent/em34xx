@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 // IBM 3489 InfoWindow II (modular).
 //
 // Placeholder. The board carries an 80286; the firmware enters protected

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 // The terminal's connection to a host: which controller is on the Twinax
 // line (none, script, the TN5250 bridge) and the TN5250 sessions behind it.
 // This is the programmatic API a GUI calls for connect / disconnect /

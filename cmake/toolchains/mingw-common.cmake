@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
 # Shared body of the MinGW-w64 cross toolchains (mingw-i686.cmake,
 # mingw-x86_64.cmake). Those set TN34XX_MINGW_ARCH and include this file.
 #

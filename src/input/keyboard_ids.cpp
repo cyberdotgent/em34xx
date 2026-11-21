@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 #include "input/keyboard_ids.hpp"
 
 #include "machine/machine.hpp"

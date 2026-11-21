@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 // Scan codes from poll responses -> operator actions.
 //
 // Turning scan codes into characters is the controller's job; the terminal

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 // Developer tooling for the SDL and headless executables: the monitor (with
 // its probes, memory tools, unmapped report and screenshots), the replxx
 // console, the GDB stub and start-up scripts. End-user GUI builds do not

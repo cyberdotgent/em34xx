@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 // tn5250-probe: connect to a TN5250 server, negotiate, wait for the first
 // screen and print it as text, together with the negotiation log.
 //

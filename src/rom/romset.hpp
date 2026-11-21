@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 // Loading and identifying ROM images. ROMs are never distributed with the
 // emulator; they are looked up by file name in a ROM directory and checked
 // against known SHA-256 hashes.

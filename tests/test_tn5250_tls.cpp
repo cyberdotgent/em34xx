@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 // TLS for the TN5250 client: fingerprints, configuration, the certificate
 // decision, and (with the OpenSSL backend) a real handshake against an
 // in-process server using a certificate generated at test time.

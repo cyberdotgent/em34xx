@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 // tn34xxw: the Win32 GUI executable (GUI subsystem, end-user build: no
 // monitor, no GDB stub). See docs/frontend-win32.md.
 #include "app/application.hpp"

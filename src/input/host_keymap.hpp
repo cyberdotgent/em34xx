@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 // Host keymap: PC keys (USB HID usages, as SDL scancodes) plus host modifier
 // state -> presses of terminal key positions (scan-code set 3), applied before
 // the Set3Keyboard model.

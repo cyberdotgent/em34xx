@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 #include "host/host_config.hpp"
 
 #include "util/fingerprint.hpp"

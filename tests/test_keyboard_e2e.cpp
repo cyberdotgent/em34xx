@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 // End to end, 122-key keyboard: host key -> host keymap -> set-3 keyboard
 // bytes -> 5250 scan codes on the cable -> controller operator action.
 //

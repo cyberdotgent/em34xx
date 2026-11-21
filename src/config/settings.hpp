@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 // Application settings of an end-user GUI build (settings.toml in the user
 // folder, config/user_dirs.hpp): global, not per connection profile.
 //

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 // The TLS trust decision hook: what a TLS backend learned about the server
 // certificate, and how a front end is asked whether to trust one that did
 // not verify.

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 // 5250 data stream parser and writer, from hand-written streams built from
 // the 5494 Functions Reference (SC30-3533-04) chapter 15 and RFC 1205.
 #include "tn5250_test_util.hpp"

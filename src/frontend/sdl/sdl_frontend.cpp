@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 #include "frontend/sdl/sdl_frontend.hpp"
 
 #include "app/application.hpp"

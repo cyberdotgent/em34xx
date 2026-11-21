@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 #include "machine/machine.hpp"
 #include "models/model.hpp"
 #include "monitor/expr.hpp"

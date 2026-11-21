@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 // 5250 display data stream engine: the shadow presentation space, format
 // table, keyboard state and operator field editing of one display station.
 //

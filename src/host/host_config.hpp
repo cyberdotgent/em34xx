@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 // Configuration surface for the host side of the emulated terminal.
 //
 // The emulator will eventually reach an IBM i host over TN5250 (RFC 1205 /

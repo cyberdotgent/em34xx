@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: GPL-3.0-or-later
 # Fetch the SingleStepTests CPU test vectors (MIT licensed) into testdata/.
 # The data is large (~760 MB for the 8088 set) and is never committed.
 #

@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
 cmake_minimum_required(VERSION 3.21)
 
 project(tn34xx
@@ -211,6 +212,23 @@ if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
 endif()
 
 # --- Application runtime: what every executable links, GUIs included ------
+# Version header (generated/tn34xx_version.h): project version plus the git
+# short hash, regenerated at every build so it follows HEAD (cmake/version.cmake).
+set(TN34XX_HOMEPAGE_URL "https://github.com/cyberdotgent/em34xx" CACHE STRING
+  "Project page shown in Help > About (empty: not yet announced)")
+add_custom_target(tn34xx_version
+  BYPRODUCTS ${PROJECT_BINARY_DIR}/generated/tn34xx_version.h
+  COMMAND ${CMAKE_COMMAND} -DSOURCE_DIR=${PROJECT_SOURCE_DIR}
+    -DOUTPUT=${PROJECT_BINARY_DIR}/generated/tn34xx_version.h
+    -DMAJOR=${PROJECT_VERSION_MAJOR} -DMINOR=${PROJECT_VERSION_MINOR}
+    -DPATCH=${PROJECT_VERSION_PATCH} -DHOMEPAGE=${TN34XX_HOMEPAGE_URL}
+    -P ${PROJECT_SOURCE_DIR}/cmake/version.cmake
+  COMMENT "Version header"
+  VERBATIM)
+add_library(tn34xx_version_header INTERFACE)
+target_include_directories(tn34xx_version_header INTERFACE ${PROJECT_BINARY_DIR}/generated)
+add_dependencies(tn34xx_version_header tn34xx_version)
+
 tn34xx_library(tn34xx_runtime
   src/config/config.cpp
   src/config/connect_args.cpp
@@ -220,6 +238,7 @@ tn34xx_library(tn34xx_runtime
   src/app/application.cpp
   src/app/host_link.cpp
 )
+target_link_libraries(tn34xx_runtime PRIVATE tn34xx_version_header)
 target_link_libraries(tn34xx_runtime
   PUBLIC tn34xx_machines tn34xx_host tn34xx_bridge tn34xx_present tomlplusplus::tomlplusplus)
 
@@ -265,15 +284,10 @@ if(WIN32)
     PRIVATE comctl32 comdlg32 shell32 gdi32 user32 advapi32)
   # Unicode (W) APIs throughout; the generic macros map to them too.
   target_compile_definitions(tn34xx_frontend_win32 PUBLIC UNICODE _UNICODE)
-  # Version shown in Help > About and the VERSIONINFO resource; the project
-  # page is shown as a link once it is known (empty: "to be announced").
-  set(TN34XX_HOMEPAGE_URL "" CACHE STRING "Project page shown in Help > About (empty: not yet announced)")
-  configure_file(src/frontend/win32/version.h.in
-    ${PROJECT_BINARY_DIR}/generated/tn34xxw_version.h @ONLY)
-  target_include_directories(tn34xx_frontend_win32 PRIVATE ${PROJECT_BINARY_DIR}/generated)
+  target_link_libraries(tn34xx_frontend_win32 PRIVATE tn34xx_version_header)
   add_executable(${TN34XX_EXE_WIN32} WIN32 src/main_win32.cpp src/frontend/win32/tn34xxw.rc)
   target_link_libraries(${TN34XX_EXE_WIN32} PRIVATE tn34xx_frontend_win32 tn34xx_warnings)
-  target_include_directories(${TN34XX_EXE_WIN32} PRIVATE ${PROJECT_BINARY_DIR}/generated)
+  target_link_libraries(${TN34XX_EXE_WIN32} PRIVATE tn34xx_version_header)
   # The resource script includes resource.h and the files under res/.
   set_property(SOURCE src/frontend/win32/tn34xxw.rc APPEND PROPERTY OBJECT_DEPENDS
     ${PROJECT_SOURCE_DIR}/src/frontend/win32/resource.h
@@ -281,7 +295,7 @@ if(WIN32)
     ${PROJECT_SOURCE_DIR}/src/frontend/win32/res/tn34xxw.ico
     ${PROJECT_SOURCE_DIR}/src/frontend/win32/res/profile.ico
     ${PROJECT_SOURCE_DIR}/src/frontend/win32/res/notices.txt
-    ${PROJECT_BINARY_DIR}/generated/tn34xxw_version.h
+    ${PROJECT_BINARY_DIR}/generated/tn34xx_version.h
     ${PROJECT_SOURCE_DIR}/src/frontend/win32/res/toolbar16.bmp
     ${PROJECT_SOURCE_DIR}/src/frontend/win32/res/toolbar24.bmp
     ${PROJECT_SOURCE_DIR}/src/frontend/win32/res/toolbar32.bmp)

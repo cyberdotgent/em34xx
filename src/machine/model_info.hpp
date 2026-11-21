@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 // Static description of a terminal model: CPU, address space, ROM set and
 // notes. The Machine core needs this; the Model registry that builds
 // machines from it lives in src/models (tn34xx_machines).

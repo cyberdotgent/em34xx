@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 // A two-wire (I²C) bus driven by a bit-banging master.
 //
 // The bus is open-drain: a line is high only when nobody pulls it low. The

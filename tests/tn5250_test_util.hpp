@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 // Shared helpers for the tn5250 engine tests: a fake host that feeds
 // hand-written 5250 data streams and collects the engine's replies.
 #pragma once

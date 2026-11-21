@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 // tn34xx: the SDL3 executable, with the developer tooling (monitor, console,
 // GDB stub). --headless runs it without a window.
 #include "app/application.hpp"

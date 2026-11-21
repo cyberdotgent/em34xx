@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 // Physical memory and I/O space of an emulated machine.
 //
 // Memory is decoded in 256-byte pages. Each page points to a region: RAM,

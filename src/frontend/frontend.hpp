@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 // The contract between the application and a front end (the window that
 // shows the terminal's screen and takes the host keyboard).
 //

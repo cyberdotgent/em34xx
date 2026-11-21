@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 // The tn34xx application runtime: configuration -> ROMs -> machine -> Twinax
 // host or TN5250 bridge -> run loop -> shutdown and exit code.
 //

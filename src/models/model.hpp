@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 // Terminal model definitions. Each model states its CPU, address space,
 // ROM set and memory/device map, and builds a Machine from that. ModelInfo
 // itself lives in machine/model_info.hpp, so the machine core does not

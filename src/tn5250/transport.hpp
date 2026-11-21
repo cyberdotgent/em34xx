@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 // Byte transport under the TN5250 telnet layer: plain TCP, or TLS from the
 // first byte (implicit TLS, port 992 by convention; no STARTTLS).
 //

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 // Keyboard identification for IBM 34xx InfoWindow terminals.
 //
 // The terminal's language is selected by the keyboard it finds attached: the

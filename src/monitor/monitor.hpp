@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 // Interactive and scripted debug monitor.
 //
 // Commands can come from an interactive console (src/devtools/console.hpp), from

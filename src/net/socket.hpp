@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 // Minimal blocking TCP sockets for the GDB stub and the TN5250 client
 // (POSIX and Winsock).
 #pragma once

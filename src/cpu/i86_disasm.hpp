@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 // Intel-syntax disassembler for the 8086/80186 instruction set.
 #pragma once
 

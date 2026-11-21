@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 // Base class for emulated hardware attached to the bus.
 #pragma once
 

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 // TN5250 logical record framing (RFC 1205 section 3).
 //
 // A logical record is a 6-byte fixed header (length, record type 12A0,

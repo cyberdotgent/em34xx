@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Generate the tn34xxw icons and toolbar bitmaps (original artwork).
 
 Writes into src/frontend/win32/res/:

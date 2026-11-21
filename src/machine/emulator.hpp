@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 // Threaded run control around a Machine.
 //
 // The machine executes on a dedicated thread in slices. Between slices the

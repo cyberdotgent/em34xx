@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 // Device-side model of an IBM terminal keyboard (scan-code set 3), as the
 // terminal's keyboard interface sees it.
 //

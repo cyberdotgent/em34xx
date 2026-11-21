@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 // Application configuration: defaults, then a TOML file, then the command
 // line (later sources override earlier ones).
 #pragma once

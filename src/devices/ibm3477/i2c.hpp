@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 // Devices on the 3477's two-wire bus (bit-banged by the firmware through the
 // display controller's register 2012F; see docs/bringup-3477.md).
 //

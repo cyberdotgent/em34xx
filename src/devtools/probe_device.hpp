@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 // A bring-up aid: a device that stands in for unknown hardware. It logs
 // every access and either behaves as plain storage ("latch" mode) or returns
 // a fixed value. Probes can be mapped from the monitor at run time.

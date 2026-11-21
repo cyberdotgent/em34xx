@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
 # Static MinGW-w64 build of the vcpkg ports for x86_64 Windows 7+, using the
 # project's toolchain (posix threads, static runtime, _WIN32_WINNT=0x0601).
 set(VCPKG_TARGET_ARCHITECTURE x64)

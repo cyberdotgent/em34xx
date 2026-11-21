@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 // Probe devices: the monitor's stand-ins for unknown hardware (devtools).
 #include "bus/bus.hpp"
 #include "devtools/probe_device.hpp"

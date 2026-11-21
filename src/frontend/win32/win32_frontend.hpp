@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 // Win32 front end (tn34xxw): a native GUI-subsystem window with menus,
 // toolbar and status bar from resources (tn34xxw.rc), connection profiles,
 // the ROM manager, the keymap editor and the TLS trust prompt. Windows 7

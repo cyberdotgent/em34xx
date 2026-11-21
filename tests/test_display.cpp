@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 #include "config/config.hpp"
 #include "present/crt_render.hpp"
 #include "present/display_profile.hpp"

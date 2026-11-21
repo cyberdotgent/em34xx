@@ -4,7 +4,7 @@
 #include <windows.h>
 #include <commctrl.h>
 #include "resource.h"
-#include "tn34xxw_version.h"
+#include "tn34xx_version.h"
 
 #pragma code_page(65001)
 LANGUAGE LANG_ENGLISH, SUBLANG_ENGLISH_US
@@ -243,17 +243,17 @@ BEGIN
     PUSHBUTTON      "Cancel", IDCANCEL, 199, 151, 54, 14
 END
 
-IDD_ABOUT DIALOGEX 0, 0, 320, 240
+IDD_ABOUT DIALOGEX 0, 0, 320, 250
 STYLE DS_SHELLFONT | DS_MODALFRAME | DS_CENTER | WS_POPUP | WS_CAPTION | WS_SYSMENU
 CAPTION "About tn34xxw"
 FONT 8, "MS Shell Dlg", 400, 0, 1
 BEGIN
     ICON            IDI_APP, -1, 7, 7, 21, 20
-    LTEXT           "", IDC_ABOUT_TEXT, 36, 7, 277, 50
-    CONTROL         "", IDC_ABOUT_LINK, "SysLink", WS_TABSTOP, 36, 60, 277, 10
-    LTEXT           "Third-party software:", -1, 7, 78, 120, 8
-    EDITTEXT        IDC_ABOUT_NOTICES, 7, 89, 306, 125, ES_MULTILINE | ES_READONLY | ES_AUTOVSCROLL | WS_VSCROLL | WS_TABSTOP
-    DEFPUSHBUTTON   "OK", IDOK, 259, 220, 54, 14
+    LTEXT           "", IDC_ABOUT_TEXT, 36, 7, 277, 60
+    CONTROL         "", IDC_ABOUT_LINK, "SysLink", WS_TABSTOP, 36, 70, 277, 10
+    LTEXT           "Third-party software:", -1, 7, 88, 120, 8
+    EDITTEXT        IDC_ABOUT_NOTICES, 7, 99, 306, 125, ES_MULTILINE | ES_READONLY | ES_AUTOVSCROLL | WS_VSCROLL | WS_TABSTOP
+    DEFPUSHBUTTON   "OK", IDOK, 259, 230, 54, 14
 END
 
 // --- Strings ------------------------------------------------------------------

@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
 # GDB helper for the tn34xx GDB stub.
 #
 #   gdb-multiarch -x tools/tn34xx.gdb -ex 'target remote :1234'

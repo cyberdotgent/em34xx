@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 // IBM 3486 InfoWindow II.
 //
 // Not runnable yet: the only dump of its ROM is incomplete (see

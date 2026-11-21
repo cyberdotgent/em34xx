@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 // CRT presentation: turns a terminal's native raster into what its tube
 // shows, at a given output size.
 //

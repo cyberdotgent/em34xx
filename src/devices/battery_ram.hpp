@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 // Battery-backed static RAM: a range of the machine's RAM whose contents
 // survive power-off. The image file is loaded when the machine is built
 // (power-on) and written back when it is destroyed (power-off) or on

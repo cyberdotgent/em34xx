@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 // How a display subtype looks: monochrome subtypes are rendered by mapping
 // the display device's output to the luminance ramp of the relevant
 // phosphor.

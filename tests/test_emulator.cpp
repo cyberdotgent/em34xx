@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 // Emulator run control services used by front ends: display change
 // notification.
 #include "machine/emulator.hpp"

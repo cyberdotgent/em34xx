@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 // EBCDIC <-> Unicode translation for the TN5250 side.
 //
 // The tables are the published single-byte EBCDIC code pages (IBM CCSID

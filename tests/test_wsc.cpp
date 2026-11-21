@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 // Virtual workstation controller (src/host/wsc) against fake stations.
 #include "fake_station.hpp"
 

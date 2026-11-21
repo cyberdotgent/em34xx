@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 // Backend-neutral half of the TLS transport: what a backend learns about
 // the server certificate, and the decision Tn5250Config asks for.
 //

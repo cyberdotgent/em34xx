@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 // 5250 device commands as a workstation controller sends them, and the
 // queue-load builder. Command bytes are `device << 5 | code` with the
 // TwinaxFrame data byte holding PAI frame bit 7 in bit 7 (see
