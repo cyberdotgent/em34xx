@@ -245,6 +245,23 @@ latency. Add `perf=debug` for the achieved clock and redraw cost. With a
 host link, `wsc=debug` logs each scan code the controller polls from the
 terminal and the operator action it decodes (`scan code 7C -> attn`), and
 `tn5250=debug` each record sent to the host (`send record No-op flags ATN`).
+In em34xxw set `EM34XX_LOG` to the same spec (docs/frontend-win32.md).
+
+**Attn that seems to do nothing.** Esc and the toolbar's Attn button reach
+the same terminal key (set-3 `05`, cable code `7C`). When the log shows
+`scan code 7C -> attn` and `send record No-op flags ATN`, the emulator has
+done its part and the reaction is the host job's attention-key program
+[observed: with the system value `QATNPGM` = `*ASSIST`, the Operational
+Assistant menu on the Main Menu and on a PDM list, also with an error
+message on the message line; with that program already active, an
+"Attention Key Information" window]. A user profile's initial program can
+replace it for the job (`SETATNPGM`); for example OfficeVision's initial
+program `QOFC/QOFINLPG` makes Attn show the OfficeVision menu [doc
+SC41-9626-02 11.1] [hypothesis: where OfficeVision is not set up for the
+user, Attn then shows nothing].
+The glyph at column 3 of the status row next to the System Available
+block at column 1 is the Message Waiting indicator (the host's Message
+light on record) [observed]; it does not block keys.
 
 On the PCOMM map, PC Enter is the terminal's **Field Exit** and Right Ctrl
 is **Enter**. In a terminal-local menu such as Offline Setup ("Move cursor

@@ -43,6 +43,10 @@ with `GetProcAddress` and fall back to the system DPI.
    (`--model`, `--rom-dir`, `--display`, `--speed`, `--keymap`, `--nvram`,
    `--log info --log-file <folder>\em34xxw.log`, `--no-crt`). Errors from it
    go to a message box (`Application::last_error()`).
+   The environment variable `EM34XX_LOG` replaces `info` with any `--log`
+   spec, e.g. `info,wsc=debug,tn5250=debug,input=debug` to see each key,
+   the scan code the controller decodes and each record sent to the host
+   (docs/keyboard.md, "Diagnosing input").
 
 ## The user folder
 

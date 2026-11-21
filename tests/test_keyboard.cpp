@@ -446,6 +446,34 @@ TEST_CASE("terminal function keys bypass the host keymap (toolbar Attn, SysRq, R
     CHECK_FALSE(k.terminal_key("no such key", true));
 }
 
+TEST_CASE("Esc and the toolbar Attn share set-3 05 without blocking each other (122-key)") {
+    // Both GUI paths end at the same terminal key; a reference left behind by
+    // one would silently swallow the other.
+    Set3Keyboard k(KeyboardType::Terminal122, 0xBF, 0xBF);
+    k.power_on();
+    drain(k);
+    std::string error;
+    REQUIRE(k.set_host_keymap("pcomm", false, error));
+    for (int round = 0; round < 2; ++round) {
+        press(k, 0x29, true);   // Esc
+        press(k, 0x29, false);
+        CHECK(drain(k) == Bytes{0x05});
+        REQUIRE(k.terminal_key("attn", true));
+        REQUIRE(k.terminal_key("attn", false));
+        CHECK(drain(k) == Bytes{0x05});
+    }
+    // Toolbar Attn while the host Esc is still down: the key is already made.
+    press(k, 0x29, true);
+    CHECK(drain(k) == Bytes{0x05});
+    REQUIRE(k.terminal_key("attn", true));
+    REQUIRE(k.terminal_key("attn", false));
+    press(k, 0x29, false);
+    drain(k);
+    REQUIRE(k.terminal_key("attn", true));
+    REQUIRE(k.terminal_key("attn", false));
+    CHECK(drain(k) == Bytes{0x05});
+}
+
 TEST_CASE("host keymap replaced at run time") {
     Set3Keyboard k(KeyboardType::Enhanced, 0x7F, 0x7F);
     k.power_on();

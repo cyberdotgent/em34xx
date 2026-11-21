@@ -64,6 +64,27 @@ TEST_CASE("tn5250 editing: protected area posts 0005 on the error line; Reset re
     CHECK_FALSE(h.e.indicators().input_inhibited);
 }
 
+TEST_CASE("tn5250 editing: Attn goes out with Message Waiting on and in an operator error") {
+    // Observed live: a host list panel with the Message Waiting light on and
+    // a message on the message line; Attn must still send the ATN No-op.
+    Host h;
+    h.write(signon_stream());
+    h.write({}, kOpMessageOn);
+    CHECK(h.e.indicators().message_waiting);
+    CHECK(h.e.key_function(Key::Attention) == KeyResult::Accepted);
+    Record atn = h.take();
+    CHECK(atn.opcode == kOpNoOp);
+    CHECK(atn.flags == kFlagAtn);
+    // Pre-help operator error: Attn still acts and leaves the error state.
+    h.e.key_function(Key::CursorUp);
+    CHECK(h.e.key_data(0xC1) == KeyResult::Error);
+    CHECK(h.e.key_function(Key::Attention) == KeyResult::Accepted);
+    atn = h.take();
+    CHECK(atn.flags == kFlagAtn);
+    CHECK(h.e.indicators().error == ErrorState::PreHelp);
+    CHECK(h.e.indicators().message_waiting);
+}
+
 TEST_CASE("tn5250 editing: field shift/edit checks") {
     SUBCASE("alpha only") {
         Host h;

@@ -1114,6 +1114,18 @@ std::unique_ptr<Frontend> make_win32_frontend(Win32Launch& launch) {
 // ---------------------------------------------------------------------------
 // Launch
 
+namespace {
+
+// The log levels: "info", or EM34XX_LOG (the same spec as --log, e.g.
+// "info,wsc=debug,tn5250=debug") to diagnose input or a host session.
+std::string log_spec() {
+    wchar_t env[256];
+    const DWORD n = GetEnvironmentVariableW(L"EM34XX_LOG", env, DWORD(sizeof env / sizeof env[0]));
+    return n > 0 && n < sizeof env / sizeof env[0] ? narrow(env) : std::string("info");
+}
+
+} // namespace
+
 bool win32_prepare(Win32Launch& launch) {
     INITCOMMONCONTROLSEX icc;
     icc.dwSize = sizeof icc;
@@ -1208,7 +1220,7 @@ bool win32_prepare(Win32Launch& launch) {
                    "--nvram",
                    runtime_path(launch.dirs->nvram_file(model->info().name)),
                    "--log",
-                   "info",
+                   log_spec(),
                    "--log-file",
                    runtime_path(launch.dirs->root() + "\\em34xxw.log")};
     if (!launch.settings.crt) launch.args.push_back("--no-crt");
