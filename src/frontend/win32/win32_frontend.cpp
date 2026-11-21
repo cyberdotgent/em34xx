@@ -1116,7 +1116,7 @@ std::unique_ptr<Frontend> make_win32_frontend(Win32Launch& launch) {
 bool win32_prepare(Win32Launch& launch) {
     INITCOMMONCONTROLSEX icc;
     icc.dwSize = sizeof icc;
-    icc.dwICC = ICC_BAR_CLASSES | ICC_LISTVIEW_CLASSES | ICC_STANDARD_CLASSES | ICC_WIN95_CLASSES;
+    icc.dwICC = ICC_BAR_CLASSES | ICC_LISTVIEW_CLASSES | ICC_STANDARD_CLASSES | ICC_WIN95_CLASSES | ICC_LINK_CLASS;
     InitCommonControlsEx(&icc);
 
     // The user folder: %APPDATA%\tn34xx, or TN34XX_USER_DIR (portable use, tests).

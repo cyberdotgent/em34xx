@@ -15,6 +15,7 @@
 /* Menu and accelerators */
 #define IDR_MAINMENU            200
 #define IDR_ACCEL               201
+#define IDR_NOTICES             202
 
 /* Commands */
 #define ID_FILE_PROFILES        1001
@@ -119,6 +120,8 @@
 #define IDC_KE_TAP              2168
 
 #define IDC_ABOUT_TEXT          2180
+#define IDC_ABOUT_LINK          2181
+#define IDC_ABOUT_NOTICES       2182
 
 /* Strings */
 #define IDS_APP_TITLE           4000

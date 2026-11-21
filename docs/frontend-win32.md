@@ -14,6 +14,8 @@ Sources: `src/main_win32.cpp`, `src/frontend/win32/`:
 | `win32_frontend.*` | launch (user folder, settings, first-start ROM check, command line), the main window, picture, keyboard, profiles and connections, the TLS trust queue |
 | `win32_dialogs.*` | ROM images, Settings, profile manager and editor, TLS Settings, the trust prompt, Keymap, About, file association |
 | `win32_util.*` | UTF-8/UTF-16, DPI helpers (newer APIs loaded at run time), scan code -> HID table, message boxes, the open-file dialog |
+| `res/notices.txt` | third-party licence notices, embedded as RCDATA and shown in Help > About (no separate notices file ships) |
+| `version.h.in` | generated `tn34xxw_version.h`: version (from `project(VERSION)`) and project page (`TN34XX_HOMEPAGE_URL`, empty = "to be announced") for VERSIONINFO and About |
 | `tn34xxw.rc`, `resource.h` | menu, accelerators, dialog templates (`DIALOGEX`), string table, icons, toolbar bitmaps, version information, manifest; compiled by windres |
 | `tn34xxw.manifest` | Common Controls 6 (visual styles), DPI awareness, `supportedOS`, `asInvoker` |
 | `res/` | icons and toolbar strips, drawn by `tools/gen_win32_assets.py` (original artwork) |
@@ -145,7 +147,7 @@ message.
 | View | Zoom > 1x / 1.5x / 2x | | radio items; the picture area becomes the presented frame times the zoom times the DPI scale (shrunk to the work area if it does not fit); manual resizing stays possible and choosing a zoom snaps back. Saved in settings.toml |
 | Terminal | Attn, SysRq, Reset | yes (text buttons) | press the terminal's own key through the keyboard model (`Machine::terminal_key()`, set-3 position with the Shift/Alt its legend needs), so the firmware and the controller see the real key |
 | Terminal | Power Cycle | | `Application::power_on()` |
-| Help | About tn34xxw... | | version, user folder, TLS backend |
+| Help | About... | | version, user folder, TLS backend, project page, third-party notices |
 
 The window title is `<profile>[*] - IBM 3477 - tn34xx`; `*` marks a
 profile that differs from its file (or was never saved). The status bar
@@ -285,3 +287,17 @@ non-ASCII user folder.
   a profile for another model asks for a restart.
 - Printer sessions are not offered (the bridge has only a placeholder).
 - No per-profile keymap (by design: one global keymap).
+
+## Version and notices
+
+The version comes from `project(tn34xx VERSION ...)` in CMakeLists.txt and
+appears in the VERSIONINFO resource and Help > About (major.minor). Set the
+project page with `-DTN34XX_HOMEPAGE_URL=https://...`; About then shows it as
+a link, which opens in the default browser.
+
+`res/notices.txt` holds the licence notices of the third-party code linked
+into tn34xxw (toml++, the mingw-w64 runtime, winpthreads, the GCC runtime).
+No separate notices file is shipped; the About dialog is where they are
+displayed. Update the file when a dependency is added to the Win32 build
+(`x86_64-w64-mingw32-objdump -p` lists the DLLs; static libraries come from
+`vcpkg_installed/<triplet>/share/<port>/copyright`).

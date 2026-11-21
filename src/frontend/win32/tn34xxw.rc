@@ -4,6 +4,7 @@
 #include <windows.h>
 #include <commctrl.h>
 #include "resource.h"
+#include "tn34xxw_version.h"
 
 #pragma code_page(65001)
 LANGUAGE LANG_ENGLISH, SUBLANG_ENGLISH_US
@@ -14,6 +15,7 @@ LANGUAGE LANG_ENGLISH, SUBLANG_ENGLISH_US
 // --- Icons and bitmaps (tools/gen_win32_assets.py) ---------------------------
 IDI_APP     ICON "res/tn34xxw.ico"
 IDI_PROFILE ICON "res/profile.ico"
+IDR_NOTICES RCDATA "res/notices.txt"
 IDB_TOOLBAR16 BITMAP "res/toolbar16.bmp"
 IDB_TOOLBAR24 BITMAP "res/toolbar24.bmp"
 IDB_TOOLBAR32 BITMAP "res/toolbar32.bmp"
@@ -58,7 +60,7 @@ BEGIN
     END
     POPUP "&Help"
     BEGIN
-        MENUITEM "&About tn34xxw...",                    ID_HELP_ABOUT
+        MENUITEM "&About...",                             ID_HELP_ABOUT
     END
 END
 
@@ -241,14 +243,17 @@ BEGIN
     PUSHBUTTON      "Cancel", IDCANCEL, 199, 151, 54, 14
 END
 
-IDD_ABOUT DIALOGEX 0, 0, 240, 100
+IDD_ABOUT DIALOGEX 0, 0, 320, 240
 STYLE DS_SHELLFONT | DS_MODALFRAME | DS_CENTER | WS_POPUP | WS_CAPTION | WS_SYSMENU
 CAPTION "About tn34xxw"
 FONT 8, "MS Shell Dlg", 400, 0, 1
 BEGIN
     ICON            IDI_APP, -1, 7, 7, 21, 20
-    LTEXT           "", IDC_ABOUT_TEXT, 36, 7, 197, 66
-    DEFPUSHBUTTON   "OK", IDOK, 179, 79, 54, 14
+    LTEXT           "", IDC_ABOUT_TEXT, 36, 7, 277, 50
+    CONTROL         "", IDC_ABOUT_LINK, "SysLink", WS_TABSTOP, 36, 60, 277, 10
+    LTEXT           "Third-party software:", -1, 7, 78, 120, 8
+    EDITTEXT        IDC_ABOUT_NOTICES, 7, 89, 306, 125, ES_MULTILINE | ES_READONLY | ES_AUTOVSCROLL | WS_VSCROLL | WS_TABSTOP
+    DEFPUSHBUTTON   "OK", IDOK, 259, 220, 54, 14
 END
 
 // --- Strings ------------------------------------------------------------------
@@ -280,8 +285,8 @@ END
 
 // --- Version ------------------------------------------------------------------
 VS_VERSION_INFO VERSIONINFO
-FILEVERSION     0, 0, 0, 0
-PRODUCTVERSION  0, 0, 0, 0
+FILEVERSION     TN34XX_VERSION_MAJOR, TN34XX_VERSION_MINOR, TN34XX_VERSION_PATCH, 0
+PRODUCTVERSION  TN34XX_VERSION_MAJOR, TN34XX_VERSION_MINOR, TN34XX_VERSION_PATCH, 0
 FILEFLAGSMASK   VS_FFI_FILEFLAGSMASK
 FILEFLAGS       0
 FILEOS          VOS_NT_WINDOWS32
@@ -294,12 +299,12 @@ BEGIN
         BEGIN
             VALUE "CompanyName",      "tn34xx project"
             VALUE "FileDescription",  "tn34xxw - IBM 34xx twinax terminal emulator"
-            VALUE "FileVersion",      "0.0.0"
+            VALUE "FileVersion",      TN34XX_VERSION_STRING
             VALUE "InternalName",     "tn34xxw"
             VALUE "LegalCopyright",   "tn34xx contributors"
             VALUE "OriginalFilename", "tn34xxw.exe"
             VALUE "ProductName",      "tn34xx"
-            VALUE "ProductVersion",   "0.0.0"
+            VALUE "ProductVersion",   TN34XX_VERSION_STRING
         END
     END
     BLOCK "VarFileInfo"

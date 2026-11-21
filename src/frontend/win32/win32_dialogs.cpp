@@ -1,6 +1,7 @@
 #include "frontend/win32/win32_dialogs.hpp"
 
 #include "frontend/win32/resource.h"
+#include "tn34xxw_version.h"
 #include "models/model.hpp"
 #include "tn5250/tls_policy.hpp"
 #include "util/fingerprint.hpp"
@@ -1091,15 +1092,50 @@ bool keymap_dialog(HWND owner, KeymapFile& file) {
 // About
 
 namespace {
+// The third-party notices, embedded as RCDATA (res/notices.txt, UTF-8 with
+// LF line ends), converted for a multi-line edit control.
+std::wstring load_notices() {
+    HRSRC r = FindResourceW(instance(), MAKEINTRESOURCEW(IDR_NOTICES), MAKEINTRESOURCEW(10) /* RT_RCDATA */);
+    if (!r) return L"(notices not found)";
+    HGLOBAL g = LoadResource(instance(), r);
+    const char* data = g ? static_cast<const char*>(LockResource(g)) : nullptr;
+    if (!data) return L"(notices not found)";
+    std::string text(data, SizeofResource(instance(), r));
+    std::string crlf;
+    crlf.reserve(text.size() + text.size() / 32);
+    for (char c : text) {
+        if (c == '\r') continue;
+        if (c == '\n') crlf += '\r';
+        crlf += c;
+    }
+    return widen(crlf);
+}
+
 INT_PTR CALLBACK about_proc(HWND dlg, UINT msg, WPARAM wp, LPARAM lp) {
     switch (msg) {
     case WM_INITDIALOG: {
         const UserDirs* dirs = reinterpret_cast<const UserDirs*>(lp);
         set_text(dlg, IDC_ABOUT_TEXT,
-                 "tn34xxw 0.0.0\r\nHardware emulator for IBM 34xx twinax terminals, connected to IBM i over "
-                 "TN5250.\r\n\r\nUser folder: " +
+                 std::string("tn34xxw version ") + TN34XX_VERSION_STRING +
+                     "\r\nHardware emulator for IBM 34xx twinax terminals, connected to IBM i over "
+                     "TN5250.\r\n\r\nUser folder: " +
                      dirs->root() + "\r\nTLS: " + (tn5250::tls_backend_name() ? tn5250::tls_backend_name() : "none"));
+        const std::string url = TN34XX_HOMEPAGE_URL;
+        set_text(dlg, IDC_ABOUT_LINK,
+                 url.empty() ? std::string("Project page: to be announced")
+                             : "Project page: <a href=\"" + url + "\">" + url + "</a>");
+        SetDlgItemTextW(dlg, IDC_ABOUT_NOTICES, load_notices().c_str());
         return TRUE;
+    }
+    case WM_NOTIFY: {
+        const NMHDR* h = reinterpret_cast<const NMHDR*>(lp);
+        if (h->idFrom == IDC_ABOUT_LINK && (h->code == NM_CLICK || h->code == NM_RETURN)) {
+            const NMLINK* link = reinterpret_cast<const NMLINK*>(lp);
+            if (link->item.szUrl[0])
+                ShellExecuteW(dlg, L"open", link->item.szUrl, nullptr, nullptr, SW_SHOWNORMAL);
+            return TRUE;
+        }
+        break;
     }
     case WM_COMMAND:
         if (LOWORD(wp) == IDOK || LOWORD(wp) == IDCANCEL) {

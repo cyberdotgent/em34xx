@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.21)
 
 project(tn34xx
-  VERSION 0.0.0
+  VERSION 0.1.0
   DESCRIPTION "Hardware emulator for IBM 34xx-family 5250 terminals"
   LANGUAGES CXX)
 
@@ -265,14 +265,23 @@ if(WIN32)
     PRIVATE comctl32 comdlg32 shell32 gdi32 user32 advapi32)
   # Unicode (W) APIs throughout; the generic macros map to them too.
   target_compile_definitions(tn34xx_frontend_win32 PUBLIC UNICODE _UNICODE)
+  # Version shown in Help > About and the VERSIONINFO resource; the project
+  # page is shown as a link once it is known (empty: "to be announced").
+  set(TN34XX_HOMEPAGE_URL "" CACHE STRING "Project page shown in Help > About (empty: not yet announced)")
+  configure_file(src/frontend/win32/version.h.in
+    ${PROJECT_BINARY_DIR}/generated/tn34xxw_version.h @ONLY)
+  target_include_directories(tn34xx_frontend_win32 PRIVATE ${PROJECT_BINARY_DIR}/generated)
   add_executable(${TN34XX_EXE_WIN32} WIN32 src/main_win32.cpp src/frontend/win32/tn34xxw.rc)
   target_link_libraries(${TN34XX_EXE_WIN32} PRIVATE tn34xx_frontend_win32 tn34xx_warnings)
+  target_include_directories(${TN34XX_EXE_WIN32} PRIVATE ${PROJECT_BINARY_DIR}/generated)
   # The resource script includes resource.h and the files under res/.
   set_property(SOURCE src/frontend/win32/tn34xxw.rc APPEND PROPERTY OBJECT_DEPENDS
     ${PROJECT_SOURCE_DIR}/src/frontend/win32/resource.h
     ${PROJECT_SOURCE_DIR}/src/frontend/win32/tn34xxw.manifest
     ${PROJECT_SOURCE_DIR}/src/frontend/win32/res/tn34xxw.ico
     ${PROJECT_SOURCE_DIR}/src/frontend/win32/res/profile.ico
+    ${PROJECT_SOURCE_DIR}/src/frontend/win32/res/notices.txt
+    ${PROJECT_BINARY_DIR}/generated/tn34xxw_version.h
     ${PROJECT_SOURCE_DIR}/src/frontend/win32/res/toolbar16.bmp
     ${PROJECT_SOURCE_DIR}/src/frontend/win32/res/toolbar24.bmp
     ${PROJECT_SOURCE_DIR}/src/frontend/win32/res/toolbar32.bmp)
