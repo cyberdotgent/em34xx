@@ -54,10 +54,18 @@ struct TelnetSettings {
 
 class TelnetCodec {
 public:
+    // Most a record or a subnegotiation may hold while being assembled. A
+    // logical record's length field is 16 bits; the requests we answer are
+    // tens of bytes.
+    static constexpr size_t kMaxRecord = 0xFFFF + 1024;
+    static constexpr size_t kMaxSubnegotiation = 4096;
+
     explicit TelnetCodec(TelnetSettings settings);
 
     // Process bytes from the server. Negotiation replies are appended to
-    // `reply`; complete logical records (unescaped) to `records`.
+    // `reply`; complete logical records (unescaped) to `records`. A record
+    // or subnegotiation that outgrows its limit fails the codec: it drops
+    // what it holds, ignores further input, and the caller should close.
     void receive(const uint8_t* data, size_t len, std::vector<uint8_t>& reply,
                  std::vector<std::vector<uint8_t>>& records);
 
@@ -69,6 +77,8 @@ public:
     bool local_enabled(uint8_t opt) const { return local_[opt]; }
     bool remote_enabled(uint8_t opt) const { return remote_[opt]; }
     bool terminal_type_sent() const { return ttype_sent_; }
+    bool failed() const { return !error_.empty(); }
+    const std::string& error() const { return error_; }
     // Server seed from an IBMRSEED request, empty if none was seen.
     const std::vector<uint8_t>& server_seed() const { return server_seed_; }
 
@@ -84,6 +94,7 @@ private:
     void answer_environ(const std::vector<uint8_t>& request, std::vector<uint8_t>& reply);
     void send_cmd(std::vector<uint8_t>& reply, uint8_t cmd, uint8_t opt);
     void note(const std::string& line) { log_.push_back(line); }
+    void fail(const std::string& why);
 
     TelnetSettings settings_;
     State state_ = State::Data;
@@ -94,6 +105,7 @@ private:
     bool ttype_sent_ = false;
     std::vector<uint8_t> server_seed_;
     std::vector<std::string> log_;
+    std::string error_;
 };
 
 } // namespace tn5250

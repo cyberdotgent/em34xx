@@ -82,10 +82,25 @@ void TelnetCodec::send_cmd(std::vector<uint8_t>& reply, uint8_t cmd, uint8_t opt
     note(format("send %s %s", cmd_text(cmd), opt_text(opt).c_str()));
 }
 
+void TelnetCodec::fail(const std::string& why) {
+    error_ = why;
+    note("error: " + why);
+    std::vector<uint8_t>().swap(current_);
+    std::vector<uint8_t>().swap(sb_);
+}
+
 void TelnetCodec::receive(const uint8_t* data, size_t len, std::vector<uint8_t>& reply,
                           std::vector<std::vector<uint8_t>>& records) {
-    for (size_t i = 0; i < len; ++i) {
+    for (size_t i = 0; i < len && !failed(); ++i) {
         const uint8_t b = data[i];
+        if (current_.size() >= kMaxRecord) {
+            fail(format("record exceeds %zu bytes without IAC EOR", kMaxRecord));
+            break;
+        }
+        if (sb_.size() >= kMaxSubnegotiation) {
+            fail(format("subnegotiation exceeds %zu bytes without IAC SE", kMaxSubnegotiation));
+            break;
+        }
         switch (state_) {
         case State::Data:
             if (b == IAC) state_ = State::Iac;

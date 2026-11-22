@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "tn5250/engine.hpp"
 
+#include "tn5250/record.hpp"
 #include "util/log.hpp"
 
 #include <algorithm>
@@ -100,6 +101,19 @@ private:
 };
 
 constexpr uint8_t kImageVersion = 1;
+// Largest save image Save Screen returns: with its 04 13 LL prefix it must
+// fit a logical record, and its own length field is 16 bits.
+constexpr size_t kMaxImageSize = kMaxRecordData - 4;
+
+// Limits on what one host record may make the engine do [design]. A host
+// sends one reply-generating command per record and paints a screen with at
+// most a few hundred orders, so none of these is reachable in a real session;
+// they keep a hostile or broken stream from turning a few kilobytes into
+// megabytes of replies or seconds of work.
+constexpr unsigned kMaxRepliesPerRecord = 4;
+// Cells that repeat-type operations (RA, EA, Clear Unit, CC0, Roll, Restore,
+// Write Error Code) may touch per record: 64 times the largest screen.
+constexpr size_t kMaxRepeatCellsPerRecord = 64 * 27 * 132;
 
 } // namespace
 
@@ -272,6 +286,8 @@ void Engine::receive(const Record& rec) {
 
 void Engine::process_stream(const std::vector<uint8_t>& d, uint8_t opcode) {
     (void)opcode;
+    record_replies_ = 0;
+    record_cells_ = 0;
     size_t i = 0;
     auto need = [&](size_t n) {
         if (i + n > d.size()) throw Error{kSensePrematureEnd};
@@ -310,9 +326,11 @@ void Engine::process_stream(const std::vector<uint8_t>& d, uint8_t opcode) {
                 break;
             case 0x72:
             case 0x83:
+                count_reply();
                 send(kOpNoOp, 0, build_read_reply(cmd, 0x00, true));
                 break;
             case 0x62: {  // Read Screen (FR 15.13): the buffer, raw
+                count_reply();
                 std::vector<uint8_t> out;
                 out.reserve(cells_.size());
                 for (const Cell& c : cells_) out.push_back(c.ch);
@@ -320,8 +338,10 @@ void Engine::process_stream(const std::vector<uint8_t>& d, uint8_t opcode) {
                 break;
             }
             case 0x02: {  // Save Screen (FR 15.21): reply starts 04 12
+                count_reply();
                 std::vector<uint8_t> out{0x04, 0x12};
                 const auto img = save_image();
+                if (img.size() > kMaxImageSize) throw Error{kSenseFormatOverflow};
                 out.insert(out.end(), img.begin(), img.end());
                 send(kOpSaveScreen, 0, std::move(out));
                 break;
@@ -329,7 +349,9 @@ void Engine::process_stream(const std::vector<uint8_t>& d, uint8_t opcode) {
             case 0x03: {  // Save Partial Screen (FR 15.22): whole screen, 04 13 LL
                 need(5);
                 i += 5;
+                count_reply();
                 const auto img = save_image();
+                if (img.size() > kMaxImageSize) throw Error{kSenseFormatOverflow};
                 std::vector<uint8_t> out{0x04, 0x13};
                 put16(out, unsigned(img.size() + 2));
                 out.insert(out.end(), img.begin(), img.end());
@@ -338,6 +360,7 @@ void Engine::process_stream(const std::vector<uint8_t>& d, uint8_t opcode) {
             }
             case 0x12: {  // Restore Screen (FR 15.23)
                 size_t used = 0;
+                count_cells(size_t(size()));
                 if (!restore_image(d.data() + i, d.size() - i, used)) throw Error{kSenseRestoreData};
                 i += used;
                 break;
@@ -347,6 +370,7 @@ void Engine::process_stream(const std::vector<uint8_t>& d, uint8_t opcode) {
                 const size_t ll = (size_t(d[i]) << 8) | d[i + 1];
                 if (ll < 2 || i + ll > d.size()) throw Error{kSenseRestoreData};
                 size_t used = 0;
+                count_cells(size_t(size()));
                 if (!restore_image(d.data() + i + 2, ll - 2, used)) throw Error{kSenseRestoreData};
                 i += ll;
                 break;
@@ -377,7 +401,21 @@ void Engine::process_stream(const std::vector<uint8_t>& d, uint8_t opcode) {
     refresh_attrs();
 }
 
+void Engine::count_reply() {
+    if (++record_replies_ <= kMaxRepliesPerRecord) return;
+    TN_LOG("tn5250", Warn, "more than %u reply-generating commands in one record", kMaxRepliesPerRecord);
+    throw Error{kSenseInvalidCommand};
+}
+
+void Engine::count_cells(size_t n) {
+    record_cells_ += n;
+    if (record_cells_ <= kMaxRepeatCellsPerRecord) return;
+    TN_LOG("tn5250", Warn, "record repeats over more than %zu cells", kMaxRepeatCellsPerRecord);
+    throw Error{kSenseInvalidCommand};
+}
+
 void Engine::cmd_clear_unit(int r, int c) {
+    count_cells(size_t(r * c));
     rows_ = r;
     cols_ = c;
     cells_.assign(size_t(size()), Cell{});
@@ -420,6 +458,7 @@ void Engine::cmd_clear_format_table() {
 void Engine::apply_cc0(uint8_t cc0) {
     const unsigned v = cc0 >> 5;  // FR Table 43
     if (v == 0) return;
+    count_cells(size_t(size()));
     pending_aid_ = 0;
     lock_keyboard();
     for (Field& f : fields_) {
@@ -513,6 +552,7 @@ void Engine::cmd_write_to_display(const std::vector<uint8_t>& d, size_t& i) {
             const uint8_t ch = d[i + 2];
             i += 3;
             if (addr < 0 || t < addr) throw Error{kSenseRaBackwards};
+            count_cells(size_t(t - addr + 1));
             for (int a = addr; a <= t; ++a) set_ch(a, ch);
             addr = t + 1;
             break;
@@ -536,6 +576,7 @@ void Engine::cmd_write_to_display(const std::vector<uint8_t>& d, size_t& i) {
             }
             i += size_t(ll - 1);
             if (addr < 0 || t < addr) throw Error{kSenseRaBackwards};
+            count_cells(size_t(t - addr + 1));
             for (int a = addr; a <= t; ++a) {
                 if (screen) set_ch(a, kNull);
                 const Cell& c = cells_[size_t(a)];
@@ -599,6 +640,7 @@ void Engine::cmd_write_to_display(const std::vector<uint8_t>& d, size_t& i) {
                 input = true;
                 while (i < d.size() && (d[i] & 0xC0) == 0x80) {
                     need(2);
+                    if (fcws.size() >= kMaxFcws) throw Error{kSenseFormatOverflow};
                     fcws.push_back(uint16_t((d[i] << 8) | d[i + 1]));
                     i += 2;
                 }
@@ -617,6 +659,17 @@ void Engine::cmd_write_to_display(const std::vector<uint8_t>& d, size_t& i) {
                 lock_keyboard();
                 insert_ = false;
                 pending_aid_ = 0;
+                // Drop any other field the new extent overlaps. A field
+                // occupies start - 1 (leading attribute) to end() (ending
+                // attribute); neighbours may share that one attribute
+                // position, the ending attribute of one being the leading
+                // attribute of the next.
+                fields_.erase(std::remove_if(fields_.begin(), fields_.end(),
+                                             [&](const Field& f) {
+                                                 return f.start != start && f.start - 1 < start + len &&
+                                                        start - 1 < f.end();
+                                             }),
+                              fields_.end());
                 auto it = std::find_if(fields_.begin(), fields_.end(),
                                        [&](const Field& f) { return f.start == start; });
                 if (it != fields_.end()) {
@@ -624,12 +677,6 @@ void Engine::cmd_write_to_display(const std::vector<uint8_t>& d, size_t& i) {
                     it->attr = attr;
                     it->length = len;
                 } else {
-                    // Drop anything the new field overlaps, then insert in order.
-                    fields_.erase(std::remove_if(fields_.begin(), fields_.end(),
-                                                 [&](const Field& f) {
-                                                     return f.start - 1 <= start + len && f.end() >= start - 1;
-                                                 }),
-                                  fields_.end());
                     if (fields_.size() >= 256) throw Error{kSenseFormatOverflow};
                     Field f;
                     f.start = start;
@@ -639,8 +686,11 @@ void Engine::cmd_write_to_display(const std::vector<uint8_t>& d, size_t& i) {
                     f.attr = attr;
                     auto pos = std::upper_bound(fields_.begin(), fields_.end(), start,
                                                 [](int s, const Field& x) { return s < x.start; });
+                    // Ending attribute, unless that position already is the
+                    // leading attribute of the next field [design].
+                    const bool shared = pos != fields_.end() && pos->start - 1 == start + len;
                     fields_.insert(pos, std::move(f));
-                    if (start + len < size()) set_ch(start + len, 0x20);  // ending attribute
+                    if (start + len < size() && !shared) set_ch(start + len, 0x20);
                 }
             }
             addr = start;
@@ -677,6 +727,7 @@ void Engine::cmd_write_error_code(const std::vector<uint8_t>& d, size_t& i, bool
         if (sc < 0 || ec <= sc || ec >= cols_) throw Error{kSenseWecwRowCol};
     }
     const int row = error_row();
+    count_cells(size_t(cols_));
     if (error_ == ErrorState::None) {
         saved_error_line_.assign(cells_.begin() + row * cols_, cells_.begin() + (row + 1) * cols_);
         locked_before_error_ = locked_;
@@ -712,6 +763,7 @@ void Engine::cmd_read(uint8_t cmd, uint8_t cc0, uint8_t cc1) {
     read_cmd_ = cmd;
     if (pending_aid_) {
         // An AID was held while no read was outstanding (FR 16.2.1).
+        count_reply();
         send(kOpPutGet, 0, build_read_reply(cmd, pending_aid_, false));
         pending_aid_ = 0;
         read_cmd_ = 0;
@@ -725,6 +777,7 @@ void Engine::cmd_roll(uint8_t b1, uint8_t top, uint8_t bottom) {
     const bool down = (b1 & 0x80) != 0;
     if (top == 0 || bottom > rows_ || top >= bottom || n > bottom - top) throw Error{kSenseRollParam};
     if (n == 0) return;
+    count_cells(size_t((bottom - top + 1) * cols_));
     const int t = top - 1, btm = bottom - 1;
     std::vector<Cell> old(cells_.begin() + t * cols_, cells_.begin() + (btm + 1) * cols_);
     // Rows move by n; vacated rows keep their old contents (FR 15.25).
@@ -747,6 +800,7 @@ void Engine::cmd_write_structured_field(const std::vector<uint8_t>& d, size_t& i
         if (i + ll > d.size()) throw Error{kSensePrematureEnd};
         const uint8_t cls = d[i + 2], type = d[i + 3];
         if (cls == 0xD9 && type == 0x70) {
+            count_reply();
             send(kOpNoOp, 0, query_reply());
         } else {
             TN_LOG("tn5250", Info, "structured field class %02X type %02X ignored", cls, type);
@@ -889,6 +943,8 @@ std::vector<uint8_t> Engine::build_read_reply(uint8_t cmd, uint8_t aid, bool imm
 //   field count(2) { start(2) length(2) ffw(2) attr fcw_count fcw(2)... }
 //   RLE(ch plane) RLE(ext primary) RLE(ext colour)
 //   saved error line: count(2), then RLE(ch) RLE(primary) RLE(colour)
+// With at most 256 fields of kMaxFcws FCWs each the image stays under 32 KiB,
+// so the 16-bit lengths cannot wrap; Save Screen checks kMaxImageSize anyway.
 
 std::vector<uint8_t> Engine::save_image() const {
     std::vector<uint8_t> v{'T', '3', '4', 'S', kImageVersion, 0, 0};
@@ -918,8 +974,9 @@ std::vector<uint8_t> Engine::save_image() const {
         put16(v, unsigned(f.length));
         put16(v, f.ffw);
         v.push_back(f.attr);
-        v.push_back(uint8_t(f.fcws.size()));
-        for (uint16_t w : f.fcws) put16(v, w);
+        const size_t nfcw = std::min(f.fcws.size(), kMaxFcws);
+        v.push_back(uint8_t(nfcw));
+        for (size_t w = 0; w < nfcw; ++w) put16(v, f.fcws[w]);
     }
     auto planes = [&](const std::vector<Cell>& cells) {
         std::vector<uint8_t> a, b, c;
@@ -977,6 +1034,7 @@ bool Engine::restore_image(const uint8_t* p, size_t n, size_t& used) {
         f.ffw = uint16_t(rd.u16());
         f.attr = rd.u8();
         const unsigned nfcw = rd.u8();
+        if (nfcw > kMaxFcws) return false;
         for (unsigned w = 0; w < nfcw; ++w) f.fcws.push_back(uint16_t(rd.u16()));
         if (!rd.ok() || f.start + f.length > sz) return false;
         fields.push_back(std::move(f));

@@ -72,6 +72,11 @@ struct EngineOptions {
     static EngineOptions for_terminal_type(const std::string& ttype);
 };
 
+// FCWs accepted per input field [design]: FR 15.6.12.2 defines about a dozen
+// kinds, and the save image stores the count in one byte. More give sense
+// 10050129.
+constexpr size_t kMaxFcws = 32;
+
 struct Field {
     int start = 0;                    // address of the first data position
     int length = 0;
@@ -151,6 +156,9 @@ private:
     void apply_cc1(uint8_t cc1, int cursor_order);
     void send_negative(uint32_t sense);
     void send(uint8_t opcode, uint8_t flags, std::vector<uint8_t> data);
+    // Per-record limits; over the limit the record ends in a negative response.
+    void count_reply();
+    void count_cells(size_t n);
 
     // Screen primitives.
     void set_ch(int addr, uint8_t ch);
@@ -207,6 +215,9 @@ private:
     uint8_t read_cmd_ = 0;            // pending 42 / 52 / 82, or 0
     uint8_t pending_aid_ = 0;         // AID held until the next read
     int pending_aid_cursor_ = 0;
+
+    unsigned record_replies_ = 0;     // replies sent for the current host record
+    size_t record_cells_ = 0;         // cells touched by repeat-type operations
 
     uint64_t generation_ = 1;
     Rect dirty_;

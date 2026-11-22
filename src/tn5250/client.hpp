@@ -6,6 +6,10 @@
 // The owner calls pump() (DisplaySession) from its own thread to apply
 // what has arrived; replies the engine produces are queued and sent by the
 // I/O thread.
+//
+// Both queues and the log are bounded. While kMaxQueuedBytes of host records
+// wait for pump() the I/O thread stops reading the socket; replies beyond
+// kMaxQueuedBytes fail the session; the log keeps its newest kMaxLogLines.
 #pragma once
 
 #include "host/host_config.hpp"
@@ -38,6 +42,8 @@ TelnetSettings telnet_settings_for(const Tn5250Config& cfg);
 class Client : public DisplaySession {
 public:
     using TransportFactory = std::function<std::unique_ptr<Transport>(std::string& error)>;
+    static constexpr size_t kMaxQueuedBytes = 4u << 20;
+    static constexpr size_t kMaxLogLines = 500;
 
     explicit Client(Tn5250Config cfg, TransportFactory factory = nullptr);
     ~Client() override;
@@ -53,7 +59,8 @@ public:
     void stop();
     ConnState state() const { return state_.load(); }
     std::string last_error() const;
-    // Negotiation and record log lines since the last call.
+    // Negotiation and record log lines since the last call (the newest
+    // kMaxLogLines of them, after a note of how many were dropped).
     std::vector<std::string> take_log();
 
     Engine& engine() { return engine_; }
@@ -79,7 +86,10 @@ public:
 
 private:
     void run();
+    void run_session();
+    void fail(const std::string& why);
     void log(const std::string& line);
+    void log_locked(const std::string& line);
     void queue_outbound(const Record& rec);
 
     Tn5250Config cfg_;
@@ -93,7 +103,11 @@ private:
     mutable std::mutex mu_;
     std::deque<Record> inbound_;
     std::deque<std::vector<uint8_t>> outbound_;   // framed, ready to send
-    std::vector<std::string> log_;
+    size_t inbound_bytes_ = 0;
+    size_t outbound_bytes_ = 0;
+    bool outbound_overflow_ = false;
+    std::deque<std::string> log_;
+    size_t log_dropped_ = 0;
     std::string error_;
 };
 

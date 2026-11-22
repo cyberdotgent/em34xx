@@ -7,8 +7,9 @@ namespace em34xx {
 namespace tn5250 {
 
 std::vector<uint8_t> encode_record(const Record& rec) {
-    const size_t len = 10 + rec.data.size();
     std::vector<uint8_t> out;
+    if (rec.data.size() > kMaxRecordData) return out;
+    const size_t len = 10 + rec.data.size();
     out.reserve(len);
     out.push_back(uint8_t(len >> 8));
     out.push_back(uint8_t(len));

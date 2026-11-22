@@ -8,7 +8,14 @@
 
 #include <doctest/doctest.h>
 
+#include <algorithm>
+#include <atomic>
+#include <chrono>
+#include <functional>
+#include <memory>
+#include <new>
 #include <string>
+#include <thread>
 #include <vector>
 
 using namespace em34xx;
@@ -37,6 +44,48 @@ struct Harness {
         return reply;
     }
 };
+
+// A transport whose recv() is a function; everything sent is discarded.
+class FnTransport : public Transport {
+public:
+    using Recv = std::function<int(uint8_t* buf, size_t len)>;
+    FnTransport(Recv fn, const std::atomic<bool>* hold = nullptr) : fn_(std::move(fn)), hold_(hold) {}
+    bool connect(const std::string&, uint16_t, std::string&) override {
+        while (hold_ && hold_->load()) std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        return true;
+    }
+    int recv(uint8_t* buf, size_t len, int) override {
+        const int n = fn_(buf, len);
+        if (n == 0) std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        return n;
+    }
+    bool send(const uint8_t*, size_t) override { return true; }
+    void close() override {}
+    std::string describe() const override { return "test"; }
+
+private:
+    Recv fn_;
+    const std::atomic<bool>* hold_;
+};
+
+Tn5250Config test_config() {
+    Tn5250Config cfg;
+    cfg.host = "example";
+    return cfg;
+}
+
+Client::TransportFactory factory_for(FnTransport::Recv fn, const std::atomic<bool>* hold = nullptr) {
+    return [fn, hold](std::string&) { return std::unique_ptr<Transport>(new FnTransport(fn, hold)); };
+}
+
+bool wait_for(const std::function<bool()>& cond, int ms = 10000) {
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(ms);
+    while (!cond()) {
+        if (std::chrono::steady_clock::now() > deadline) return false;
+        std::this_thread::sleep_for(std::chrono::milliseconds(2));
+    }
+    return true;
+}
 
 TelnetSettings settings_3477() {
     Tn5250Config cfg;
@@ -187,6 +236,137 @@ TEST_CASE("tn5250 records: header encode/decode, RFC 1205 message light example"
     CHECK(back.data == wsf.data);
     CHECK_FALSE(decode_record({0x00, 0x0A, 0x12, 0xA1, 0, 0, 4, 0, 0, 0}, back, err));
     CHECK_FALSE(decode_record({0x00, 0x05, 0x12}, back, err));
+}
+
+TEST_CASE("tn5250 records: data too long for the 16-bit length is refused, not wrapped") {
+    Record r;
+    r.data.assign(kMaxRecordData, 0x40);
+    const Bytes enc = encode_record(r);
+    REQUIRE(enc.size() == 0xFFFF);
+    CHECK(enc[0] == 0xFF);
+    CHECK(enc[1] == 0xFF);
+    r.data.push_back(0x40);
+    CHECK(encode_record(r).empty());
+}
+
+TEST_CASE("tn5250 records: a record or subnegotiation without its end fails the codec") {
+    {
+        Harness h(TelnetSettings{});
+        Bytes big(0xFFFF, 0x00);             // the largest record a length field can describe
+        big.insert(big.end(), {IAC, EOR});
+        h.feed(big);
+        CHECK_FALSE(h.codec.failed());
+        REQUIRE(h.records.size() == 1);
+        CHECK(h.records[0].size() == 0xFFFF);
+    }
+    {
+        Harness h(TelnetSettings{});
+        const Bytes chunk(8192, 0x00);
+        for (int k = 0; k < 20 && !h.codec.failed(); ++k) h.feed(chunk);
+        CHECK(h.codec.failed());
+        CHECK(h.codec.error().find("IAC EOR") != std::string::npos);
+        h.feed({0x01, IAC, EOR, IAC, DO, OPT_BINARY});   // nothing more is processed
+        CHECK(h.records.empty());
+        CHECK_FALSE(h.codec.local_enabled(OPT_BINARY));
+    }
+    {
+        Harness h(TelnetSettings{});
+        h.feed({IAC, SB, OPT_NEW_ENVIRON, ENV_SEND});
+        CHECK_FALSE(h.codec.failed());
+        h.feed(Bytes(TelnetCodec::kMaxSubnegotiation + 1, 0x41));
+        CHECK(h.codec.failed());
+        CHECK(h.codec.error().find("IAC SE") != std::string::npos);
+    }
+}
+
+TEST_CASE("tn5250 client: an endless record fails the session") {
+    Client c(test_config(), factory_for([](uint8_t* buf, size_t len) {
+        std::fill(buf, buf + len, uint8_t(0x00));
+        return int(len);
+    }));
+    std::string err;
+    REQUIRE(c.start(err));
+    CHECK(wait_for([&] { return c.state() == ConnState::Failed; }));
+    CHECK(c.last_error().find("IAC EOR") != std::string::npos);
+    c.stop();
+}
+
+TEST_CASE("tn5250 client: an exception on the I/O thread fails the session") {
+    Client c(test_config(), factory_for([](uint8_t*, size_t) -> int { throw std::bad_alloc(); }));
+    std::string err;
+    REQUIRE(c.start(err));
+    CHECK(wait_for([&] { return c.state() == ConnState::Failed; }));
+    CHECK(c.last_error().find("I/O thread") != std::string::npos);
+    c.stop();
+}
+
+TEST_CASE("tn5250 client: the log keeps only its newest lines") {
+    std::atomic<int> calls{0};
+    Client c(test_config(), factory_for([&](uint8_t* buf, size_t) {
+        if (calls >= 2000) return 0;
+        ++calls;
+        buf[0] = IAC, buf[1] = DO, buf[2] = 99;      // refused: two log lines each time
+        return 3;
+    }));
+    std::string err;
+    REQUIRE(c.start(err));
+    CHECK(wait_for([&] { return calls >= 2000; }));
+    c.stop();
+    const auto lines = c.take_log();
+    REQUIRE(lines.size() == Client::kMaxLogLines + 1);
+    CHECK(lines.front().find("dropped") != std::string::npos);
+    CHECK(c.take_log().empty());
+}
+
+TEST_CASE("tn5250 client: host records wait in the socket while the owner does not pump") {
+    // Message-light records that also write 1000 blanks, without end.
+    Record light;
+    light.opcode = kOpMessageOn;
+    light.data = {0x04, 0x11, 0x00, 0x00, 0x11, 0x01, 0x01};
+    light.data.insert(light.data.end(), 1000, 0x40);
+    const Bytes frame = TelnetCodec::frame(encode_record(light));
+    std::atomic<size_t> delivered{0};
+    Client c(test_config(), factory_for([&](uint8_t* buf, size_t len) {
+        size_t n = 0;
+        while (n + frame.size() <= len) {
+            std::copy(frame.begin(), frame.end(), buf + n);
+            n += frame.size();
+        }
+        delivered += n;
+        return int(n);
+    }));
+    std::string err;
+    REQUIRE(c.start(err));
+    // Reading stops once about kMaxQueuedBytes are queued.
+    size_t seen = 0;
+    CHECK(wait_for([&] {
+        const size_t before = delivered;
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        seen = delivered;
+        return seen == before && seen != 0;
+    }, 30000));
+    CHECK(seen >= Client::kMaxQueuedBytes / 2);
+    CHECK(seen <= Client::kMaxQueuedBytes + 65536);
+    CHECK(c.state() != ConnState::Failed);
+    c.pump();                                // drained: reading resumes
+    CHECK(c.engine().indicators().message_waiting);
+    CHECK(wait_for([&] { return delivered > seen; }));
+    c.stop();
+}
+
+TEST_CASE("tn5250 client: replies nobody sends are bounded and fail the session") {
+    std::atomic<bool> hold{true};            // the I/O thread stays in connect()
+    Client c(test_config(), factory_for([](uint8_t*, size_t) { return 0; }, &hold));
+    std::string err;
+    REQUIRE(c.start(err));
+    Record read_screen;
+    read_screen.opcode = kOpReadScreen;
+    read_screen.data = {0x04, 0x62};
+    for (size_t k = 0; k < Client::kMaxQueuedBytes / (24 * 80) + 2; ++k) c.engine().receive(read_screen);
+    hold = false;
+    CHECK(wait_for([&] { return c.state() == ConnState::Failed; }));
+    CHECK(c.last_error().find("replies queued") != std::string::npos);
+    c.stop();
 }
 
 TEST_CASE("tn5250 terminal type: derived from model and display, overridable per station") {

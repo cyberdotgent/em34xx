@@ -351,3 +351,158 @@ TEST_CASE("tn5250 datastream: Read Screen returns the buffer raw") {
     CHECK(r.data[5 * 80 + 51] == 0x24);
     CHECK(r.data[0] == 0x00);
 }
+
+namespace {
+// An input field (FFW 4000, attribute 24) of 5 positions whose leading
+// attribute is at row r, column c.
+Bytes field5(uint8_t r, uint8_t c) { return {0x11, r, c, 0x1D, 0x40, 0x00, 0x24, 0x00, 0x05}; }
+const Bytes kClearAndWrite{0x04, 0x40, 0x04, 0x11, 0x00, 0x08};
+const Bytes kReadMdt{0x04, 0x52, 0x00, 0x00};
+} // namespace
+
+TEST_CASE("tn5250 datastream: input fields one attribute apart are all kept") {
+    // Data at row 5 columns 11-15 and 17-21: column 16 is the ending
+    // attribute of the first and the leading attribute of the second.
+    for (bool reversed : {false, true}) {
+        CAPTURE(reversed);
+        Host h;
+        h.write(reversed ? cat({kClearAndWrite, field5(7, 10), field5(5, 16), field5(5, 10), kReadMdt})
+                         : cat({kClearAndWrite, field5(5, 10), field5(5, 16), field5(7, 10), kReadMdt}));
+        CHECK(h.out.empty());
+        REQUIRE(h.e.fields().size() == 3);
+        CHECK(h.e.fields()[0].start == 4 * 80 + 10);
+        CHECK(h.e.fields()[1].start == 4 * 80 + 16);
+        CHECK(h.e.fields()[2].start == 6 * 80 + 10);
+        for (const Field& f : h.e.fields()) CHECK(f.length == 5);
+        CHECK(h.e.cell(4, 9).ch == 0x24);
+        CHECK(h.e.cell(4, 15).ch == 0x24);   // shared: still the second field's attribute
+        CHECK(h.e.cell(4, 21).ch == 0x20);
+        CHECK(h.e.cell(6, 15).ch == 0x20);
+
+        h.type("abcde");                     // fills the first field, moves to the second
+        h.type("fg");
+        CHECK(h.e.key_aid(Aid::Enter) == KeyResult::Accepted);
+        REQUIRE(h.out.size() == 1);
+        CHECK(h.take().data == cat({{0x05, 0x13, 0xF1},
+                                    {0x11, 0x05, 0x0B}, eb("abcde"),
+                                    {0x11, 0x05, 0x11}, eb("fg")}));
+    }
+}
+
+TEST_CASE("tn5250 datastream: a field that really overlaps another replaces it") {
+    Host h;
+    h.write(cat({kClearAndWrite, field5(5, 10), field5(5, 16)}));
+    REQUIRE(h.e.fields().size() == 2);
+    // Data at columns 5-9: its ending attribute is the first field's leading one.
+    h.write(cat({{0x04, 0x11, 0x00, 0x00}, field5(5, 4)}));
+    REQUIRE(h.e.fields().size() == 3);
+    CHECK(h.e.cell(4, 9).ch == 0x24);
+    // Data at columns 6-10 covers that leading attribute: both neighbours go.
+    h.write(cat({{0x04, 0x11, 0x00, 0x00}, field5(5, 5)}));
+    REQUIRE(h.e.fields().size() == 2);
+    CHECK(h.e.fields()[0].start == 4 * 80 + 5);
+    CHECK(h.e.fields()[1].start == 4 * 80 + 16);
+    // A leading attribute on another field's last data position.
+    h.write(cat({{0x04, 0x11, 0x00, 0x00}, field5(5, 21)}));
+    REQUIRE(h.e.fields().size() == 2);
+    CHECK(h.e.fields()[1].start == 4 * 80 + 21);
+    CHECK(h.out.empty());
+}
+
+TEST_CASE("tn5250 datastream: a redefined field drops the fields its new length covers") {
+    Host h;
+    h.write(cat({kClearAndWrite, field5(5, 10), field5(5, 16), field5(7, 10)}));
+    REQUIRE(h.e.fields().size() == 3);
+    h.write(cat({{0x04, 0x11, 0x00, 0x00}, field5(5, 10)}));   // same extent: nothing else changes
+    REQUIRE(h.e.fields().size() == 3);
+    h.write({0x04, 0x11, 0x00, 0x00, 0x11, 0x05, 0x0A, 0x1D, 0x40, 0x00, 0x24, 0x00, 0x08});
+    REQUIRE(h.e.fields().size() == 2);
+    CHECK(h.e.fields()[0].start == 4 * 80 + 10);
+    CHECK(h.e.fields()[0].length == 8);
+    CHECK(h.e.fields()[1].start == 6 * 80 + 10);
+    CHECK(h.out.empty());
+}
+
+TEST_CASE("tn5250 datastream: one record gets at most a few replies") {
+    Host h;
+    h.write(signon_stream());
+    Bytes many;
+    for (int k = 0; k < 1000; ++k) many.insert(many.end(), {0x04, 0x62});
+    h.write(many, kOpReadScreen);
+    REQUIRE(h.out.size() == 5);              // four screens, then the negative response
+    for (int k = 0; k < 4; ++k) CHECK(h.take().data.size() == 24 * 80);
+    const Record neg = h.take();
+    CHECK((neg.flags & kFlagErr) != 0);
+    CHECK(sense_of(neg) == kSenseInvalidCommand);
+
+    // Every reply-generating command counts, and each record starts afresh.
+    Bytes mixed{0x04, 0x72, 0x04, 0x83, 0x04, 0x02, 0x04, 0xF3};
+    for (int k = 0; k < 10; ++k) mixed.insert(mixed.end(), {0x00, 0x05, 0xD9, 0x70, 0x00});
+    h.write(mixed);
+    REQUIRE(h.out.size() == 5);
+    CHECK(sense_of(h.out.back()) == kSenseInvalidCommand);
+    h.out.clear();
+    h.write({0x04, 0xF3, 0x00, 0x05, 0xD9, 0x70, 0x00});
+    REQUIRE(h.out.size() == 1);
+    CHECK(h.take().data == h.e.query_reply());
+}
+
+TEST_CASE("tn5250 datastream: repeat orders are limited per record, generously") {
+    auto repeats = [](int n) {
+        Bytes d{0x04, 0x40, 0x04, 0x11, 0x00, 0x00};
+        for (int k = 0; k < n; ++k)
+            d.insert(d.end(), {0x11, 0x01, 0x01, 0x02, 0x18, 0x50, uint8_t(k & 1 ? 0x5C : 0x40)});
+        return d;
+    };
+    Host h;
+    h.write(repeats(100));                   // a hundred whole-screen RAs: far beyond a real screen
+    CHECK(h.out.empty());
+    CHECK(h.e.cell(23, 79).ch == 0x5C);
+    h.write(repeats(1000));
+    REQUIRE(h.out.size() == 1);
+    CHECK(sense_of(h.take()) == kSenseInvalidCommand);
+    h.write(repeats(1));                     // the next record is unaffected
+    CHECK(h.out.empty());
+    CHECK(h.e.cell(23, 79).ch == 0x40);
+}
+
+TEST_CASE("tn5250 datastream: FCWs per field are limited and the largest save image fits its lengths") {
+    auto field = [](uint8_t r, uint8_t c, size_t fcws) {
+        Bytes sf{0x11, r, c, 0x1D, 0x40, 0x00};
+        for (size_t k = 0; k < fcws; ++k) sf.insert(sf.end(), {0x89, 0x01});
+        sf.insert(sf.end(), {0x24, 0x00, 0x01});
+        return sf;
+    };
+    Host h;
+    h.write(cat({kClearAndWrite, field(1, 1, kMaxFcws + 1)}));
+    REQUIRE(h.out.size() == 1);
+    CHECK(sense_of(h.take()) == kSenseFormatOverflow);
+    CHECK(h.e.fields().empty());
+
+    // 256 fields (the format table's size), each with every FCW allowed.
+    Bytes d = kClearAndWrite;
+    for (int k = 0; k < 256; ++k) {
+        const Bytes sf = field(uint8_t(1 + k / 32), uint8_t(1 + 2 * (k % 32)), kMaxFcws);
+        d.insert(d.end(), sf.begin(), sf.end());
+    }
+    h.write(d);
+    CHECK(h.out.empty());
+    REQUIRE(h.e.fields().size() == 256);
+    CHECK(h.e.fields()[255].fcws.size() == kMaxFcws);
+
+    h.write({0x04, 0x03, 0x00, 0x00, 0x00, 0x00, 0x00}, kOpSaveScreen);
+    REQUIRE(h.out.size() == 1);
+    const Record saved = h.take();
+    CHECK(saved.opcode == kOpSaveScreen);
+    REQUIRE(saved.data.size() > 11);
+    CHECK(saved.data.size() < 0x8000);
+    const size_t ll = (size_t(saved.data[2]) << 8) | saved.data[3];
+    CHECK(ll == saved.data.size() - 2);                           // 04 13 LL: LL counts itself
+    const size_t image = (size_t(saved.data[9]) << 8) | saved.data[10];
+    CHECK(image == saved.data.size() - 4);                        // the image's own length
+    h.write({0x04, 0x40});
+    h.write(saved.data, kOpRestoreScreen);
+    CHECK(h.out.empty());
+    REQUIRE(h.e.fields().size() == 256);
+    CHECK(h.e.fields()[255].fcws.size() == kMaxFcws);
+}

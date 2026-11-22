@@ -18,7 +18,11 @@ namespace tn5250 {
 
 constexpr uint16_t kGdsRecordType = 0x12A0;
 
-// Header + data, not yet telnet-escaped.
+// The logical length is 16 bits and counts the 10 header bytes.
+constexpr size_t kMaxRecordData = 0xFFFF - 10;
+
+// Header + data, not yet telnet-escaped. Empty if the data is longer than
+// kMaxRecordData: the length field cannot say so.
 std::vector<uint8_t> encode_record(const Record& rec);
 
 // Parse an unescaped logical record. Returns false (with a reason) if the

@@ -6,6 +6,9 @@
 #include "util/log.hpp"
 #include "util/strings.hpp"
 
+#include <chrono>
+#include <exception>
+
 namespace em34xx {
 namespace tn5250 {
 
@@ -84,6 +87,13 @@ bool Client::start(std::string& error) {
     if (!error.empty()) return false;
     if (thread_.joinable()) { error = "session already started"; return false; }
     stop_ = false;
+    {
+        // Replies left over from an earlier connection are not for this one.
+        std::lock_guard<std::mutex> g(mu_);
+        outbound_.clear();
+        outbound_bytes_ = 0;
+        outbound_overflow_ = false;
+    }
     state_ = ConnState::Connecting;
     thread_ = std::thread([this] { run(); });
     return true;
@@ -102,22 +112,47 @@ std::string Client::last_error() const {
 std::vector<std::string> Client::take_log() {
     std::lock_guard<std::mutex> g(mu_);
     std::vector<std::string> out;
-    out.swap(log_);
+    if (log_dropped_) out.push_back(format("(%zu earlier log lines dropped)", log_dropped_));
+    out.insert(out.end(), log_.begin(), log_.end());
+    log_.clear();
+    log_dropped_ = 0;
     return out;
 }
 
 void Client::log(const std::string& line) {
     TN_LOG("tn5250", Debug, "%s", line.c_str());
     std::lock_guard<std::mutex> g(mu_);
+    log_locked(line);
+}
+
+// Nothing but tn5250-probe drains the log, so it keeps only the newest lines.
+void Client::log_locked(const std::string& line) {
+    if (log_.size() >= kMaxLogLines) {
+        log_.pop_front();
+        ++log_dropped_;
+    }
     log_.push_back(line);
 }
 
 void Client::queue_outbound(const Record& rec) {
-    const auto framed = TelnetCodec::frame(encode_record(rec));
+    const auto encoded = encode_record(rec);
+    if (encoded.empty()) {  // the engine's own limits keep replies well below this
+        log(format("reply of %zu data bytes does not fit a record; dropped", rec.data.size()));
+        return;
+    }
+    auto framed = TelnetCodec::frame(encoded);
     log(format("send record %s flags %s, %zu data bytes", opcode_name(rec.opcode), flags_text(rec.flags).c_str(),
                rec.data.size()));
     std::lock_guard<std::mutex> g(mu_);
-    outbound_.push_back(framed);
+    // Nobody sends once the session has ended, and a host that does not read
+    // must not make us hold replies without limit: the I/O thread fails the
+    // session when it sees the overflow.
+    if (outbound_overflow_ || outbound_bytes_ + framed.size() > kMaxQueuedBytes) {
+        outbound_overflow_ = true;
+        return;
+    }
+    outbound_bytes_ += framed.size();
+    outbound_.push_back(std::move(framed));
 }
 
 void Client::pump() {
@@ -125,22 +160,40 @@ void Client::pump() {
     {
         std::lock_guard<std::mutex> g(mu_);
         in.swap(inbound_);
+        inbound_bytes_ = 0;
     }
     engine_.set_system_available(state_.load() == ConnState::Ready);
     for (const Record& r : in) engine_.receive(r);
 }
 
+void Client::fail(const std::string& why) {
+    {
+        std::lock_guard<std::mutex> g(mu_);
+        error_ = why;
+    }
+    log("error: " + why);
+    state_ = ConnState::Failed;
+}
+
+// An exception on the I/O thread (std::bad_alloc on a 32-bit build, say)
+// fails the session instead of terminating the process. Unwinding destroys
+// the transport, which closes the connection.
 void Client::run() {
+    try {
+        run_session();
+        return;
+    } catch (const std::exception& e) {
+        state_ = ConnState::Failed;
+        try { fail(std::string("I/O thread: ") + e.what()); } catch (...) {}
+    } catch (...) {
+        state_ = ConnState::Failed;
+        try { fail("I/O thread: unknown exception"); } catch (...) {}
+    }
+}
+
+void Client::run_session() {
     std::string err;
     std::unique_ptr<Transport> t = factory_ ? factory_(err) : make_transport(cfg_, err);
-    auto fail = [&](const std::string& why) {
-        {
-            std::lock_guard<std::mutex> g(mu_);
-            error_ = why;
-        }
-        log("error: " + why);
-        state_ = ConnState::Failed;
-    };
     if (!t) { fail(err); return; }
     // Transport diagnostics (TLS certificate details) go to the session log,
     // and to the tn5250 log category at their own level, so that a
@@ -148,9 +201,11 @@ void Client::run() {
     t->set_log([this](LogLevel level, const std::string& line) {
         if (log_enabled("tn5250", level)) log_write("tn5250", level, "%s", line.c_str());
         std::lock_guard<std::mutex> g(mu_);
-        log_.push_back(line);
+        log_locked(line);
     });
     if (trust_) t->set_trust_handler(trust_);
+    // stop() must not wait out a connect to a host that does not answer.
+    t->set_cancel(&stop_);
     log(format("connecting to %s:%u", cfg_.host.c_str(), cfg_.port));
     if (!t->connect(cfg_.host, cfg_.port, err)) { fail(err); return; }
     log("connected (" + t->describe() + ")");
@@ -160,7 +215,16 @@ void Client::run() {
     std::vector<uint8_t> buf(8192), reply;
     std::vector<std::vector<uint8_t>> records;
     while (!stop_) {
-        const int n = t->recv(buf.data(), buf.size(), 10);
+        // Backpressure: while the owner has not pumped what is queued, leave
+        // the rest in the socket.
+        bool full;
+        {
+            std::lock_guard<std::mutex> g(mu_);
+            full = inbound_bytes_ >= kMaxQueuedBytes;
+        }
+        int n = 0;
+        if (full) std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        else n = t->recv(buf.data(), buf.size(), 10);
         if (n < 0) {
             log("connection closed by host");
             state_ = ConnState::Closed;
@@ -171,6 +235,10 @@ void Client::run() {
             records.clear();
             codec.receive(buf.data(), size_t(n), reply, records);
             for (auto& line : codec.take_log()) log(line);
+            if (codec.failed()) {
+                fail(codec.error());
+                break;
+            }
             if (!reply.empty() && !t->send(reply.data(), reply.size())) {
                 fail("send failed");
                 break;
@@ -190,13 +258,21 @@ void Client::run() {
                 log(format("recv record %s flags %s, %zu data bytes", opcode_name(rec.opcode),
                            flags_text(rec.flags).c_str(), rec.data.size()));
                 std::lock_guard<std::mutex> g(mu_);
+                inbound_bytes_ += rec.data.size() + sizeof(Record);
                 inbound_.push_back(std::move(rec));
             }
         }
         std::deque<std::vector<uint8_t>> out;
+        bool overflow;
         {
             std::lock_guard<std::mutex> g(mu_);
             out.swap(outbound_);
+            outbound_bytes_ = 0;
+            overflow = outbound_overflow_;
+        }
+        if (overflow) {
+            fail(format("more than %zu bytes of replies queued", kMaxQueuedBytes));
+            break;
         }
         bool ok = true;
         for (const auto& frame : out)
