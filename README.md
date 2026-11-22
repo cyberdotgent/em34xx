@@ -5,12 +5,6 @@ firmware. It connects to an IBM i host over TN5250.
 
 ![em34xxw showing an IBM i sign-on screen](docs/images/em34xxw.png)
 
-| Model | Status |
-| --- | --- |
-| 3477 | works |
-| 3486 | waiting for a good ROM dump |
-| 3489 | not started |
-
 ## Download
 
 Windows builds (`em34xxw.exe`, Windows 7 and later) are on the
