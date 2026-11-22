@@ -37,6 +37,9 @@ public:
     // Default typematic setting (10.9 characters/s, 500 ms delay).
     static constexpr uint8_t kDefaultTypematic = 0x2B;
     static constexpr size_t kBufferLimit = 16;   // key bytes held before overrun
+    // Command response bytes held; further ones are dropped. Far more than a
+    // host that reads its responses ever leaves waiting (4 after a reset).
+    static constexpr size_t kResponseLimit = 256;
 
     Set3Keyboard(KeyboardType type = KeyboardType::Terminal122, uint8_t id1 = 0xBF,
                  uint8_t id2 = 0xBF);

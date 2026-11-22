@@ -203,7 +203,12 @@ uint8_t Set3Keyboard::read_output() {
     return uint8_t(v);
 }
 
-void Set3Keyboard::respond(uint8_t b) { out_.push_back(b); }
+void Set3Keyboard::respond(uint8_t b) {
+    // A host that sends commands without ever reading must not grow the
+    // queue without bound: like key bytes, the newest are lost.
+    if (out_.size() - key_bytes_ >= kResponseLimit) return;
+    out_.push_back(b);
+}
 
 void Set3Keyboard::clear_key_bytes() {
     std::deque<uint16_t> kept;

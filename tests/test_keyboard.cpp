@@ -284,6 +284,26 @@ TEST_CASE("buffer overrun") {
     CHECK(out.back() == 0x00);
 }
 
+TEST_CASE("unread command responses are bounded") {
+    Set3Keyboard k;
+    k.set_bat_sends_id(false);
+    k.power_on();
+    drain(k);
+    k.key(0x1C, true);
+    for (int i = 0; i < 10000; ++i) k.host_write(0xEE);  // echo, never read
+    CHECK(k.output_size() == Set3Keyboard::kResponseLimit + 1);
+    // The oldest bytes are kept, in order, and the keyboard still works.
+    CHECK(k.read_output() == 0x1C);
+    CHECK(k.read_output() == 0xEE);
+    drain(k);
+    k.host_write(0xF2);
+    CHECK(drain(k) == Bytes{0xFA, 0xBF, 0xBF});
+    // A reset recovers from a full queue.
+    for (int i = 0; i < 10000; ++i) k.host_write(0xEE);
+    k.host_write(0xFF);
+    CHECK(drain(k) == Bytes{0xFA, 0xAA});
+}
+
 TEST_CASE("Shift+F1..F12 enters F13..F24 on the 122-key keyboard") {
     Set3Keyboard k(KeyboardType::Terminal122, 0xBF, 0xBF);
     k.power_on();
