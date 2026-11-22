@@ -10,6 +10,7 @@
 #include <windows.h>
 
 #include <cstdint>
+#include <exception>
 #include <string>
 #include <vector>
 
@@ -55,6 +56,32 @@ void center_on_owner(HWND hwnd);
 void install_dialog_centring();
 void remove_dialog_centring();
 void error_box(HWND owner, const std::string& text);
+// A C++ exception must not unwind through user32's frames: window, dialog
+// and subclass procedures run their body through guarded(), which reports
+// the exception in a message box (one at a time: an exception thrown while
+// that box is up is dropped) and returns `fallback`.
+void report_callback_exception(HWND owner, const char* what) noexcept;
+template <class R, class F>
+R guarded(HWND owner, R fallback, F&& body) noexcept {
+    try {
+        return body();
+    } catch (const std::exception& e) {
+        report_callback_exception(owner, e.what());
+    } catch (...) {
+        report_callback_exception(owner, nullptr);
+    }
+    return fallback;
+}
+// A DLGPROC that runs `Body` through guarded(): DialogBoxParamW(...,
+// guarded_dialog<some_proc>, ...).
+template <DLGPROC Body>
+INT_PTR CALLBACK guarded_dialog(HWND dlg, UINT msg, WPARAM wp, LPARAM lp) {
+    return guarded(dlg, INT_PTR(FALSE), [&] { return Body(dlg, msg, wp, lp); });
+}
+// Whether `file` is directly in `folder` (both UTF-8): the file's folder
+// and `folder` are the same directory on disk, whatever the spelling (case,
+// 8.3 names, relative paths, links). False when either cannot be opened.
+bool file_in_folder(const std::string& file, const std::string& folder);
 // Common open-file dialog with multiple selection; UTF-8 paths.
 std::vector<std::string> open_files_dialog(HWND owner, const std::wstring& title, const std::wstring& filter_pipes);
 // Text of a control as UTF-8 / set it.

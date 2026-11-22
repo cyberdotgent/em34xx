@@ -113,6 +113,12 @@ public:
     // machine. Battery-backed RAM is written first and read back by the new
     // machine. False (with error): the old machine keeps running.
     bool rebuild_machine(const TerminalOptions& options, std::string& error);
+    // Write the battery-backed RAM and the setup EEPROM to their files now
+    // (Machine::flush_nonvolatile, under the machine lock), with the
+    // terminal running: for a front end that may not get a clean exit (the
+    // end of a Windows session). False (with error) when a file cannot be
+    // written.
+    bool flush_persistent_state(std::string& error);
     // Settings. The speed takes effect at once; CRT settings apply to the
     // next frontend_options() (a front end re-reads them when it wants).
     void set_speed_percent(unsigned pct);

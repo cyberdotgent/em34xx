@@ -371,6 +371,13 @@ bool Application::rebuild_machine(const TerminalOptions& options, std::string& e
     return true;
 }
 
+bool Application::flush_persistent_state(std::string& error) {
+    if (!emu_) return true;
+    const bool ok = emu_->with_machine([&](Machine& m) { return m.flush_nonvolatile(error); });
+    if (!ok) LOG_ERROR("nvram", "%s", error.c_str());
+    return ok;
+}
+
 void Application::set_speed_percent(unsigned pct) {
     cfg_.speed_percent = pct;
     emu_->set_speed_percent(pct);

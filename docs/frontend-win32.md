@@ -13,7 +13,7 @@ Sources: `src/main_win32.cpp`, `src/frontend/win32/`:
 | --- | --- |
 | `win32_frontend.*` | launch (user folder, settings, first-start ROM check, command line), the main window, picture, keyboard, profiles and connections, the TLS trust queue |
 | `win32_dialogs.*` | ROM images, Settings, profile manager and editor, TLS Settings, the trust prompt, Keymap, About, file association |
-| `win32_util.*` | UTF-8/UTF-16, DPI helpers (newer APIs loaded at run time), scan code -> HID table, message boxes, the open-file dialog |
+| `win32_util.*` | UTF-8/UTF-16, DPI helpers (newer APIs loaded at run time), scan code -> HID table, message boxes, the open-file dialog, the exception guard for window and dialog procedures |
 | `res/notices.txt` | third-party licence notices, embedded as RCDATA and shown in Help > About (no separate notices file ships) |
 | `version.h.in` | generated `em34xxw_version.h`: version (from `project(VERSION)`) and project page (`EM34XX_HOMEPAGE_URL`, empty = "to be announced") for VERSIONINFO and About |
 | `em34xxw.rc`, `resource.h` | menu, accelerators, dialog templates (`DIALOGEX`), string table, icons, toolbar bitmaps, version information, manifest; compiled by windres |
@@ -25,12 +25,23 @@ is linked: `GetDpiForWindow`, `AdjustWindowRectExForDpi`,
 `SystemParametersInfoForDpi` and `EnableNonClientDpiScaling` are looked up
 with `GetProcAddress` and fall back to the system DPI.
 
+`WinMain` first takes the current directory out of the DLL search path
+(`SetDllDirectoryW(L"")`), restricts later loads by name to the system
+folder where the system can (`SetDefaultDllDirectories`, Windows 7 with
+KB2533623 and later; looked up at run time) and ends the process on heap
+corruption. No C++ exception crosses a system callback: `WinMain`, the
+window procedure and every dialog procedure catch them (`win32::guarded`)
+and report them in a message box; the operation is abandoned, the program
+keeps running (from `WinMain`: exit code 3).
+
 ## Start-up
 
 1. The user folder (below) is created if needed and `settings.toml` read.
 2. The command line: `em34xxw [PROFILE.em34xx]`. A profile path opens and
    connects that profile once the window is up, so a file association can
-   start it. Anything else is reported in a message box.
+   start it; a file outside the user's `profiles\` folder is confirmed
+   first ("Profiles from outside", below). Anything else is reported in a
+   message box.
 3. The terminal starts as the command-line profile describes it (its
    model when runnable, its CRT type and scan lines); without one, as a new
    profile would: the first runnable model (`runnable_models()`: buildable,
@@ -42,8 +53,11 @@ with `GetProcAddress` and fall back to the system DPI.
    and the built-in PCOMM map is used.
 6. The `Application` starts with a command line built from all this
    (`--model`, `--rom-dir`, `--display`, `--speed`, `--keymap`, `--nvram`,
-   `--log info --log-file <folder>\em34xxw.log`, `--no-crt`). Errors from it
-   go to a message box (`Application::last_error()`).
+   `--unmapped log`, `--log info --log-file <folder>\em34xxw.log`,
+   `--no-crt`). `--unmapped log`: an access the model does not decode is
+   logged and the terminal keeps running (the emulator's default, `stop`,
+   is for the debugger and would leave the terminal dead). Errors from the
+   start go to a message box (`Application::last_error()`).
    The environment variable `EM34XX_LOG` replaces `info` with any `--log`
    spec, e.g. `info,wsc=debug,tn5250=debug,input=debug` to see each key,
    the scan code the controller decodes and each record sent to the host
@@ -51,7 +65,9 @@ with `GetProcAddress` and fall back to the system DPI.
 7. The main window opens. With a profile on the command line, that
    profile connects (below); otherwise the startup profile does when
    Settings > Startup has "Open session on startup" checked and names a
-   profile that still exists; otherwise **Connect to Profile** (the profile
+   profile that still exists (a name only: a `startup.profile` in
+   settings.toml that is not a valid profile name, such as a path, is
+   ignored); otherwise **Connect to Profile** (the profile
    manager) opens at once, modal over the main window and centred on it.
    Close/Cancel leaves the terminal idle and not connected.
 
@@ -62,7 +78,7 @@ profile on the command line) first applies the profile's terminal settings
 (CRT type, scan lines; a CRT type the firmware or host can see rebuilds the
 machine, which then powers on by itself) and then goes through
 `Application::connect_after_power_cycle()`: the TN5250 sessions that run
-are closed (any waiting trust prompt is answered Stop), the terminal is
+are closed (any waiting trust request is answered Stop), the terminal is
 reset as at power-on and runs its POST, and the bridge is put on the line.
 While POST runs the terminal does not answer polls: the controller keeps
 the station absent and probes it (`docs/twinax-bridge.md`); once the
@@ -211,6 +227,19 @@ Names are file names in `profiles\` (characters Windows forbids and
 reserved device names are refused). A newer `format` is refused with a
 message.
 
+### Profiles from outside
+
+A profile carries its own TLS settings, so a file from someone else can
+turn verification off or pin its sender's certificate. When the profile
+named on the command line (a double-clicked `.em34xx` file) is not in the
+user's own `profiles\` folder (`win32::file_in_folder()`: the same
+directory on disk, whatever the spelling of the path), em34xxw asks before
+it connects: the file, each session's host:port and how its certificate is
+checked ("TLS off", "TLS, verified", "TLS, only the certificate with
+SHA-256 ...", "TLS, certificate NOT VERIFIED"), default button No. No
+leaves the terminal idle and not connected. The profile manager and the
+startup profile only open files in `profiles\` and do not ask.
+
 ## Menus and toolbar
 
 | Menu | Item | Toolbar | What |
@@ -243,8 +272,10 @@ per session an orb and a lock (glyphs from `tools/gen_win32_assets.py`,
 | red | disconnected, closed or failed (the bridge retries unless the user stopped it) |
 | grey | not configured in the profile |
 
-The lock is closed for a session with TLS and open for plain telnet
-(dimmed for a session that is not configured). Hovering an orb or lock
+The lock is closed for a session with TLS, a dimmed closed lock for TLS
+with "Accept all certificates" (encrypted, the server not verified) and
+open for plain telnet (dimmed for a session that is not configured).
+Hovering an orb or lock
 shows the host:port, the state with the last error, and the TLS state
 (verified, trusted certificate, not verified, accepted once).
 
@@ -287,8 +318,21 @@ from/until, SHA-256), and three answers:
   session-2 `cert_sha256` when session 2 is another host). A saved profile
   is saved at once; an untitled one keeps it in memory and is marked `*`.
 
+The prompt never opens over another dialog or message box: while one is up
+the request stays queued (the session's orb stays orange) and the prompt
+follows once it has closed.
+
 Disconnect, a new connection and Exit answer any waiting request with Stop
-first, so no session thread stays blocked when it is joined.
+first, and while the old sessions are being closed a new request is
+refused at once (`TrustQueue::begin_drain()`), so no session thread is
+blocked on a prompt when it is joined.
+
+## End of the Windows session
+
+`WM_QUERYENDSESSION` is answered TRUE; on `WM_ENDSESSION` the terminal's
+battery-backed RAM and setup EEPROM are written at once
+(`Application::flush_persistent_state()`) with the window placement, since
+the process may be ended without a clean exit.
 
 ## Picture
 

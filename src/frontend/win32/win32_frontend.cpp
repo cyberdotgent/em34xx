@@ -25,6 +25,7 @@
 #include <deque>
 #include <filesystem>
 #include <mutex>
+#include <optional>
 #include <set>
 
 namespace em34xx {
@@ -68,7 +69,7 @@ public:
     // On a session's I/O thread.
     tn5250::TlsTrustDecision ask(const tn5250::TlsTrustRequest& req) {
         std::unique_lock<std::mutex> lock(mu_);
-        if (closed_ || !hwnd_) return tn5250::TlsTrustDecision::Reject;
+        if (closed_ || draining_ || !hwnd_) return tn5250::TlsTrustDecision::Reject;
         auto p = std::make_shared<Pending>();
         p->req = req;
         queue_.push_back(p);
@@ -80,6 +81,11 @@ public:
             return tn5250::TlsTrustDecision::Reject;
         }
         return p->decision;
+    }
+
+    bool empty() {
+        std::lock_guard<std::mutex> g(mu_);
+        return queue_.empty();
     }
 
     std::shared_ptr<Pending> take() {
@@ -97,13 +103,20 @@ public:
         cv_.notify_all();
     }
 
-    // Reject everything still waiting (before a disconnect: the sessions'
-    // threads are joined, so none may stay blocked here).
-    void cancel_all() {
+    // While sessions are torn down (TrustDrain): the UI thread joins their
+    // threads, so everything still waiting is rejected and ask() rejects at
+    // once; a session that reaches its certificate check meanwhile must not
+    // wait for a prompt the UI thread cannot show. Nests.
+    void begin_drain() {
         std::lock_guard<std::mutex> g(mu_);
+        ++draining_;
         for (auto& p : queue_) p->done = true;
         queue_.clear();
         cv_.notify_all();
+    }
+    void end_drain() {
+        std::lock_guard<std::mutex> g(mu_);
+        if (draining_ > 0) --draining_;
     }
 
     void close() {
@@ -121,6 +134,19 @@ private:
     std::deque<std::shared_ptr<Pending>> queue_;
     HWND hwnd_ = nullptr;
     bool closed_ = false;
+    int draining_ = 0;
+};
+
+// Around a teardown of sessions (disconnect, machine rebuild).
+class TrustDrain {
+public:
+    explicit TrustDrain(TrustQueue& q) : q_(q) { q_.begin_drain(); }
+    ~TrustDrain() { q_.end_drain(); }
+    TrustDrain(const TrustDrain&) = delete;
+    TrustDrain& operator=(const TrustDrain&) = delete;
+
+private:
+    TrustQueue& q_;
 };
 
 // The profile the window is connected with (or last was).
@@ -178,7 +204,7 @@ enum StatusImage {
     kOrbOrange = 3,    // connecting (or waiting on the certificate prompt)
     kLockClosed = 4,   // TLS
     kLockOpen = 5,     // plain telnet
-    kLockClosedDim = 6,
+    kLockClosedDim = 6,   // TLS without certificate verification
     kLockOpenDim = 7,
     kStatusImages = 8,
 };
@@ -261,7 +287,10 @@ private:
     bool connected() const;
     void new_connection();
     void edit_connection();
-    void open_profile_file(const std::string& path);
+    // `confirm_foreign`: the path came from outside (the command line, a
+    // file association): ask before connecting when the file is not in the
+    // user's profiles folder.
+    void open_profile_file(const std::string& path, bool confirm_foreign = false);
     bool save_current(bool save_as);
     bool confirm_discard();
     void edit_keymap();
@@ -333,7 +362,7 @@ LRESULT CALLBACK Win32Frontend::wndproc(HWND hwnd, UINT msg, WPARAM wp, LPARAM l
             fn(hwnd);
     }
     if (!self) return DefWindowProcW(hwnd, msg, wp, lp);
-    return self->handle(hwnd, msg, wp, lp);
+    return guarded(hwnd, LRESULT(0), [&] { return self->handle(hwnd, msg, wp, lp); });
 }
 
 bool Win32Frontend::create_window(std::string& error) {
@@ -748,10 +777,11 @@ void Win32Frontend::update_title() {
 bool Win32Frontend::connected() const { return app_->host_link().controller_kind() == "tn5250"; }
 
 std::string Win32Frontend::tls_state_text(const TwinaxSessionStatus* s) const {
+    if (cur_.p.tls_mode == ProfileTlsMode::AcceptAll) return "TLS, certificate not verified";
     if (!s || !s->connected) return "TLS";
     switch (cur_.p.tls_mode) {
     case ProfileTlsMode::System: return cur_.accepted_once ? "TLS, certificate accepted once" : "TLS, verified";
-    case ProfileTlsMode::AcceptAll: return "TLS, certificate not verified";
+    case ProfileTlsMode::AcceptAll: break;
     case ProfileTlsMode::Fingerprint:
         return cur_.accepted_once ? "TLS, certificate accepted once" : "TLS, trusted certificate";
     }
@@ -772,7 +802,8 @@ SessionIndicator Win32Frontend::session_indicator(unsigned i, const std::vector<
     for (const TwinaxSessionStatus& x : all)
         if (!x.printer && x.address == i) s = &x;
     const bool tls = s ? s->tls : ps.tls;
-    ind.lock = tls ? kLockClosed : kLockOpen;
+    // Encrypted but with any certificate accepted: not the plain closed lock.
+    ind.lock = !tls ? kLockOpen : cur_.p.tls_mode == ProfileTlsMode::AcceptAll ? kLockClosedDim : kLockClosed;
     std::string state;
     if (showing_trust_ && trust_station_ == i) {
         ind.orb = kOrbOrange;
@@ -861,12 +892,15 @@ bool Win32Frontend::apply_terminal_settings(const Profile& p, bool& rebuilt) {
     }
     if (current_display() != p.display) {
         rebuilt = app_->display_change_needs_power_cycle(p.display);
+        std::optional<TrustDrain> drain;   // the rebuild closes the sessions
         if (rebuilt) {
-            trust_->cancel_all();
+            drain.emplace(*trust_);
             release_keys();
         }
         std::string error;
-        if (!app_->set_display_subtype(p.display, error)) {
+        const bool ok = app_->set_display_subtype(p.display, error);
+        drain.reset();
+        if (!ok) {
             rebuilt = false;
             error_box(h, std::string("Cannot change the CRT type: ") + error);
             return false;
@@ -892,9 +926,17 @@ void Win32Frontend::connect_profile(const Profile& p, bool power_cycle) {
         return;
     }
     bool rebuilt = false;
-    apply_terminal_settings(p, rebuilt);
-    trust_->cancel_all();
-    release_keys();
+    {
+        // The running sessions close here, with the trust queue draining:
+        // their threads are joined, and one that reaches its certificate
+        // check meanwhile is refused instead of waiting for a prompt. The
+        // new sessions start after it and may ask again.
+        TrustDrain drain(*trust_);
+        apply_terminal_settings(p, rebuilt);
+        release_keys();
+        std::string ignored;
+        app_->host_link().disconnect(ignored);   // "not connected" is fine
+    }
     cur_.accepted_once = false;
     // Like switching the terminal on: the running sessions close, the
     // terminal runs its power-on self test, and the controller brings the
@@ -966,9 +1008,11 @@ void Win32Frontend::edit_connection() {
 }
 
 void Win32Frontend::disconnect() {
-    trust_->cancel_all();
-    std::string error;
-    app_->host_link().disconnect(error);   // "not connected" is fine
+    {
+        TrustDrain drain(*trust_);
+        std::string error;
+        app_->host_link().disconnect(error);   // "not connected" is fine
+    }
     update_ui_state();
 }
 
@@ -988,13 +1032,55 @@ void Win32Frontend::reboot() {
     app_->power_on();
 }
 
-void Win32Frontend::open_profile_file(const std::string& path) {
+namespace {
+
+// Text from a profile file, for a message box: no control characters (a
+// host name with line breaks could dress the question up).
+std::string printable(const std::string& text) {
+    std::string out = text;
+    for (char& c : out)
+        if (static_cast<unsigned char>(c) < 0x20 || c == 0x7F) c = '?';
+    return out;
+}
+
+// What opening a profile from outside the profiles folder would do: each
+// session's host and port and how its certificate is checked (as
+// profile_connect_config() applies the profile's TLS settings).
+std::string foreign_profile_question(const std::string& path, const Profile& p) {
+    std::string text = "This profile is not in your profiles folder:\n\n" + printable(path) +
+                       "\n\nOpening it connects to:\n\n";
+    for (size_t i = 0; i < Profile::kSessions; ++i) {
+        const ProfileSession& ps = p.sessions[i];
+        if (!ps.used()) continue;
+        text += format("Session %u: %s:%u - ", unsigned(i + 1), printable(ps.host).c_str(), unsigned(ps.port));
+        const std::string pin = !ps.cert_sha256.empty()                      ? ps.cert_sha256
+                                : p.tls_mode == ProfileTlsMode::Fingerprint ? p.tls_cert_sha256
+                                                                            : std::string();
+        if (!ps.tls) text += "TLS off (plain telnet, not encrypted)";
+        else if (p.tls_mode == ProfileTlsMode::AcceptAll) text += "TLS, certificate NOT VERIFIED";
+        else if (!pin.empty()) text += "TLS, only the certificate with SHA-256 " + printable(pin);
+        else text += "TLS, verified";
+        text += "\n";
+    }
+    text += "\nA profile from someone else can connect you to a system that imitates your sign-on screen, and "
+            "it carries its own certificate settings. Connect only when you know where this file comes from "
+            "and recognise these systems.\n\nConnect?";
+    return text;
+}
+
+} // namespace
+
+void Win32Frontend::open_profile_file(const std::string& path, bool confirm_foreign) {
     Profile p;
     std::string error;
     if (!load_profile(path, p, error)) {
         error_box(hwnd_.load(), error);
         return;
     }
+    if (confirm_foreign && !file_in_folder(path, dirs().profiles()) &&
+        message_box(hwnd_.load(), foreign_profile_question(path, p), MB_YESNO | MB_ICONWARNING | MB_DEFBUTTON2) !=
+            IDYES)
+        return;
     if (!confirm_discard()) return;
     cur_ = CurrentProfile();
     cur_.active = true;
@@ -1054,6 +1140,11 @@ bool Win32Frontend::confirm_discard() {
 
 void Win32Frontend::handle_trust_requests() {
     if (showing_trust_) return;   // the loop below picks up later requests
+    // Another dialog or message box is up (the main window is disabled):
+    // the prompt waits until it has closed, so it never opens over a modal
+    // dialog and never changes the profile under an open editor. The status
+    // timer comes back here.
+    if (trust_->empty() || !IsWindowEnabled(hwnd_.load())) return;
     showing_trust_ = true;
     release_keys();
     while (auto p = trust_->take()) {
@@ -1209,6 +1300,7 @@ LRESULT Win32Frontend::handle(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
                 PostMessageW(hwnd, WM_APP_QUIT, 0, 0);
                 return 0;
             }
+            handle_trust_requests();   // a prompt that waited for another dialog to close
             update_status();
         }
         return 0;
@@ -1229,8 +1321,11 @@ LRESULT Win32Frontend::handle(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
         // when one is set and still exists, else the profile manager,
         // modal over the main window. Cancel leaves the terminal idle.
         if (quit_.load()) return 0;
-        if (settings().startup_open && !settings().startup_profile.empty() &&
-            dirs().profile_exists(settings().startup_profile)) {
+        // The name is a file name in profiles\ and nothing else (it comes
+        // from settings.toml): never a path.
+        if (std::string why; settings().startup_open && !settings().startup_profile.empty() &&
+                             UserDirs::valid_profile_name(settings().startup_profile, why) &&
+                             dirs().profile_exists(settings().startup_profile)) {
             open_profile_file(dirs().profile_path(settings().startup_profile));
             SetFocus(hwnd);
         } else {
@@ -1314,6 +1409,20 @@ LRESULT Win32Frontend::handle(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
         if (!confirm_discard()) return 0;
         DestroyWindow(hwnd);
         return 0;
+    case WM_QUERYENDSESSION:
+        return TRUE;
+    case WM_ENDSESSION:
+        // Log-off or shutdown: the process may end as soon as this returns,
+        // without WM_DESTROY or a clean exit. Write what a clean exit
+        // writes: the terminal's battery-backed RAM and setup EEPROM, and
+        // the window placement.
+        if (wp) {
+            std::string error;
+            app_->flush_persistent_state(error);   // logs a failure itself
+            save_placement();
+            save_settings(dirs().settings_file(), settings(), error);
+        }
+        return 0;
     case WM_DESTROY: {
         save_placement();
         std::string error;
@@ -1372,7 +1481,7 @@ bool Win32Frontend::run(Application& app, const FrontendOptions& opts, std::stri
     ShowWindow(h, settings().window.valid && settings().window.maximized ? SW_SHOWMAXIMIZED : launch_.show);
     UpdateWindow(h);
     SetTimer(h, kTimerStatus, 500, nullptr);
-    if (!launch_.profile_path.empty()) open_profile_file(launch_.profile_path);
+    if (!launch_.profile_path.empty()) open_profile_file(launch_.profile_path, true);
     else PostMessageW(h, WM_APP_STARTUP, 0, 0);   // once the window has painted
 
     MSG msg;
@@ -1518,6 +1627,10 @@ bool win32_prepare(Win32Launch& launch) {
                    launch.keymap_path.empty() ? std::string("pcomm") : runtime_path(launch.keymap_path),
                    "--nvram",
                    runtime_path(launch.dirs->nvram_file(model->info().name)),
+                   // An end-user build keeps running on an access the model does
+                   // not decode (the default, stop, is for the debugger).
+                   "--unmapped",
+                   "log",
                    "--log",
                    log_spec(),
                    "--log-file",

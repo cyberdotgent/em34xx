@@ -208,13 +208,17 @@ HHOOK g_cbt_hook = nullptr;
 std::set<HWND> g_centred;   // dialogs already centred (a later activation must not move them back)
 
 LRESULT CALLBACK centring_hook(int code, WPARAM wp, LPARAM lp) {
-    if (code == HCBT_ACTIVATE) {
-        HWND w = reinterpret_cast<HWND>(wp);
-        wchar_t cls[16] = {};
-        if (GetClassNameW(w, cls, 16) > 0 && std::wcscmp(cls, L"#32770") == 0 && g_centred.insert(w).second)
-            center_on_owner(w);
-    } else if (code == HCBT_DESTROYWND) {
-        g_centred.erase(reinterpret_cast<HWND>(wp));
+    try {
+        if (code == HCBT_ACTIVATE) {
+            HWND w = reinterpret_cast<HWND>(wp);
+            wchar_t cls[16] = {};
+            if (GetClassNameW(w, cls, 16) > 0 && std::wcscmp(cls, L"#32770") == 0 && g_centred.insert(w).second)
+                center_on_owner(w);
+        } else if (code == HCBT_DESTROYWND) {
+            g_centred.erase(reinterpret_cast<HWND>(wp));
+        }
+    } catch (...) {
+        // out of memory: that dialog is not centred
     }
     return CallNextHookEx(g_cbt_hook, code, wp, lp);
 }
@@ -232,6 +236,49 @@ void remove_dialog_centring() {
 }
 
 void error_box(HWND owner, const std::string& text) { message_box(owner, text, MB_OK | MB_ICONERROR); }
+
+void report_callback_exception(HWND owner, const char* what) noexcept {
+    static bool showing = false;   // UI thread only
+    if (showing) return;
+    showing = true;
+    // No allocation here: the exception may be std::bad_alloc.
+    wchar_t text[512] = L"em34xxw ran into an unexpected error and could not complete the operation.";
+    if (what && *what) {
+        wchar_t detail[256] = {};
+        MultiByteToWideChar(CP_UTF8, 0, what, -1, detail, int(sizeof detail / sizeof detail[0]) - 1);
+        lstrcatW(text, L"\n\n");
+        lstrcatW(text, detail);
+    }
+    MessageBoxW(owner && IsWindow(owner) ? owner : nullptr, text, L"em34xx", MB_OK | MB_ICONERROR);
+    showing = false;
+}
+
+namespace {
+// The identity of a directory (volume and file index).
+bool directory_id(const std::wstring& path, BY_HANDLE_FILE_INFORMATION& info) {
+    HANDLE h = CreateFileW(path.c_str(), 0, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, nullptr,
+                           OPEN_EXISTING, FILE_FLAG_BACKUP_SEMANTICS, nullptr);
+    if (h == INVALID_HANDLE_VALUE) return false;
+    const BOOL ok = GetFileInformationByHandle(h, &info);
+    CloseHandle(h);
+    return ok && (info.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY);
+}
+} // namespace
+
+bool file_in_folder(const std::string& file, const std::string& folder) {
+    const std::wstring wfile = widen(file);
+    std::vector<wchar_t> full(32768, L'\0');
+    const DWORD n = GetFullPathNameW(wfile.c_str(), DWORD(full.size()), full.data(), nullptr);
+    if (n == 0 || n >= full.size()) return false;
+    std::wstring parent(full.data(), n);
+    const size_t slash = parent.find_last_of(L"\\/");
+    if (slash == std::wstring::npos) return false;
+    parent.resize(slash + 1);   // with the separator: "C:\" stays a root
+    BY_HANDLE_FILE_INFORMATION a, b;
+    if (!directory_id(parent, a) || !directory_id(widen(folder), b)) return false;
+    return a.dwVolumeSerialNumber == b.dwVolumeSerialNumber && a.nFileIndexHigh == b.nFileIndexHigh &&
+           a.nFileIndexLow == b.nFileIndexLow;
+}
 
 std::vector<std::string> open_files_dialog(HWND owner, const std::wstring& title, const std::wstring& filter_pipes) {
     std::wstring filter = filter_pipes;

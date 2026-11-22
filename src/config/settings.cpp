@@ -1,6 +1,9 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "config/settings.hpp"
 
+#include "config/user_dirs.hpp"
+#include "util/log.hpp"
+
 #include <toml++/toml.hpp>
 
 #include <cmath>
@@ -73,7 +76,13 @@ bool parse_settings(const std::string& text, const std::string& origin, AppSetti
     AppSettings s;
     // model and [display] of em34xx 0.1 are ignored: they are in the profiles now.
     if (auto v = root["startup"]["open_profile"].value<bool>()) s.startup_open = *v;
-    if (auto v = root["startup"]["profile"].value<std::string>()) s.startup_profile = *v;
+    if (auto v = root["startup"]["profile"].value<std::string>()) {
+        // A profile name, never a path: the name is joined to the profiles
+        // folder, so separators, drive letters and UNC names are refused.
+        std::string why;
+        if (v->empty() || UserDirs::valid_profile_name(*v, why)) s.startup_profile = *v;
+        else LOG_WARN("config", "%s: startup.profile ignored: %s", origin.c_str(), why.c_str());
+    }
     if (auto v = root["emulator"]["speed"].value<int64_t>()) s.speed_percent = unsigned(*v < 0 ? 0 : *v > 10000 ? 10000 : *v);
     if (auto v = root["tls"]["min_version"].value<std::string>()) {
         TlsVersion t;

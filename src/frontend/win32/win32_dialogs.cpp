@@ -229,7 +229,8 @@ INT_PTR CALLBACK rom_proc(HWND dlg, UINT msg, WPARAM wp, LPARAM lp) {
 
 bool rom_manager_dialog(HWND owner, const UserDirs& dirs, const Model* required) {
     RomDlg d{&dirs, required, {}};
-    DialogBoxParamW(instance(), MAKEINTRESOURCEW(IDD_ROMS), owner, rom_proc, reinterpret_cast<LPARAM>(&d));
+    DialogBoxParamW(instance(), MAKEINTRESOURCEW(IDD_ROMS), owner, guarded_dialog<rom_proc>,
+                    reinterpret_cast<LPARAM>(&d));
     return !required || model_roms_ready(*required, dirs.roms());
 }
 
@@ -320,7 +321,7 @@ INT_PTR CALLBACK settings_proc(HWND dlg, UINT msg, WPARAM wp, LPARAM lp) {
 
 bool settings_dialog(HWND owner, const UserDirs& dirs, AppSettings& s) {
     SettingsDlg d{&dirs, s, {}};
-    if (DialogBoxParamW(instance(), MAKEINTRESOURCEW(IDD_SETTINGS), owner, settings_proc,
+    if (DialogBoxParamW(instance(), MAKEINTRESOURCEW(IDD_SETTINGS), owner, guarded_dialog<settings_proc>,
                         reinterpret_cast<LPARAM>(&d)) != IDOK)
         return false;
     s = d.s;
@@ -372,8 +373,8 @@ INT_PTR CALLBACK name_proc(HWND dlg, UINT msg, WPARAM wp, LPARAM lp) {
 
 bool name_dialog(HWND owner, const std::wstring& title, const std::wstring& prompt, std::string& name) {
     NameDlg d{title, prompt, name};
-    if (DialogBoxParamW(instance(), MAKEINTRESOURCEW(IDD_NAME), owner, name_proc, reinterpret_cast<LPARAM>(&d)) !=
-        IDOK)
+    if (DialogBoxParamW(instance(), MAKEINTRESOURCEW(IDD_NAME), owner, guarded_dialog<name_proc>,
+                        reinterpret_cast<LPARAM>(&d)) != IDOK)
         return false;
     name = d.name;
     return true;
@@ -540,7 +541,8 @@ INT_PTR CALLBACK tls_proc(HWND dlg, UINT msg, WPARAM wp, LPARAM lp) {
 
 bool tls_settings_dialog(HWND owner, Profile& p, const AppSettings& s) {
     TlsDlg d{p, &s, nullptr};
-    if (DialogBoxParamW(instance(), MAKEINTRESOURCEW(IDD_TLS), owner, tls_proc, reinterpret_cast<LPARAM>(&d)) != IDOK)
+    if (DialogBoxParamW(instance(), MAKEINTRESOURCEW(IDD_TLS), owner, guarded_dialog<tls_proc>,
+                        reinterpret_cast<LPARAM>(&d)) != IDOK)
         return false;
     p = d.p;
     return true;
@@ -686,7 +688,7 @@ INT_PTR CALLBACK profile_proc(HWND dlg, UINT msg, WPARAM wp, LPARAM lp) {
 bool profile_editor_dialog(HWND owner, Profile& p, ProfileEditMode mode, const AppSettings& s,
                            const std::string& title) {
     ProfileDlg d{p, mode, &s, title};
-    if (DialogBoxParamW(instance(), MAKEINTRESOURCEW(IDD_PROFILE), owner, profile_proc,
+    if (DialogBoxParamW(instance(), MAKEINTRESOURCEW(IDD_PROFILE), owner, guarded_dialog<profile_proc>,
                         reinterpret_cast<LPARAM>(&d)) != IDOK)
         return false;
     p = d.p;
@@ -808,7 +810,7 @@ INT_PTR CALLBACK manager_proc(HWND dlg, UINT msg, WPARAM wp, LPARAM lp) {
 
 std::string profile_manager_dialog(HWND owner, const UserDirs& dirs, const AppSettings& s) {
     ManagerDlg d{&dirs, &s, {}, {}};
-    if (DialogBoxParamW(instance(), MAKEINTRESOURCEW(IDD_PROFILES), owner, manager_proc,
+    if (DialogBoxParamW(instance(), MAKEINTRESOURCEW(IDD_PROFILES), owner, guarded_dialog<manager_proc>,
                         reinterpret_cast<LPARAM>(&d)) != IDOK)
         return std::string();
     return d.chosen;
@@ -868,8 +870,8 @@ INT_PTR CALLBACK trust_proc(HWND dlg, UINT msg, WPARAM wp, LPARAM lp) {
 
 tn5250::TlsTrustDecision trust_dialog(HWND owner, const tn5250::TlsTrustRequest& req, const std::string& profile) {
     TrustDlg d{&req, profile};
-    const INT_PTR r =
-        DialogBoxParamW(instance(), MAKEINTRESOURCEW(IDD_TRUST), owner, trust_proc, reinterpret_cast<LPARAM>(&d));
+    const INT_PTR r = DialogBoxParamW(instance(), MAKEINTRESOURCEW(IDD_TRUST), owner, guarded_dialog<trust_proc>,
+                                      reinterpret_cast<LPARAM>(&d));
     if (r == int(tn5250::TlsTrustDecision::AcceptOnce) + 100) return tn5250::TlsTrustDecision::AcceptOnce;
     if (r == int(tn5250::TlsTrustDecision::AcceptPermanently) + 100) return tn5250::TlsTrustDecision::AcceptPermanently;
     return tn5250::TlsTrustDecision::Reject;
@@ -901,7 +903,13 @@ const char* const kKeyboardValues[] = {"", "122", "enhanced"};
 
 constexpr UINT_PTR kCaptureSubclass = 1;
 
+LRESULT capture_message(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp);
+
 LRESULT CALLBACK capture_proc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp, UINT_PTR, DWORD_PTR) {
+    return guarded(GetParent(hwnd), LRESULT(0), [&] { return capture_message(hwnd, msg, wp, lp); });
+}
+
+LRESULT capture_message(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
     switch (msg) {
     case WM_GETDLGCODE:
         return DLGC_WANTALLKEYS | DLGC_WANTCHARS;
@@ -1013,7 +1021,7 @@ INT_PTR CALLBACK entry_proc(HWND dlg, UINT msg, WPARAM wp, LPARAM lp) {
 bool entry_dialog(HWND owner, KeymapEntry& e) {
     EntryDlg d;
     d.e = e;
-    if (DialogBoxParamW(instance(), MAKEINTRESOURCEW(IDD_KEYMAP_ENTRY), owner, entry_proc,
+    if (DialogBoxParamW(instance(), MAKEINTRESOURCEW(IDD_KEYMAP_ENTRY), owner, guarded_dialog<entry_proc>,
                         reinterpret_cast<LPARAM>(&d)) != IDOK)
         return false;
     e = d.e;
@@ -1120,8 +1128,8 @@ INT_PTR CALLBACK keymap_proc(HWND dlg, UINT msg, WPARAM wp, LPARAM lp) {
 
 bool keymap_dialog(HWND owner, KeymapFile& file) {
     KeymapDlg d{file};
-    if (DialogBoxParamW(instance(), MAKEINTRESOURCEW(IDD_KEYMAP), owner, keymap_proc, reinterpret_cast<LPARAM>(&d)) !=
-        IDOK)
+    if (DialogBoxParamW(instance(), MAKEINTRESOURCEW(IDD_KEYMAP), owner, guarded_dialog<keymap_proc>,
+                        reinterpret_cast<LPARAM>(&d)) != IDOK)
         return false;
     file = d.file;
     return true;
@@ -1189,7 +1197,7 @@ INT_PTR CALLBACK about_proc(HWND dlg, UINT msg, WPARAM wp, LPARAM lp) {
 } // namespace
 
 void about_dialog(HWND owner, const UserDirs& dirs) {
-    DialogBoxParamW(instance(), MAKEINTRESOURCEW(IDD_ABOUT), owner, about_proc,
+    DialogBoxParamW(instance(), MAKEINTRESOURCEW(IDD_ABOUT), owner, guarded_dialog<about_proc>,
                     reinterpret_cast<LPARAM>(const_cast<UserDirs*>(&dirs)));
 }
 
