@@ -16,6 +16,40 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 option(EM34XX_BUILD_TESTS "Build unit tests and the CPU test-vector runner" OFF)
 option(EM34XX_WARNINGS_AS_ERRORS "Treat compiler warnings as errors" OFF)
 
+# Exploit mitigations for the project's own targets (GCC and Clang, MinGW
+# included); the vcpkg ports are built separately and are not affected.
+#   - stack protector, at compile and at link time: the driver then adds the
+#     runtime support itself (static libssp or libmingwex on MinGW, libc
+#     elsewhere), so no DLL is pulled in under -static
+#   - _FORTIFY_SOURCE=2 in optimised builds, unless the compiler already
+#     defines it (distro default), the user set it, or a sanitizer is on
+#   - ELF: full RELRO.  PE: ASLR (with the base relocations it needs), DEP
+#     and, on x64, high-entropy ASLR, spelled out rather than left to the
+#     binutils defaults
+option(EM34XX_HARDENING "Build with exploit mitigations (stack protector, fortify, RELRO/ASLR/DEP)" ON)
+if(EM34XX_HARDENING AND CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang" AND NOT MSVC)
+  add_compile_options(-fstack-protector-strong)
+  add_link_options(-fstack-protector-strong)
+  if(NOT "${CMAKE_CXX_FLAGS} $ENV{CPPFLAGS}" MATCHES "_FORTIFY_SOURCE|-fsanitize")
+    include(CheckCXXSourceCompiles)
+    set(CMAKE_REQUIRED_FLAGS -O2)
+    check_cxx_source_compiles("#ifdef _FORTIFY_SOURCE\n#error predefined\n#endif\nint main() { return 0; }"
+      EM34XX_FORTIFY_NOT_PREDEFINED)
+    unset(CMAKE_REQUIRED_FLAGS)
+    if(EM34XX_FORTIFY_NOT_PREDEFINED)
+      add_compile_definitions($<$<CONFIG:Release,RelWithDebInfo,MinSizeRel>:_FORTIFY_SOURCE=2>)
+    endif()
+  endif()
+  if(CMAKE_EXECUTABLE_FORMAT STREQUAL "ELF")
+    add_link_options(LINKER:-z,relro,-z,now)
+  elseif(MINGW)
+    add_link_options(LINKER:--dynamicbase LINKER:--nxcompat LINKER:--enable-reloc-section)
+    if(CMAKE_SIZEOF_VOID_P EQUAL 8)
+      add_link_options(LINKER:--high-entropy-va)
+    endif()
+  endif()
+endif()
+
 # TLS for the TN5250 client uses the host's own stack: SChannel on Windows
 # (always there), the system libssl/libcrypto elsewhere (not from vcpkg).
 #   AUTO (default): use it when found, else build without TLS

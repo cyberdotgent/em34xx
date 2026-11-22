@@ -19,7 +19,29 @@ Every push and pull request:
 
 A tag `v*` additionally creates a GitHub release named after the tag with
 the Windows zip attached. The tag must match the project version (`v0.2`
-for 0.2.0), otherwise the release job fails.
+for 0.2.0), otherwise the release job fails. The released zip is the
+end-user client only: the release job removes em34xx-headless.exe (the
+developer tool with the monitor and the GDB stub), which stays in the
+on-commit workflow artifact.
+
+The release also carries a `SHA256SUMS` file listing the SHA-256 of every
+other attached asset; after downloading, check with `sha256sum -c
+SHA256SUMS` (on Windows: `certutil -hashfile <zip> SHA256` and compare).
+The checksums detect a corrupted or swapped download; the binaries are not
+code-signed.
+
+## Hardening
+
+The project's own targets are built with exploit mitigations
+(`EM34XX_HARDENING`, on by default, in `CMakeLists.txt`): stack protector
+(`-fstack-protector-strong`) and, in optimised builds, `_FORTIFY_SOURCE=2`;
+on Linux full RELRO (`-z relro -z now`); on Windows ASLR with base
+relocations kept (`--dynamicbase --enable-reloc-section`), DEP
+(`--nxcompat`) and, on x64, high-entropy ASLR (`--high-entropy-va`). The
+stack-protector runtime is linked statically, so the executables still
+import system DLLs only (it adds `ADVAPI32.dll` to em34xx-headless.exe).
+To check a build: `x86_64-w64-mingw32-objdump -p em34xxw.exe` shows the
+`DllCharacteristics` flags and the `DLL Name` imports.
 
 ## Cutting a release ("cut release v0.2")
 

@@ -1,7 +1,8 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 # CI: Linux build and tests, Windows x64 build (MinGW cross-compile, the same
 # toolchain as the local mingw-x64-release preset) uploaded as an artifact.
-# A tag v* also publishes a GitHub release with the Windows build attached.
+# A tag v* also publishes a GitHub release with the Windows build and a
+# SHA256SUMS file attached.
 name: CI
 
 on:
@@ -144,6 +145,28 @@ jobs:
           name: ${{ needs.windows.outputs.name }}
           path: dist
 
+      # The on-commit build keeps em34xx-headless.exe (the developer tool with
+      # the monitor and the GDB stub); the released zip is the end-user
+      # client only.
+      - name: Drop the developer tool from the release zip
+        env:
+          NAME: ${{ needs.windows.outputs.name }}
+        run: |
+          zip -d "dist/$NAME.zip" "$NAME/em34xx-headless.exe"
+          if unzip -l "dist/$NAME.zip" | grep -q headless; then
+            echo "::error::em34xx-headless.exe is still in the release zip"
+            exit 1
+          fi
+
+      # Everything in dist/ is released; SHA256SUMS covers all of it
+      # (verify with `sha256sum -c SHA256SUMS`).
+      - name: Checksums
+        run: |
+          cd dist
+          sha256sum -- * > ../SHA256SUMS
+          mv ../SHA256SUMS .
+          cat SHA256SUMS
+
       - name: Create the release
         env:
           GH_TOKEN: ${{ github.token }}
@@ -152,4 +175,4 @@ jobs:
             --repo "$GITHUB_REPOSITORY" \
             --title "em34xx $GITHUB_REF_NAME" \
             --generate-notes \
-            "dist/${{ needs.windows.outputs.name }}.zip"
+            dist/*
