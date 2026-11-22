@@ -76,8 +76,10 @@ std::string target_xml(bool system_regs) {
     return xml + "</target>\n";
 }
 
-// Advertised maximum packet size, and the most monitor output bytes sent in
-// one "O" packet (hex doubles it, so 2 * kMaxConsoleChunk + 1 < kPacketSize).
+// Advertised maximum packet size (data characters, excluding the frame and
+// checksum; read_packet() enforces it on received packets), and the most
+// monitor output bytes sent in one "O" packet (hex doubles it, so
+// 2 * kMaxConsoleChunk + 1 < kPacketSize).
 constexpr unsigned kPacketSize = 0x4000;
 constexpr size_t kMaxConsoleChunk = 1024;
 
@@ -207,7 +209,12 @@ bool GdbStub::read_packet(TcpSocket& client, std::string& packet, bool& interrup
             break;
         case Body:
             if (c == '#') st = Sum1;
-            else packet += c;
+            else if (packet.size() >= kPacketSize) {
+                // No client honouring PacketSize sends this; drop the link
+                // rather than buffer without bound.
+                LOG_WARN("gdb", "packet exceeds PacketSize (%u bytes); dropping the connection", kPacketSize);
+                return false;
+            } else packet += c;
             break;
         case Sum1:
             st = Sum2;

@@ -32,6 +32,7 @@ add_executable(em34xx_app_tests
   test_display.cpp
   test_connect.cpp
   test_probe.cpp
+  test_gdb_stub.cpp
   test_user_data.cpp
   test_application.cpp
 )
