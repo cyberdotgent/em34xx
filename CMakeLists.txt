@@ -2,7 +2,7 @@
 cmake_minimum_required(VERSION 3.21)
 
 project(em34xx
-  VERSION 0.1.2
+  VERSION 0.2.0
   DESCRIPTION "Hardware emulator for IBM 34xx-family 5250 terminals"
   LANGUAGES CXX)
 
