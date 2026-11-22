@@ -126,7 +126,12 @@ private:
             else return true;
         }
     }
+    // Every recursive cycle in the grammar ('(' ... ')', byte[...]/word[...],
+    // chained unary operators) passes through unary(), so this is the one
+    // place that bounds host stack use.
     bool unary(int64_t& v) {
+        const DepthGuard guard(depth_);
+        if (depth_ > kMaxDepth) return fail("expression nested too deeply");
         if (eat("-")) { if (!unary(v)) return false; v = -v; return true; }
         if (eat("~")) { if (!unary(v)) return false; v = ~v; return true; }
         if (eat("!")) { if (!unary(v)) return false; v = !v; return true; }
@@ -168,9 +173,22 @@ private:
         return fail("unknown symbol '" + word + "'");
     }
 
+    // Far beyond anything typed by hand, and small enough for a thread with
+    // a small stack: a parenthesis level costs about eleven frames.
+    static constexpr int kMaxDepth = 128;
+
+    struct DepthGuard {
+        explicit DepthGuard(int& d) : d_(d) { ++d_; }
+        ~DepthGuard() { --d_; }
+        DepthGuard(const DepthGuard&) = delete;
+        DepthGuard& operator=(const DepthGuard&) = delete;
+        int& d_;
+    };
+
     Machine& m_;
     const std::string& s_;
     size_t pos_ = 0;
+    int depth_ = 0;
 };
 
 } // namespace

@@ -57,6 +57,53 @@ TEST_CASE("expressions and addresses") {
     CHECK_FALSE(eval_expr(m, "1 +", v, err));
 }
 
+TEST_CASE("expression nesting is bounded") {
+    static const ModelInfo info = test_model();
+    Machine m(info);
+    m.bus().map_ram("ram", 0, 0x10000);
+
+    int64_t v = 0;
+    std::string err;
+
+    // Moderate nesting still evaluates.
+    CHECK(eval_expr(m, std::string(50, '(') + "7" + std::string(50, ')'), v, err));
+    CHECK(v == 7);
+    CHECK(eval_expr(m, std::string(50, '~') + "5", v, err));
+    CHECK(v == 5);
+    CHECK(eval_expr(m, std::string(51, '-') + "5", v, err));
+    CHECK(v == -5);
+    CHECK(eval_expr(m, std::string(50, '!') + "5", v, err));
+    CHECK(v == 1);
+    CHECK(eval_expr(m, std::string(50, '~') + std::string(50, '(') + "5" + std::string(50, ')'), v, err));
+    CHECK(v == 5);
+
+    // Over-deep input is a parse error, not a host stack overflow.
+    err.clear();
+    CHECK_FALSE(eval_expr(m, std::string(100000, '('), v, err));
+    CHECK(err == "expression nested too deeply");
+    CHECK(eval_expr(m, "(1 << 4) | 3", v, err));   // and the next one is fine
+    CHECK(v == 0x13);
+
+    err.clear();
+    CHECK_FALSE(eval_expr(m, std::string(100000, '~') + "1", v, err));
+    CHECK(err == "expression nested too deeply");
+    CHECK(eval_expr(m, "~0", v, err));
+    CHECK(v == -1);
+
+    std::string deep_mem;
+    for (int i = 0; i < 100000; ++i) deep_mem += "byte[";
+    err.clear();
+    CHECK_FALSE(eval_expr(m, deep_mem, v, err));
+    CHECK(err == "expression nested too deeply");
+
+    uint32_t a = 0;
+    err.clear();
+    CHECK_FALSE(eval_address(m, std::string(100000, '(') + "1", a, err));
+    CHECK(err == "expression nested too deeply");
+    CHECK(eval_address(m, "((10))", a, err));
+    CHECK(a == 0x10);
+}
+
 TEST_CASE("register assignment") {
     static const ModelInfo info = test_model();
     Machine m(info);
