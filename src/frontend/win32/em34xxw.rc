@@ -277,7 +277,7 @@ BEGIN
     IDS_TB_SYSRQ         "SysRq"
     IDS_TB_RESET         "Reset"
     IDS_TB_RECONNECT     "Reconnect"
-    IDS_TB_REBOOT        "Reboot the terminal (power cycle; the sessions stay connected)"
+    IDS_TB_REBOOT        "Reboot (Power Cycle)"
     IDS_NOT_CONNECTED    "not connected"
     IDS_NO_PROFILE       "no profile"
     IDS_TLS_OFF          "TLS off"
