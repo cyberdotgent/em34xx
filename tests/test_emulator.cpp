@@ -7,6 +7,7 @@
 #include <doctest/doctest.h>
 
 #include <atomic>
+#include <chrono>
 #include <thread>
 
 using namespace em34xx;
@@ -88,4 +89,44 @@ TEST_CASE("display generation follows observed writes and the animation phase") 
     emu.request_quit(0);
     CHECK(emu.wait_display_change(emu.display_generation(), 5000) == emu.display_generation());
     emu.set_display_callback(nullptr);
+}
+
+TEST_CASE("a speed change does not stall the machine") {
+    // RAM full of zeros is an endless run of ADD [BX+SI],AL.
+    static const ModelInfo info = [] {
+        ModelInfo m = test_model();
+        m.clock_hz = 1000000;
+        return m;
+    }();
+    auto machine = std::make_unique<Machine>(info);
+    machine->bus().map_ram("ram", 0, 0x100000);
+    Emulator emu(std::move(machine));
+    const auto cycles = [&] { return emu.with_machine([](Machine& m) { return m.cpu().cycles(); }); };
+
+    // Run unthrottled for a while: the machine gets far ahead of its clock
+    // (also exercises the lock hand-over to with_machine() callers).
+    emu.set_speed_percent(0);
+    emu.start();
+    emu.resume();
+    const auto t0 = std::chrono::steady_clock::now();
+    while (std::chrono::steady_clock::now() - t0 < std::chrono::milliseconds(300)) {
+        cycles();
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
+
+    // At 100% it must carry on from here, not sleep until the clock has
+    // caught up with everything run so far: 0.2 s of machine time, allowed
+    // 3 s.
+    emu.set_speed_percent(100);
+    const uint64_t c0 = cycles();
+    const auto t1 = std::chrono::steady_clock::now();
+    uint64_t c1 = c0;
+    while (c1 < c0 + 200000 && std::chrono::steady_clock::now() - t1 < std::chrono::seconds(3)) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        c1 = cycles();
+    }
+    CHECK(c1 >= c0 + 200000);
+
+    emu.request_stop();
+    CHECK(emu.wait_stopped().reason == StopEvent::Reason::User);
 }

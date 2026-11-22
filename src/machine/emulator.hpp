@@ -55,7 +55,7 @@ public:
             Emulator& e;
             ~Publish() { e.publish_display_change(); }
         } publish{*this};
-        std::lock_guard<std::mutex> lock(machine_mutex_);
+        MachineLock lock(*this);
         return f(*machine_);
     }
 
@@ -91,12 +91,27 @@ public:
     int exit_code() const { return exit_code_.load(); }
 
 private:
+    // The machine lock as taken by anyone who may find the emulation thread
+    // holding it. std::mutex is not fair: a thread that never sleeps
+    // (unthrottled speed, slow host) can release and retake it for many
+    // slices before a waiter gets in. Waiters are therefore counted, and the
+    // emulation thread stands back between slices while there are any.
+    struct MachineLock {
+        explicit MachineLock(Emulator& e) : lock(e.machine_mutex_, std::defer_lock) {
+            e.machine_waiters_.fetch_add(1);
+            lock.lock();
+            e.machine_waiters_.fetch_sub(1);
+        }
+        std::unique_lock<std::mutex> lock;
+    };
+
     void thread_main();
     void publish_display_change();
     void finish_run(const StopEvent& ev);
 
     std::unique_ptr<Machine> machine_;
     std::mutex machine_mutex_;
+    std::atomic<unsigned> machine_waiters_{0};   // see MachineLock
 
     mutable std::mutex state_mutex_;
     std::condition_variable state_cv_;

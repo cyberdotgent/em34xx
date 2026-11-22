@@ -133,7 +133,7 @@ void Emulator::request_quit(int exit_code) {
 void Emulator::publish_display_change() {
     bool changed;
     {
-        std::lock_guard<std::mutex> lock(machine_mutex_);
+        MachineLock lock(*this);
         changed = machine_->take_display_change();
     }
     if (!changed) return;
@@ -188,6 +188,7 @@ void Emulator::thread_main() {
 
         StopEvent ev;
         bool first_slice = true;
+        unsigned paced_pct = speed_percent_.load();   // speed the pacing origin belongs to
         // `--log perf=debug`: achieved speed and pacing sleeps.
         auto report_start = wall_start;
         uint64_t report_cycles = cycles_start;
@@ -207,6 +208,14 @@ void Emulator::thread_main() {
             first_slice = false;
             publish_display_change();
             if (ev.reason != StopEvent::Reason::None) break;
+            // Let anyone waiting for the machine have it before the next
+            // slice (see MachineLock): the count drops once they hold the
+            // lock, and the next slice then queues behind them. Bounded, so
+            // that a stream of callers cannot stall the machine.
+            if (machine_waiters_.load() != 0) {
+                const auto give_up = clock::now() + std::chrono::milliseconds(2);
+                while (machine_waiters_.load() != 0 && clock::now() < give_up) std::this_thread::yield();
+            }
             // A full slice ran: count every step, including steps spent
             // halted (HLT does not complete instructions), so that a budget
             // always runs out.
@@ -234,6 +243,14 @@ void Emulator::thread_main() {
             }
             // Pace to the model's nominal clock.
             const unsigned pct = speed_percent_.load();
+            if (pct != paced_pct) {
+                // The speed changed: pace from here. Cycles run at the old
+                // speed would put the target far off (after an hour at 100%,
+                // 50% would sleep for an hour; unthrottled is worse).
+                paced_pct = pct;
+                wall_start = clock::now();
+                cycles_start = cycles_now;
+            }
             if (pct != 0 && clock_hz != 0) {
                 const double target_s = double(cycles_now - cycles_start) / (double(clock_hz) * pct / 100.0);
                 const auto target = wall_start + std::chrono::duration_cast<clock::duration>(
@@ -243,12 +260,14 @@ void Emulator::thread_main() {
                     // Less than 1 ms ahead: keep running (sleep granularity
                     // is about that coarse, especially under WSL).
                     // Sleep until the target, in short steps so that a stop
-                    // request is still seen promptly. One capped sleep per
-                    // slice is not enough: when a slice is longer than the
-                    // cap the machine runs ahead of its clock (measured: 136%
-                    // of nominal in release with 20000-instruction slices).
+                    // request or a speed change is still seen promptly. One
+                    // capped sleep per slice is not enough: when a slice is
+                    // longer than the cap the machine runs ahead of its clock
+                    // (measured: 136% of nominal in release with
+                    // 20000-instruction slices).
                     clock::time_point t = now;
-                    while (t < target && !user_stop_.load(std::memory_order_relaxed)) {
+                    while (t < target && !user_stop_.load(std::memory_order_relaxed) &&
+                           speed_percent_.load(std::memory_order_relaxed) == pct) {
                         const auto want = std::min<clock::duration>(target - t, std::chrono::milliseconds(20));
                         std::this_thread::sleep_for(want);
                         const auto woke = clock::now();
