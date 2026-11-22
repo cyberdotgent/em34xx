@@ -29,6 +29,7 @@
 #include <openssl/x509_vfy.h>
 #include <openssl/x509v3.h>
 
+#include <chrono>
 #include <climits>
 #include <cstdio>
 #include <cstdlib>
@@ -43,7 +44,8 @@ namespace tn5250 {
 
 namespace {
 
-constexpr int kHandshakeTimeoutMs = 15000;
+constexpr int kHandshakeTimeoutMs = 15000;    // one read
+constexpr int kHandshakeDeadlineMs = 30000;   // the whole handshake, or one send()
 
 // --- socket BIO -------------------------------------------------------------
 
@@ -51,6 +53,16 @@ struct SocketBio {
     TcpSocket* sock = nullptr;
     int timeout_ms = 0;   // for the next read
     bool eof = false;     // the peer closed or the socket failed
+    // While bounded, reads also stop at the deadline: a peer sending a few
+    // bytes now and then cannot keep a handshake going for ever.
+    bool bounded = false;
+    std::chrono::steady_clock::time_point deadline;
+
+    void bound(int ms) {
+        bounded = true;
+        deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(ms);
+    }
+    bool expired() const { return bounded && std::chrono::steady_clock::now() >= deadline; }
 };
 
 int sock_bio_write(BIO* b, const char* in, int len) {
@@ -68,7 +80,18 @@ int sock_bio_read(BIO* b, char* out, int len) {
     auto* s = static_cast<SocketBio*>(BIO_get_data(b));
     BIO_clear_retry_flags(b);
     if (len <= 0) return 0;
-    const int n = s->sock->recv(out, size_t(len), s->timeout_ms);
+    int timeout_ms = s->timeout_ms;
+    if (s->bounded) {
+        const long long left = std::chrono::duration_cast<std::chrono::milliseconds>(
+                                   s->deadline - std::chrono::steady_clock::now())
+                                   .count();
+        if (left <= 0) {   // past the deadline: like a timeout
+            BIO_set_retry_read(b);
+            return -1;
+        }
+        if (left < timeout_ms) timeout_ms = int(left);
+    }
+    const int n = s->sock->recv(out, size_t(len), timeout_ms);
     if (n == 0) {   // timeout: SSL_read reports WANT_READ
         BIO_set_retry_read(b);
         return -1;
@@ -178,7 +201,7 @@ public:
             close();
             return false;
         }
-        if (!sock_.connect(host, port, error)) {
+        if (!sock_.connect(host, port, error, cancel_flag())) {
             close();
             return false;
         }
@@ -192,10 +215,18 @@ public:
         SSL_set_app_data(ssl_, &verify_);
         X509_VERIFY_PARAM* param = SSL_get0_param(ssl_);
         if (X509_VERIFY_PARAM_set1_ip_asc(param, host.c_str()) != 1) {
+            // Not an IP address: a host name, for SNI and the name check.
+            // Without either the certificate would be checked against no
+            // name at all, so a failure ends the connection.
             ERR_clear_error();
-            SSL_set_tlsext_host_name(ssl_, host.c_str());
             X509_VERIFY_PARAM_set_hostflags(param, X509_CHECK_FLAG_NO_PARTIAL_WILDCARDS);
-            X509_VERIFY_PARAM_set1_host(param, host.c_str(), 0);
+            if (host.empty() || SSL_set_tlsext_host_name(ssl_, host.c_str()) != 1 ||
+                X509_VERIFY_PARAM_set1_host(param, host.c_str(), host.size()) != 1) {
+                const std::string why = openssl_errors();
+                error = "TLS: cannot set the host name to verify (" + host + ")" + (why.empty() ? "" : ": " + why);
+                close();
+                return false;
+            }
         }
         BIO* b = BIO_new(socket_bio_method());
         if (!b) {
@@ -208,12 +239,17 @@ public:
         SSL_set_bio(ssl_, b, b);
 
         bio_.timeout_ms = kHandshakeTimeoutMs;
+        bio_.bound(kHandshakeDeadlineMs);
         ERR_clear_error();
         const int r = SSL_connect(ssl_);
+        const bool late = bio_.expired();
+        bio_.bounded = false;
         if (r != 1) {
             const int e = SSL_get_error(ssl_, r);
             std::string why;
-            if (e == SSL_ERROR_WANT_READ) why = format("no answer within %d s", kHandshakeTimeoutMs / 1000);
+            if (e == SSL_ERROR_WANT_READ && late)
+                why = format("the handshake did not complete within %d s", kHandshakeDeadlineMs / 1000);
+            else if (e == SSL_ERROR_WANT_READ) why = format("no answer within %d s", kHandshakeTimeoutMs / 1000);
             else if (bio_.eof && ERR_peek_error() == 0) why = "the server closed the connection";
             else why = openssl_errors();
             if (why.empty()) why = format("SSL error %d", e);
@@ -253,19 +289,27 @@ public:
     bool send(const uint8_t* buf, size_t len) override {
         if (!ssl_ || failed_) return false;
         bio_.timeout_ms = kHandshakeTimeoutMs;
+        // A write can wait for the peer (a renegotiation, say); the deadline
+        // keeps a silent or trickling peer from holding send() for ever.
+        bio_.bound(kHandshakeDeadlineMs);
         while (len > 0) {
             const int chunk = len > size_t(INT_MAX) ? INT_MAX : int(len);
             ERR_clear_error();
             const int n = SSL_write(ssl_, buf, chunk);
             if (n <= 0) {
                 const int e = SSL_get_error(ssl_, n);
-                if (e == SSL_ERROR_WANT_READ || e == SSL_ERROR_WANT_WRITE) continue;
+                if ((e == SSL_ERROR_WANT_READ || e == SSL_ERROR_WANT_WRITE) && !bio_.expired()) continue;
+                if (e == SSL_ERROR_WANT_READ || e == SSL_ERROR_WANT_WRITE)
+                    note(LogLevel::Debug, format("TLS write: the peer did not let it finish within %d s",
+                                                 kHandshakeDeadlineMs / 1000));
+                bio_.bounded = false;
                 failed_ = true;
                 return false;
             }
             buf += n;
             len -= size_t(n);
         }
+        bio_.bounded = false;
         return true;
     }
 
@@ -287,6 +331,7 @@ public:
         sock_.close();
         ERR_clear_error();
         bio_.eof = false;
+        bio_.bounded = false;
         failed_ = false;
         verify_ = VerifyState{};
     }

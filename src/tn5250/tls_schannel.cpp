@@ -33,6 +33,7 @@
 #include "net/socket.hpp"
 #include "util/strings.hpp"
 
+#include <chrono>
 #include <cstdio>
 #include <cstring>
 #include <fstream>
@@ -44,7 +45,14 @@ namespace tn5250 {
 
 namespace {
 
-constexpr int kHandshakeTimeoutMs = 15000;
+constexpr int kHandshakeTimeoutMs = 15000;    // one read
+constexpr int kHandshakeDeadlineMs = 30000;   // the whole handshake
+
+// Windows 7 SP1 knows this flag once updated (KB2868725); older SDK headers
+// do not define it.
+#ifndef SCH_USE_STRONG_CRYPTO
+#define SCH_USE_STRONG_CRYPTO 0x00400000
+#endif
 
 std::wstring widen(const std::string& s) {
     if (s.empty()) return std::wstring();
@@ -52,6 +60,14 @@ std::wstring widen(const std::string& s) {
     std::wstring w(size_t(n > 0 ? n : 0), L'\0');
     if (n > 0) MultiByteToWideChar(CP_UTF8, 0, s.data(), int(s.size()), &w[0], n);
     return w;
+}
+
+std::string narrow(const std::wstring& w) {
+    if (w.empty()) return std::string();
+    const int n = WideCharToMultiByte(CP_UTF8, 0, w.data(), int(w.size()), nullptr, 0, nullptr, nullptr);
+    std::string s(size_t(n > 0 ? n : 0), '\0');
+    if (n > 0) WideCharToMultiByte(CP_UTF8, 0, w.data(), int(w.size()), &s[0], n, nullptr, nullptr);
+    return s;
 }
 
 std::string status_text(long code) {
@@ -82,11 +98,20 @@ std::string chain_error_text(DWORD code) {
     return what ? format("%s (0x%08lX)", what, static_cast<unsigned long>(code)) : status_text(long(code));
 }
 
+// A certificate name as UTF-8. The server chooses these bytes and they are
+// shown in the log and in a multi-line trust prompt, so control characters
+// and line separators become spaces: a name cannot add lines of its own.
 std::string cert_name(const CERT_NAME_BLOB* blob) {
-    char buf[1024];
-    const DWORD n = CertNameToStrA(X509_ASN_ENCODING, const_cast<CERT_NAME_BLOB*>(blob),
-                                   CERT_X500_NAME_STR | CERT_NAME_STR_REVERSE_FLAG, buf, sizeof buf);
-    return n > 1 ? std::string(buf) : std::string("?");
+    wchar_t buf[1024];
+    const DWORD size = DWORD(sizeof buf / sizeof buf[0]);
+    const DWORD n = CertNameToStrW(X509_ASN_ENCODING, const_cast<CERT_NAME_BLOB*>(blob),
+                                   CERT_X500_NAME_STR | CERT_NAME_STR_REVERSE_FLAG, buf, size);
+    if (n <= 1) return "?";
+    buf[size - 1] = L'\0';
+    std::wstring w(buf);
+    for (wchar_t& c : w)
+        if (c < 0x20 || (c >= 0x7F && c <= 0x9F) || c == 0x2028 || c == 0x2029) c = L' ';
+    return w.empty() ? std::string("?") : narrow(w);
 }
 
 std::string filetime_text(const FILETIME& ft) {
@@ -228,17 +253,31 @@ public:
         sc.dwVersion = SCHANNEL_CRED_VERSION;
         sc.grbitEnabledProtocols = protocols;
         sc.dwFlags = SCH_CRED_MANUAL_CRED_VALIDATION | SCH_CRED_NO_DEFAULT_CREDS;
+        // No RC4, export or null cipher suites, unless the configuration
+        // asks for the legacy protocol versions an old host needs.
+        const bool strong = cfg_.tls_min_version >= TlsVersion::Tls1_2;
+        if (strong) sc.dwFlags |= SCH_USE_STRONG_CRYPTO;
         TimeStamp expiry;
         SECURITY_STATUS st = AcquireCredentialsHandleW(nullptr, const_cast<wchar_t*>(UNISP_NAME_W),
                                                        SECPKG_CRED_OUTBOUND, nullptr, &sc, nullptr, nullptr,
                                                        &cred_, &expiry);
+        if (st != SEC_E_OK && strong) {
+            // A Windows 7 without the update that introduced the flag.
+            const SECURITY_STATUS first = st;
+            sc.dwFlags &= ~DWORD(SCH_USE_STRONG_CRYPTO);
+            st = AcquireCredentialsHandleW(nullptr, const_cast<wchar_t*>(UNISP_NAME_W), SECPKG_CRED_OUTBOUND,
+                                           nullptr, &sc, nullptr, nullptr, &cred_, &expiry);
+            if (st == SEC_E_OK)
+                note(LogLevel::Warn, "TLS: this Windows refused SCH_USE_STRONG_CRYPTO (" + status_text(first) +
+                                         "); weak cipher suites stay enabled. Install the current Windows updates");
+        }
         if (st != SEC_E_OK) {
             error = "TLS: AcquireCredentialsHandle failed: " + status_text(st);
             return false;
         }
         have_cred_ = true;
 
-        if (!sock_.connect(host, port, error)) {
+        if (!sock_.connect(host, port, error, cancel_flag())) {
             close();
             return false;
         }
@@ -355,7 +394,7 @@ public:
 private:
     static constexpr ULONG kFlags = ISC_REQ_SEQUENCE_DETECT | ISC_REQ_REPLAY_DETECT | ISC_REQ_CONFIDENTIALITY |
                                     ISC_REQ_ALLOCATE_MEMORY | ISC_REQ_STREAM | ISC_REQ_EXTENDED_ERROR |
-                                    ISC_REQ_MANUAL_CRED_VALIDATION;
+                                    ISC_REQ_MANUAL_CRED_VALIDATION | ISC_REQ_USE_SUPPLIED_CREDS;
 
     bool send_token(SecBuffer& out) {
         bool ok = true;
@@ -367,6 +406,10 @@ private:
     }
 
     bool handshake(std::string& error) {
+        using std::chrono::steady_clock;
+        const steady_clock::time_point deadline =
+            steady_clock::now() + std::chrono::milliseconds(kHandshakeDeadlineMs);
+        int cert_requests = 0;
         SecBuffer out{0, SECBUFFER_TOKEN, nullptr};
         SecBufferDesc out_desc{SECBUFFER_VERSION, 1, &out};
         ULONG attrs = 0;
@@ -384,10 +427,23 @@ private:
         bool need_data = true;
         for (;;) {
             if (need_data) {
+                // Each read has its own timeout, and the handshake as a whole
+                // a deadline: a server sending a few bytes now and then cannot
+                // hold the connection open for ever.
+                const long long left =
+                    std::chrono::duration_cast<std::chrono::milliseconds>(deadline - steady_clock::now()).count();
+                if (left <= 0) {
+                    error = format("the handshake did not complete within %d s", kHandshakeDeadlineMs / 1000);
+                    return false;
+                }
+                const int wait = left < kHandshakeTimeoutMs ? int(left) : kHandshakeTimeoutMs;
                 uint8_t tmp[16384];
-                const int n = sock_.recv(tmp, sizeof tmp, kHandshakeTimeoutMs);
+                const int n = sock_.recv(tmp, sizeof tmp, wait);
                 if (n == 0) {
-                    error = format("no answer within %d s", kHandshakeTimeoutMs / 1000);
+                    if (wait < kHandshakeTimeoutMs)
+                        error = format("the handshake did not complete within %d s", kHandshakeDeadlineMs / 1000);
+                    else
+                        error = format("no answer within %d s", kHandshakeTimeoutMs / 1000);
                     return false;
                 }
                 if (n < 0) {
@@ -411,8 +467,21 @@ private:
                 need_data = true;
                 continue;
             }
+            if (st == SEC_I_INCOMPLETE_CREDENTIALS) {
+                // The server asked for a client certificate and there is
+                // none to give. Nothing was consumed: the same input again,
+                // without a new read, carries on without a certificate.
+                if (out.pvBuffer) FreeContextBuffer(out.pvBuffer);
+                out.pvBuffer = nullptr;
+                if (++cert_requests > 2) {
+                    error = "the server insists on a client certificate, which is not supported";
+                    return false;
+                }
+                need_data = false;
+                continue;
+            }
             const bool token_ok = send_token(out);
-            if (st == SEC_E_OK || st == SEC_I_CONTINUE_NEEDED || st == SEC_I_INCOMPLETE_CREDENTIALS) {
+            if (st == SEC_E_OK || st == SEC_I_CONTINUE_NEEDED) {
                 if (!token_ok) {
                     error = "send failed";
                     return false;
