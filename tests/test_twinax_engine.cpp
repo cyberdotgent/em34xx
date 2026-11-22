@@ -386,6 +386,31 @@ TEST_CASE("twinax engine: the controller's clock runs while the terminal's recei
     CHECK(host.describe().find("1 without response") != std::string::npos);
 }
 
+TEST_CASE("twinax engine: the controller's clock keeps running across a terminal reset") {
+    // Terminal > Reboot resets the machine with the controller on the line:
+    // the controller's time must not go back to 0 (its timers would stop
+    // until the terminal's uptime caught up, and it would never see the
+    // terminal go away and come back).
+    struct ClockHost : ScriptTwinaxHost {
+        uint64_t last_ns = 0;
+        bool went_back = false;
+        void advance(uint64_t ns) override {
+            if (ns < last_ns) went_back = true;
+            last_ns = ns;
+        }
+    };
+    Rig r;
+    ClockHost host;
+    r.eng->set_host([&host]() -> TwinaxHost* { return &host; });
+    for (int i = 0; i < 20000; ++i) r.eng->tick(8);
+    const uint64_t before = host.last_ns;
+    REQUIRE(before > 0);
+    r.eng->reset();
+    for (int i = 0; i < 20000; ++i) r.eng->tick(8);
+    CHECK_FALSE(host.went_back);
+    CHECK(host.last_ns > before);
+}
+
 TEST_CASE("twinax engine: 3477 loopback test registers") {
     Rig r;
     Ibm3477TwinaxRegisters regs(*r.eng);

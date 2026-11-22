@@ -52,6 +52,7 @@ void TwinaxEngine::reset() {
     wrap_ = false;
     latch_ = 0;
     now_ = 0;
+    host_ns_base_ = host_ns_;
     line_ = LineState::Idle;
     line_until_ = 0;
     next_host_check_ = 0;
@@ -202,8 +203,9 @@ void TwinaxEngine::tick(uint64_t cycles) {
         // simply does not answer; see the Receiving state.
         TwinaxHost* h = host();
         if (!h) return;
-        const uint64_t ns = (now_ / clock_hz_) * 1000000000ull + (now_ % clock_hz_) * 1000000000ull / clock_hz_;
-        h->advance(ns);
+        host_ns_ = host_ns_base_ + (now_ / clock_hz_) * 1000000000ull +
+                   (now_ % clock_hz_) * 1000000000ull / clock_hz_;
+        h->advance(host_ns_);
         TwinaxMessage m;
         if (!h->to_station(m)) return;
         if (m.empty()) {

@@ -162,6 +162,11 @@ private:
     uint8_t latch_ = 0;
 
     uint64_t now_ = 0;                // CPU clocks since reset
+    // The controller's clock (TwinaxHost::advance) is not the terminal's: it
+    // keeps running across a terminal reset (power cycle), so the time it
+    // is given continues from where it was instead of restarting at 0.
+    uint64_t host_ns_base_ = 0;       // controller time at the last reset
+    uint64_t host_ns_ = 0;            // controller time last given
     LineState line_ = LineState::Idle;
     uint64_t line_until_ = 0;
     uint64_t next_host_check_ = 0;
