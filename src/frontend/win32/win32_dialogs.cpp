@@ -247,11 +247,6 @@ INT_PTR CALLBACK settings_proc(HWND dlg, UINT msg, WPARAM wp, LPARAM lp) {
     switch (msg) {
     case WM_INITDIALOG: {
         SettingsDlg* d = init_dialog_data<SettingsDlg>(dlg, lp);
-        for (size_t i = 0; i < 4; ++i) {
-            combo_add(dlg, IDC_SET_SUBTYPE, subtype_label(kSubtypes[i]));
-            if (kSubtypes[i] == d->s.display) combo_set_sel(dlg, IDC_SET_SUBTYPE, int(i));
-        }
-        CheckDlgButton(dlg, IDC_SET_CRT, d->s.crt ? BST_CHECKED : BST_UNCHECKED);
         int speed_sel = 2;
         for (size_t i = 0; i < sizeof kSpeeds / sizeof kSpeeds[0]; ++i) {
             combo_add(dlg, IDC_SET_SPEED, kSpeeds[i] ? format("%u %%", kSpeeds[i]) : std::string("Unthrottled"));
@@ -284,9 +279,6 @@ INT_PTR CALLBACK settings_proc(HWND dlg, UINT msg, WPARAM wp, LPARAM lp) {
             return TRUE;
         }
         case IDOK: {
-            const int st = combo_sel(dlg, IDC_SET_SUBTYPE);
-            if (st >= 0 && st < 4) d->s.display = kSubtypes[st];
-            d->s.crt = IsDlgButtonChecked(dlg, IDC_SET_CRT) == BST_CHECKED;
             const int sp = combo_sel(dlg, IDC_SET_SPEED);
             if (sp >= 0 && sp < int(sizeof kSpeeds / sizeof kSpeeds[0])) d->s.speed_percent = kSpeeds[sp];
             const int tv = combo_sel(dlg, IDC_SET_TLSMIN);
@@ -389,6 +381,14 @@ struct TlsDlg {
     std::shared_ptr<FetchJob> job;
 };
 
+// The session whose certificate Fetch reads: the first that uses TLS
+// (session 1 when none does yet).
+size_t tls_fetch_session(const Profile& p) {
+    for (size_t i = 0; i < Profile::kSessions; ++i)
+        if (p.sessions[i].used() && p.sessions[i].tls) return i;
+    return 0;
+}
+
 void tls_enable(HWND dlg) {
     const bool hash = IsDlgButtonChecked(dlg, IDC_TLS_HASH) == BST_CHECKED;
     EnableWindow(GetDlgItem(dlg, IDC_TLS_HASH_EDIT), hash);
@@ -403,11 +403,12 @@ INT_PTR CALLBACK tls_proc(HWND dlg, UINT msg, WPARAM wp, LPARAM lp) {
                                                                        : IDC_TLS_HASH;
         CheckRadioButton(dlg, IDC_TLS_SYSTEM, IDC_TLS_HASH, radio);
         set_text(dlg, IDC_TLS_HASH_EDIT, d->p.tls_cert_sha256);
-        const ProfileSession& s1 = d->p.sessions[0];
+        const size_t fs = tls_fetch_session(d->p);
+        const ProfileSession& src = d->p.sessions[fs];
         set_text(dlg, IDC_TLS_FETCH_HOST,
-                 s1.used() ? format("from %s:%u (session 1)", s1.host.c_str(), s1.port)
-                           : std::string("enter the session 1 host first"));
-        EnableWindow(GetDlgItem(dlg, IDC_TLS_FETCH), s1.used());
+                 src.used() ? format("from %s:%u (session %zu)", src.host.c_str(), src.port, fs + 1)
+                            : std::string("enter the session 1 host first"));
+        EnableWindow(GetDlgItem(dlg, IDC_TLS_FETCH), src.used());
         combo_add(dlg, IDC_TLS_MINVER, "Default (" + tls_version_label(d->s->tls_min_version) + ")");
         combo_set_sel(dlg, IDC_TLS_MINVER, 0);
         for (size_t i = 0; i < 5; ++i) {
@@ -464,8 +465,9 @@ INT_PTR CALLBACK tls_proc(HWND dlg, UINT msg, WPARAM wp, LPARAM lp) {
             job->target = dlg;
             d->job = job;
             Tn5250Config cfg;
-            cfg.host = d->p.sessions[0].host;
-            cfg.port = d->p.sessions[0].port;
+            const ProfileSession& src = d->p.sessions[tls_fetch_session(d->p)];
+            cfg.host = src.host;
+            cfg.port = src.port;
             cfg.tls = true;
             cfg.tls_min_version = d->s->tls_min_version;
             const int mv = combo_sel(dlg, IDC_TLS_MINVER);
@@ -548,35 +550,46 @@ std::string tls_summary(const Profile& p, const AppSettings& s) {
     return m + ", minimum " + tls_version_label(v);
 }
 
+const int kHostIds[2] = {IDC_PE_HOST1, IDC_PE_HOST2};
+const int kPortIds[2] = {IDC_PE_PORT1, IDC_PE_PORT2};
+const int kDevIds[2] = {IDC_PE_DEV1, IDC_PE_DEV2};
+const int kTlsIds[2] = {IDC_PE_TLS1, IDC_PE_TLS2};
+
+bool checked(HWND dlg, int id) { return IsDlgButtonChecked(dlg, id) == BST_CHECKED; }
+
 // Read the fields into d.p; false (with a message) when a port is invalid.
 bool profile_read(HWND dlg, ProfileDlg& d, bool quiet) {
     std::vector<const Model*> models = runnable_models();
     const int m = combo_sel(dlg, IDC_PE_MODEL);
     if (m >= 0 && size_t(m) < models.size()) d.p.model = models[size_t(m)]->info().name;
-    const int host_ids[2] = {IDC_PE_HOST1, IDC_PE_HOST2};
-    const int port_ids[2] = {IDC_PE_PORT1, IDC_PE_PORT2};
-    const int dev_ids[2] = {IDC_PE_DEV1, IDC_PE_DEV2};
+    const int st = combo_sel(dlg, IDC_PE_SUBTYPE);
+    if (st >= 0 && st < 4) d.p.display = kSubtypes[st];
+    d.p.crt = checked(dlg, IDC_PE_CRT);
     for (size_t i = 0; i < 2; ++i) {
         ProfileSession& s = d.p.sessions[i];
-        s.host = trim(get_text(dlg, host_ids[i]));
-        s.device_name = trim(get_text(dlg, dev_ids[i]));
-        const std::string port = trim(get_text(dlg, port_ids[i]));
+        s.host = trim(get_text(dlg, kHostIds[i]));
+        s.device_name = trim(get_text(dlg, kDevIds[i]));
+        s.tls = checked(dlg, kTlsIds[i]);
+        const std::string port = trim(get_text(dlg, kPortIds[i]));
         uint64_t v = 0;
-        if (port.empty()) v = d.p.tls ? 992 : 23;
+        if (port.empty()) v = s.tls ? 992 : 23;
         else if (!parse_uint(port, v) || v == 0 || v > 65535) {
             if (!quiet) error_box(dlg, format("Session %zu: the port must be a number from 1 to 65535.", i + 1));
             return false;
         }
         s.port = uint16_t(v);
     }
-    d.p.tls = IsDlgButtonChecked(dlg, IDC_PE_TLS) == BST_CHECKED;
     return true;
 }
 
 void profile_update_tls(HWND dlg, ProfileDlg& d) {
-    const bool on = IsDlgButtonChecked(dlg, IDC_PE_TLS) == BST_CHECKED;
-    EnableWindow(GetDlgItem(dlg, IDC_PE_TLS_SETTINGS), on);
-    set_text(dlg, IDC_PE_TLS_SUMMARY, on ? tls_summary(d.p, *d.s) : std::string("TLS off: plain telnet"));
+    std::string which;
+    for (size_t i = 0; i < 2; ++i)
+        if (checked(dlg, kTlsIds[i])) which += which.empty() ? format("session %zu", i + 1) : format(" and %zu", i + 1);
+    EnableWindow(GetDlgItem(dlg, IDC_PE_TLS_SETTINGS), !which.empty());
+    set_text(dlg, IDC_PE_TLS_SUMMARY,
+             which.empty() ? std::string("No session uses TLS: plain telnet.")
+                           : "TLS for " + which + ": " + tls_summary(d.p, *d.s) + ".");
 }
 
 INT_PTR CALLBACK profile_proc(HWND dlg, UINT msg, WPARAM wp, LPARAM lp) {
@@ -584,38 +597,43 @@ INT_PTR CALLBACK profile_proc(HWND dlg, UINT msg, WPARAM wp, LPARAM lp) {
     case WM_INITDIALOG: {
         ProfileDlg* d = init_dialog_data<ProfileDlg>(dlg, lp);
         SetWindowTextW(dlg, widen(d->title).c_str());
-        SetDlgItemTextW(dlg, IDOK, d->mode == ProfileEditMode::Connect ? L"Connect" : L"Save");
+        SetDlgItemTextW(dlg, IDOK,
+                        d->mode == ProfileEditMode::Connect ? L"Connect"
+                        : d->mode == ProfileEditMode::Save  ? L"Save"
+                                                            : L"OK");
         int i = 0;
         for (const Model* m : runnable_models()) {
             combo_add(dlg, IDC_PE_MODEL, "IBM " + m->info().name);
             if (m->info().name == d->p.model || i == 0) combo_set_sel(dlg, IDC_PE_MODEL, i);
             ++i;
         }
-        const int host_ids[2] = {IDC_PE_HOST1, IDC_PE_HOST2};
-        const int port_ids[2] = {IDC_PE_PORT1, IDC_PE_PORT2};
-        const int dev_ids[2] = {IDC_PE_DEV1, IDC_PE_DEV2};
+        for (size_t k = 0; k < 4; ++k) {
+            combo_add(dlg, IDC_PE_SUBTYPE, subtype_label(kSubtypes[k]));
+            if (kSubtypes[k] == d->p.display) combo_set_sel(dlg, IDC_PE_SUBTYPE, int(k));
+        }
+        CheckDlgButton(dlg, IDC_PE_CRT, d->p.crt ? BST_CHECKED : BST_UNCHECKED);
         for (size_t s = 0; s < 2; ++s) {
             const ProfileSession& ps = d->p.sessions[s];
-            set_text(dlg, host_ids[s], ps.host);
-            set_text(dlg, port_ids[s], ps.used() || s == 0 ? std::to_string(ps.port) : std::string());
-            set_text(dlg, dev_ids[s], ps.device_name);
-            SendDlgItemMessageW(dlg, dev_ids[s], EM_LIMITTEXT, 10, 0);
-            SendDlgItemMessageW(dlg, port_ids[s], EM_LIMITTEXT, 5, 0);
+            set_text(dlg, kHostIds[s], ps.host);
+            set_text(dlg, kPortIds[s], ps.used() || s == 0 ? std::to_string(ps.port) : std::string());
+            set_text(dlg, kDevIds[s], ps.device_name);
+            CheckDlgButton(dlg, kTlsIds[s], ps.tls ? BST_CHECKED : BST_UNCHECKED);
+            SendDlgItemMessageW(dlg, kDevIds[s], EM_LIMITTEXT, 10, 0);
+            SendDlgItemMessageW(dlg, kPortIds[s], EM_LIMITTEXT, 5, 0);
         }
-        CheckDlgButton(dlg, IDC_PE_TLS, d->p.tls ? BST_CHECKED : BST_UNCHECKED);
         profile_update_tls(dlg, *d);
         return TRUE;
     }
     case WM_COMMAND: {
         ProfileDlg* d = dialog_data<ProfileDlg>(dlg);
         switch (LOWORD(wp)) {
-        case IDC_PE_TLS: {
-            // Switch the conventional ports along with TLS.
-            const bool on = IsDlgButtonChecked(dlg, IDC_PE_TLS) == BST_CHECKED;
-            for (int id : {IDC_PE_PORT1, IDC_PE_PORT2}) {
-                const std::string port = trim(get_text(dlg, id));
-                if (port == (on ? "23" : "992")) set_text(dlg, id, on ? "992" : "23");
-            }
+        case IDC_PE_TLS1:
+        case IDC_PE_TLS2: {
+            // Switch the session's conventional port along with TLS.
+            const size_t i = LOWORD(wp) == IDC_PE_TLS1 ? 0 : 1;
+            const bool on = checked(dlg, kTlsIds[i]);
+            const std::string port = trim(get_text(dlg, kPortIds[i]));
+            if (port == (on ? "23" : "992")) set_text(dlg, kPortIds[i], on ? "992" : "23");
             profile_update_tls(dlg, *d);
             return TRUE;
         }

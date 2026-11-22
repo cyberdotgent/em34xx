@@ -71,12 +71,7 @@ bool parse_settings(const std::string& text, const std::string& origin, AppSetti
         return false;
     }
     AppSettings s;
-    if (auto v = root["model"].value<std::string>()) s.model = *v;
-    if (auto v = root["display"]["subtype"].value<std::string>()) {
-        DisplaySubtype d;
-        if (parse_display_subtype(*v, d)) s.display = d;
-    }
-    if (auto v = root["display"]["crt"].value<bool>()) s.crt = *v;
+    // model and [display] of em34xx 0.1 are ignored: they are in the profiles now.
     if (auto v = root["emulator"]["speed"].value<int64_t>()) s.speed_percent = unsigned(*v < 0 ? 0 : *v > 10000 ? 10000 : *v);
     if (auto v = root["tls"]["min_version"].value<std::string>()) {
         TlsVersion t;
@@ -110,8 +105,6 @@ std::string settings_to_toml(const AppSettings& s) {
         window.insert("height", int64_t(s.window.height));
     }
     toml::table root{
-        {"model", s.model},
-        {"display", toml::table{{"subtype", display_subtype_name(s.display)}, {"crt", s.crt}}},
         {"emulator", toml::table{{"speed", int64_t(s.speed_percent)}}},
         {"tls", toml::table{{"min_version", tls_version_name(s.tls_min_version)}}},
         {"window", window},

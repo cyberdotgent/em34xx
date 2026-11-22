@@ -1,14 +1,18 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Connection profiles: what em34xxw saves as a `.em34xx` file (TOML) and
-// connects with. A profile names the terminal model and up to two TN5250
-// display sessions (Twinax station addresses 0 and 1) with their TLS
-// settings. It never holds a password. Format (docs/frontend-win32.md):
+// connects with. A profile names the terminal model and its display, and up
+// to two TN5250 display sessions (Twinax station addresses 0 and 1), each
+// with or without TLS. It never holds a password. Format
+// (docs/frontend-win32.md):
 //
-//   format = 1
+//   format = 2
 //   model = "3477"                 terminal emulation type (runnable_models())
 //
-//   [tls]
-//   enabled = true
+//   [display]
+//   subtype = "green"              CRT type: green, amber, paperwhite, color
+//   crt = true                     CRT scan-line rendering
+//
+//   [tls]                          for the sessions with tls = true
 //   verify = "system"              "system" (verify normally), "none" (accept
 //                                  any certificate) or "fingerprint" (accept
 //                                  exactly the certificate below)
@@ -18,16 +22,22 @@
 //   [[session]]                    session 1 (station 0); host required
 //   host = "pub400.com"
 //   port = 992
+//   tls = true
 //   device_name = ""               optional DEVNAME
 //
 //   [[session]]                    session 2 (station 1); optional
 //   host = ""                      empty = not used
 //   port = 23
+//   tls = false
 //   cert_sha256 = ""               optional: the trusted certificate of this
 //                                  session's host when it is another system
+//
+// Format 1 (em34xx 0.1) had one `tls.enabled` for both sessions and no
+// [display]; it still loads (a session without `tls` takes tls.enabled).
 #pragma once
 
 #include "config/config.hpp"
+#include "machine/display_subtype.hpp"
 #include "util/fingerprint.hpp"
 
 #include <array>
@@ -50,20 +60,24 @@ struct ProfileSession {
     uint16_t port = 23;
     std::string device_name;
     std::string cert_sha256;       // per-session trusted certificate (another host)
+    bool tls = false;              // TLS for this session (settings in Profile)
     bool used() const { return !host.empty(); }
 };
 
 struct Profile {
-    static constexpr int kFormat = 1;
+    static constexpr int kFormat = 2;
     static constexpr size_t kSessions = 2;
 
     std::string model = "3477";
-    bool tls = false;
+    DisplaySubtype display = DisplaySubtype::Green;
+    bool crt = true;               // CRT scan-line rendering
     ProfileTlsMode tls_mode = ProfileTlsMode::System;
     std::string tls_cert_sha256;
     std::string tls_min_version;   // "" = application default; else as parse_tls_version
     std::array<ProfileSession, kSessions> sessions;
 
+    // Whether any used session connects with TLS.
+    bool any_tls() const;
     // Empty when the profile can be connected; else what is wrong.
     std::string validate() const;
     bool operator==(const Profile& o) const;

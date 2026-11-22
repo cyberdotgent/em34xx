@@ -110,6 +110,9 @@ struct StationConfig {
     std::string host{};
     uint16_t port = 0;
     std::string tls_cert_sha256{};
+    // TLS for this station's session: -1 = the [tn5250] setting, 0 = off
+    // (plain telnet), 1 = on. Display stations only.
+    int tls = -1;
 };
 
 // Terminal type for one station: its `profile`, else tn5250.terminal_type
@@ -117,7 +120,7 @@ struct StationConfig {
 std::string station_terminal_type(const Tn5250Config& tn5250, const StationConfig& station,
                                   const std::string& model, DisplaySubtype display);
 
-// Apply a station's TLS overrides (tls_min_version, tls_max_version,
+// Apply a station's TLS overrides (tls, tls_min_version, tls_max_version,
 // tls_cert_sha256) to the session configuration built from [tn5250].
 // Unparsable values are left alone; TwinaxConfig::validate() reports them.
 void apply_station_tls(Tn5250Config& cfg, const StationConfig& station);

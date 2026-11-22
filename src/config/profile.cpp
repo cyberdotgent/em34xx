@@ -29,6 +29,12 @@ bool parse_profile_tls_mode(const std::string& text, ProfileTlsMode& out) {
     return true;
 }
 
+bool Profile::any_tls() const {
+    for (const ProfileSession& s : sessions)
+        if (s.used() && s.tls) return true;
+    return false;
+}
+
 std::string Profile::validate() const {
     if (trim(model).empty()) return "no terminal type";
     for (size_t i = 0; i < kSessions; ++i) {
@@ -46,7 +52,7 @@ std::string Profile::validate() const {
             return which + ": the certificate fingerprint is not a SHA-256 fingerprint";
     }
     Sha256Digest d;
-    if (tls_mode == ProfileTlsMode::Fingerprint) {
+    if (any_tls() && tls_mode == ProfileTlsMode::Fingerprint) {
         if (trim(tls_cert_sha256).empty()) return "TLS: the certificate fingerprint is empty";
         if (!parse_sha256_fingerprint(tls_cert_sha256, d))
             return "TLS: the certificate fingerprint is not a SHA-256 fingerprint (32 hex bytes)";
@@ -60,12 +66,12 @@ std::string Profile::validate() const {
 }
 
 bool Profile::operator==(const Profile& o) const {
-    if (model != o.model || tls != o.tls || tls_mode != o.tls_mode || tls_cert_sha256 != o.tls_cert_sha256 ||
+    if (model != o.model || display != o.display || crt != o.crt || tls_mode != o.tls_mode || tls_cert_sha256 != o.tls_cert_sha256 ||
         tls_min_version != o.tls_min_version)
         return false;
     for (size_t i = 0; i < kSessions; ++i) {
         const ProfileSession &a = sessions[i], &b = o.sessions[i];
-        if (a.host != b.host || a.port != b.port || a.device_name != b.device_name || a.cert_sha256 != b.cert_sha256)
+        if (a.host != b.host || a.port != b.port || a.tls != b.tls || a.device_name != b.device_name || a.cert_sha256 != b.cert_sha256)
             return false;
     }
     return true;
@@ -89,8 +95,18 @@ bool parse_profile(const std::string& text, const std::string& origin, Profile& 
         }
     }
     if (auto v = root["model"].value<std::string>()) p.model = *v;
+    if (const toml::table* t = root["display"].as_table()) {
+        if (auto v = (*t)["subtype"].value<std::string>()) {
+            if (!parse_display_subtype(*v, p.display)) {
+                error = origin + ": display.subtype must be \"green\", \"amber\", \"paperwhite\" or \"color\"";
+                return false;
+            }
+        }
+        if (auto v = (*t)["crt"].value<bool>()) p.crt = *v;
+    }
+    bool tls_default = false;   // format 1: one switch for every session
     if (const toml::table* t = root["tls"].as_table()) {
-        if (auto v = (*t)["enabled"].value<bool>()) p.tls = *v;
+        if (auto v = (*t)["enabled"].value<bool>()) tls_default = *v;
         if (auto v = (*t)["verify"].value<std::string>()) {
             if (!parse_profile_tls_mode(*v, p.tls_mode)) {
                 error = origin + ": tls.verify must be \"system\", \"none\" or \"fingerprint\"";
@@ -118,7 +134,9 @@ bool parse_profile(const std::string& text, const std::string& origin, Profile& 
                 return false;
             }
             ProfileSession& s = p.sessions[i++];
+            s.tls = tls_default;
             if (auto v = (*t)["host"].value<std::string>()) s.host = trim(*v);
+            if (auto v = (*t)["tls"].value<bool>()) s.tls = *v;
             if (auto v = (*t)["port"].value<int64_t>()) {
                 if (*v <= 0 || *v > 65535) {
                     error = origin + ": session port out of range";
@@ -135,19 +153,24 @@ bool parse_profile(const std::string& text, const std::string& origin, Profile& 
 }
 
 std::string profile_to_toml(const Profile& p) {
-    toml::table tls{{"enabled", p.tls}, {"verify", profile_tls_mode_name(p.tls_mode)}};
+    toml::table display{{"subtype", display_subtype_name(p.display)}, {"crt", p.crt}};
+    toml::table tls{{"verify", profile_tls_mode_name(p.tls_mode)}};
     if (!p.tls_cert_sha256.empty()) tls.insert("cert_sha256", p.tls_cert_sha256);
     if (!p.tls_min_version.empty()) tls.insert("min_version", p.tls_min_version);
     toml::array sessions;
     for (size_t i = 0; i < Profile::kSessions; ++i) {
         const ProfileSession& s = p.sessions[i];
         if (i > 0 && !s.used()) continue;
-        toml::table t{{"host", s.host}, {"port", int64_t(s.port)}};
+        toml::table t{{"host", s.host}, {"port", int64_t(s.port)}, {"tls", s.tls}};
         if (!s.device_name.empty()) t.insert("device_name", s.device_name);
         if (!s.cert_sha256.empty()) t.insert("cert_sha256", s.cert_sha256);
         sessions.push_back(std::move(t));
     }
-    toml::table root{{"format", int64_t(Profile::kFormat)}, {"model", p.model}, {"tls", tls}, {"session", sessions}};
+    toml::table root{{"format", int64_t(Profile::kFormat)},
+                     {"model", p.model},
+                     {"display", display},
+                     {"tls", tls},
+                     {"session", sessions}};
     std::ostringstream os;
     os << "# em34xx connection profile (docs/frontend-win32.md). Passwords are never stored.\n\n" << root << "\n";
     return os.str();
@@ -175,9 +198,11 @@ bool profile_connect_config(const Profile& p, const AppConfig& base, TlsVersion 
     tn.host = s1.host;
     tn.port = s1.port;
     tn.device_name = s1.device_name;
-    tn.tls = p.tls;
+    // [tn5250] is session 1; session 2 overrides what differs (StationConfig).
+    tn.tls = s1.tls;
     tn.tls_verify = p.tls_mode == ProfileTlsMode::AcceptAll ? TlsVerify::None : TlsVerify::System;
-    tn.tls_cert_sha256 = p.tls_mode == ProfileTlsMode::Fingerprint ? p.tls_cert_sha256 : std::string();
+    const std::string pin = p.tls_mode == ProfileTlsMode::Fingerprint ? p.tls_cert_sha256 : std::string();
+    tn.tls_cert_sha256 = s1.tls ? pin : std::string();
     tn.tls_min_version = default_tls_min;
     if (!p.tls_min_version.empty()) parse_tls_version(p.tls_min_version, tn.tls_min_version);
     if (tn.tls_max_version != TlsVersion::Any && tn.tls_max_version < tn.tls_min_version)
@@ -185,14 +210,18 @@ bool profile_connect_config(const Profile& p, const AppConfig& base, TlsVersion 
     if (!tn.tls) tn.ca_file.clear();
 
     StationConfig st0{0, StationType::Display, "", ""};
-    if (p.tls && !s1.cert_sha256.empty()) st0.tls_cert_sha256 = s1.cert_sha256;
+    if (s1.tls && !s1.cert_sha256.empty()) st0.tls_cert_sha256 = s1.cert_sha256;
     out.twinax.stations.push_back(st0);
     const ProfileSession& s2 = p.sessions[1];
     if (s2.used()) {
         StationConfig st1{1, StationType::Display, s2.device_name, ""};
         if (s2.host != s1.host) st1.host = s2.host;
         if (s2.port != s1.port) st1.port = s2.port;
-        if (p.tls && !s2.cert_sha256.empty()) st1.tls_cert_sha256 = s2.cert_sha256;
+        st1.tls = s2.tls ? 1 : 0;
+        if (s2.tls) {
+            if (!s2.cert_sha256.empty()) st1.tls_cert_sha256 = s2.cert_sha256;
+            else if (!s1.tls) st1.tls_cert_sha256 = pin;   // [tn5250] is plain: the profile's pin goes here
+        }
         out.twinax.stations.push_back(st1);
     }
     error = out.tn5250.validate();

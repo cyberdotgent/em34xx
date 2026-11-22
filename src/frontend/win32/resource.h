@@ -8,10 +8,14 @@
 #define IDI_APP                 1
 #define IDI_PROFILE             2
 
-/* Toolbar image strips (6 glyphs each), picked by DPI */
+/* Toolbar image strips (8 glyphs each), picked by DPI */
 #define IDB_TOOLBAR16           101
 #define IDB_TOOLBAR24           102
 #define IDB_TOOLBAR32           103
+/* Status bar strips: session orbs and TLS locks (8 glyphs each) */
+#define IDB_STATUS16            104
+#define IDB_STATUS24            105
+#define IDB_STATUS32            106
 
 /* Menu and accelerators */
 #define IDR_MAINMENU            200
@@ -20,14 +24,14 @@
 
 /* Commands */
 #define ID_FILE_PROFILES        1001
-#define ID_FILE_CONNECT         1002
-#define ID_FILE_EDIT_PROFILE    1003
+#define ID_FILE_NEW             1002
 #define ID_FILE_SAVE            1004
 #define ID_FILE_SAVE_AS         1005
 #define ID_FILE_DISCONNECT      1006
 #define ID_FILE_EXIT            1007
 #define ID_EDIT_KEYMAP          1010
 #define ID_EDIT_SETTINGS        1011
+#define ID_EDIT_CONNECTION      1012
 #define ID_VIEW_ZOOM_100        1020
 #define ID_VIEW_ZOOM_150        1021
 #define ID_VIEW_ZOOM_200        1022
@@ -58,8 +62,6 @@
 #define IDC_ROM_FOLDER          2005
 #define IDC_ROM_SUMMARY         2006
 
-#define IDC_SET_SUBTYPE         2020
-#define IDC_SET_CRT             2021
 #define IDC_SET_SPEED           2022
 #define IDC_SET_TLSMIN          2023
 #define IDC_SET_ROMS            2024
@@ -84,9 +86,12 @@
 #define IDC_PE_HOST2            2084
 #define IDC_PE_PORT2            2085
 #define IDC_PE_DEV2             2086
-#define IDC_PE_TLS              2087
+#define IDC_PE_TLS1             2087
 #define IDC_PE_TLS_SETTINGS     2088
 #define IDC_PE_TLS_SUMMARY      2089
+#define IDC_PE_TLS2             2090
+#define IDC_PE_SUBTYPE          2091
+#define IDC_PE_CRT              2092
 
 #define IDC_TLS_SYSTEM          2100
 #define IDC_TLS_ANY             2101
@@ -136,6 +141,8 @@
 #define IDS_TB_ATTN             4016
 #define IDS_TB_SYSRQ            4017
 #define IDS_TB_RESET            4018
+#define IDS_TB_RECONNECT        4019
+#define IDS_TB_REBOOT           4020
 #define IDS_NOT_CONNECTED       4030
 #define IDS_NO_PROFILE          4031
 #define IDS_TLS_OFF             4032

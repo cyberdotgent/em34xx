@@ -1,11 +1,10 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Application settings of an end-user GUI build (settings.toml in the user
-// folder, config/user_dirs.hpp): global, not per connection profile.
+// folder, config/user_dirs.hpp): global, not per connection profile. The
+// terminal model and its display (CRT type, scan lines) belong to the
+// profile (config/profile.hpp); em34xx 0.1 kept them here and those keys
+// are now ignored.
 //
-//   model = "3477"            terminal model to start (runnable_models())
-//   [display]
-//   subtype = "green"         green, amber, paperwhite or color
-//   crt = true                CRT scan-line rendering
 //   [emulator]
 //   speed = 100               percent of the nominal clock, 0 = unthrottled
 //   [tls]
@@ -35,9 +34,6 @@ struct WindowPlacement {
 };
 
 struct AppSettings {
-    std::string model = "3477";
-    DisplaySubtype display = DisplaySubtype::Green;
-    bool crt = true;
     unsigned speed_percent = 100;
     TlsVersion tls_min_version = TlsVersion::Tls1_2;
     double zoom = 1.0;

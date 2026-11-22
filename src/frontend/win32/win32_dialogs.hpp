@@ -25,22 +25,23 @@ namespace win32 {
 // (always true without one).
 bool rom_manager_dialog(HWND owner, const UserDirs& dirs, const Model* required);
 
-// Edit > Settings. The caller applies the changes (the CRT type may need a
-// power cycle and asks first).
+// Edit > Settings (application-wide: speed, default TLS minimum, files).
 bool settings_dialog(HWND owner, const UserDirs& dirs, AppSettings& s);
 
-// The CRT type as the Settings dialog shows it ("Paper white", "Colour").
+// The CRT type as the profile editor shows it ("Paper white", "Colour").
 const char* subtype_label(DisplaySubtype d);
 
 enum class ProfileEditMode {
     Connect,   // OK button says "Connect"
     Save,      // OK button says "Save"
+    Apply,     // OK button says "OK" (Edit > Connection Settings)
 };
 bool profile_editor_dialog(HWND owner, Profile& p, ProfileEditMode mode, const AppSettings& s,
                            const std::string& title);
 
 // TLS Settings (from the profile editor): verify mode, fingerprint with a
-// Fetch button that reads the certificate of session 1 off the UI thread,
+// Fetch button that reads the certificate of the first TLS session off the
+// UI thread,
 // and the optional minimum version.
 bool tls_settings_dialog(HWND owner, Profile& p, const AppSettings& s);
 

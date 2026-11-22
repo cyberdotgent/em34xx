@@ -92,12 +92,16 @@ On the first start (no usable ROMs) a dialog lists what each model needs
 (present / missing / bad hash) and imports dumps under any name: they are
 recognised by SHA-256. Later the same dialog is under Edit > Settings.
 
-File > Connect... connects without saving ("Untitled Profile*"); File >
-Save As keeps it. File > Connect to Profile... manages the saved profiles
-(New, Edit, Rename, Copy, Delete). `em34xxw PROFILE.em34xx` opens and
-connects a profile; Settings can associate `.em34xx` files with em34xxw for
-the current user. The toolbar has Attn, SysRq and Reset, sent as the
-terminal's own keys. With TLS, a certificate that does not verify brings up
+File > New Connection... connects without saving ("Untitled Profile*");
+File > Save As keeps it. File > Connect to Profile... manages the saved
+profiles (New, Edit, Rename, Copy, Delete). A profile holds the terminal
+type, its CRT type and up to two sessions, each with or without TLS; Edit >
+Connection Settings... changes the running one. `em34xxw PROFILE.em34xx`
+opens and connects a profile; Settings can associate `.em34xx` files with
+em34xxw for the current user. The toolbar has Disconnect/Reconnect, Reboot
+(a power cycle that keeps the sessions), and Attn, SysRq and Reset, sent as
+the terminal's own keys; the status bar shows each session's state and TLS
+lock. With TLS, a certificate that does not verify brings up
 a prompt: Stop, Connect (this time) or Trust Permanently (its SHA-256 goes
 into the profile).
 

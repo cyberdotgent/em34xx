@@ -19,15 +19,17 @@ IDR_NOTICES RCDATA "res/notices.txt"
 IDB_TOOLBAR16 BITMAP "res/toolbar16.bmp"
 IDB_TOOLBAR24 BITMAP "res/toolbar24.bmp"
 IDB_TOOLBAR32 BITMAP "res/toolbar32.bmp"
+IDB_STATUS16 BITMAP "res/status16.bmp"
+IDB_STATUS24 BITMAP "res/status24.bmp"
+IDB_STATUS32 BITMAP "res/status32.bmp"
 
 // --- Menu ---------------------------------------------------------------------
 IDR_MAINMENU MENU
 BEGIN
     POPUP "&File"
     BEGIN
+        MENUITEM "&New Connection...\tCtrl+Shift+N",     ID_FILE_NEW
         MENUITEM "Connect to &Profile...\tCtrl+Shift+O", ID_FILE_PROFILES
-        MENUITEM "&Connect...\tCtrl+Shift+N",            ID_FILE_CONNECT
-        MENUITEM "&Edit Profile...",                     ID_FILE_EDIT_PROFILE
         MENUITEM SEPARATOR
         MENUITEM "&Save\tCtrl+Shift+S",                  ID_FILE_SAVE
         MENUITEM "Save &As...",                          ID_FILE_SAVE_AS
@@ -38,6 +40,8 @@ BEGIN
     END
     POPUP "&Edit"
     BEGIN
+        MENUITEM "&Connection Settings...\tCtrl+Shift+E", ID_EDIT_CONNECTION
+        MENUITEM SEPARATOR
         MENUITEM "&Keymap...",                           ID_EDIT_KEYMAP
         MENUITEM "&Settings...",                         ID_EDIT_SETTINGS
     END
@@ -56,7 +60,7 @@ BEGIN
         MENUITEM "&SysRq",                               ID_TERM_SYSRQ
         MENUITEM "&Reset",                               ID_TERM_RESET
         MENUITEM SEPARATOR
-        MENUITEM "&Power Cycle",                         ID_TERM_POWER_CYCLE
+        MENUITEM "Re&boot (Power Cycle)",                ID_TERM_POWER_CYCLE
     END
     POPUP "&Help"
     BEGIN
@@ -68,7 +72,8 @@ END
 IDR_ACCEL ACCELERATORS
 BEGIN
     "O", ID_FILE_PROFILES,   VIRTKEY, CONTROL, SHIFT
-    "N", ID_FILE_CONNECT,    VIRTKEY, CONTROL, SHIFT
+    "N", ID_FILE_NEW,        VIRTKEY, CONTROL, SHIFT
+    "E", ID_EDIT_CONNECTION, VIRTKEY, CONTROL, SHIFT
     "S", ID_FILE_SAVE,       VIRTKEY, CONTROL, SHIFT
     "D", ID_FILE_DISCONNECT, VIRTKEY, CONTROL, SHIFT
 END
@@ -90,27 +95,23 @@ BEGIN
     DEFPUSHBUTTON   "Close", IDOK, 313, 201, 60, 14
 END
 
-IDD_SETTINGS DIALOGEX 0, 0, 280, 214
+IDD_SETTINGS DIALOGEX 0, 0, 280, 158
 STYLE DS_SHELLFONT | DS_MODALFRAME | DS_CENTER | WS_POPUP | WS_CAPTION | WS_SYSMENU
 CAPTION "Settings"
 FONT 8, "MS Shell Dlg", 400, 0, 1
 BEGIN
-    GROUPBOX        "Display", -1, 7, 7, 266, 52
-    LTEXT           "&CRT type:", -1, 15, 21, 60, 8
-    COMBOBOX        IDC_SET_SUBTYPE, 80, 19, 110, 80, CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
-    AUTOCHECKBOX    "CRT scan-line &rendering", IDC_SET_CRT, 15, 39, 150, 10
-    GROUPBOX        "Emulation", -1, 7, 63, 266, 30
-    LTEXT           "&Speed:", -1, 15, 77, 60, 8
-    COMBOBOX        IDC_SET_SPEED, 80, 75, 110, 80, CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
-    GROUPBOX        "TLS", -1, 7, 97, 266, 30
-    LTEXT           "Default &minimum:", -1, 15, 111, 62, 8
-    COMBOBOX        IDC_SET_TLSMIN, 80, 109, 110, 80, CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
-    GROUPBOX        "Files", -1, 7, 131, 266, 54
-    LTEXT           "", IDC_SET_FOLDER, 15, 143, 252, 16
-    PUSHBUTTON      "&ROM Images...", IDC_SET_ROMS, 15, 163, 80, 14
-    PUSHBUTTON      "Open .em34xx files with &em34xxw...", IDC_SET_ASSOC, 101, 163, 140, 14
-    DEFPUSHBUTTON   "OK", IDOK, 159, 193, 54, 14
-    PUSHBUTTON      "Cancel", IDCANCEL, 219, 193, 54, 14
+    GROUPBOX        "Emulation", -1, 7, 7, 266, 30
+    LTEXT           "&Speed:", -1, 15, 21, 60, 8
+    COMBOBOX        IDC_SET_SPEED, 80, 19, 110, 80, CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
+    GROUPBOX        "TLS", -1, 7, 41, 266, 30
+    LTEXT           "Default &minimum:", -1, 15, 55, 62, 8
+    COMBOBOX        IDC_SET_TLSMIN, 80, 53, 110, 80, CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
+    GROUPBOX        "Files", -1, 7, 75, 266, 54
+    LTEXT           "", IDC_SET_FOLDER, 15, 87, 252, 16
+    PUSHBUTTON      "&ROM Images...", IDC_SET_ROMS, 15, 107, 80, 14
+    PUSHBUTTON      "Open .em34xx files with &em34xxw...", IDC_SET_ASSOC, 101, 107, 140, 14
+    DEFPUSHBUTTON   "OK", IDOK, 159, 137, 54, 14
+    PUSHBUTTON      "Cancel", IDCANCEL, 219, 137, 54, 14
 END
 
 IDD_PROFILES DIALOGEX 0, 0, 260, 170
@@ -140,34 +141,40 @@ BEGIN
     PUSHBUTTON      "Cancel", IDCANCEL, 159, 45, 54, 14
 END
 
-IDD_PROFILE DIALOGEX 0, 0, 290, 196
+IDD_PROFILE DIALOGEX 0, 0, 290, 242
 STYLE DS_SHELLFONT | DS_MODALFRAME | DS_CENTER | WS_POPUP | WS_CAPTION | WS_SYSMENU
 CAPTION "Connection Profile"
 FONT 8, "MS Shell Dlg", 400, 0, 1
 BEGIN
-    LTEXT           "&Terminal type:", -1, 7, 9, 60, 8
-    COMBOBOX        IDC_PE_MODEL, 72, 7, 120, 80, CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
-    GROUPBOX        "Session 1", -1, 7, 26, 276, 46
-    LTEXT           "&Host:", -1, 15, 40, 30, 8
-    EDITTEXT        IDC_PE_HOST1, 50, 38, 150, 13, ES_AUTOHSCROLL
-    LTEXT           "Port:", -1, 208, 40, 20, 8
-    EDITTEXT        IDC_PE_PORT1, 232, 38, 42, 13, ES_NUMBER
-    LTEXT           "De&vice:", -1, 15, 56, 30, 8
-    EDITTEXT        IDC_PE_DEV1, 50, 54, 80, 13, ES_AUTOHSCROLL | ES_UPPERCASE
-    LTEXT           "(optional)", -1, 136, 56, 60, 8
-    GROUPBOX        "Session 2 (optional: leave the host empty)", -1, 7, 76, 276, 46
-    LTEXT           "H&ost:", -1, 15, 90, 30, 8
-    EDITTEXT        IDC_PE_HOST2, 50, 88, 150, 13, ES_AUTOHSCROLL
-    LTEXT           "Port:", -1, 208, 90, 20, 8
-    EDITTEXT        IDC_PE_PORT2, 232, 88, 42, 13, ES_NUMBER
-    LTEXT           "Devi&ce:", -1, 15, 106, 30, 8
-    EDITTEXT        IDC_PE_DEV2, 50, 104, 80, 13, ES_AUTOHSCROLL | ES_UPPERCASE
-    GROUPBOX        "Security", -1, 7, 126, 276, 42
-    AUTOCHECKBOX    "&Enable TLS", IDC_PE_TLS, 15, 139, 80, 10
-    PUSHBUTTON      "TLS &Settings...", IDC_PE_TLS_SETTINGS, 199, 137, 76, 14
-    LTEXT           "", IDC_PE_TLS_SUMMARY, 15, 153, 260, 10
-    DEFPUSHBUTTON   "Connect", IDOK, 169, 175, 54, 14
-    PUSHBUTTON      "Cancel", IDCANCEL, 229, 175, 54, 14
+    GROUPBOX        "Terminal", -1, 7, 7, 276, 46
+    LTEXT           "&Terminal type:", -1, 15, 21, 52, 8
+    COMBOBOX        IDC_PE_MODEL, 72, 19, 120, 80, CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
+    LTEXT           "C&RT type:", -1, 15, 37, 52, 8
+    COMBOBOX        IDC_PE_SUBTYPE, 72, 35, 120, 80, CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
+    AUTOCHECKBOX    "Scan &lines", IDC_PE_CRT, 200, 36, 76, 10
+    GROUPBOX        "Session 1", -1, 7, 57, 276, 46
+    LTEXT           "&Host:", -1, 15, 71, 30, 8
+    EDITTEXT        IDC_PE_HOST1, 50, 69, 150, 13, ES_AUTOHSCROLL
+    LTEXT           "Port:", -1, 208, 71, 20, 8
+    EDITTEXT        IDC_PE_PORT1, 232, 69, 42, 13, ES_NUMBER
+    LTEXT           "De&vice:", -1, 15, 87, 30, 8
+    EDITTEXT        IDC_PE_DEV1, 50, 85, 80, 13, ES_AUTOHSCROLL | ES_UPPERCASE
+    LTEXT           "(optional)", -1, 136, 87, 50, 8
+    AUTOCHECKBOX    "Use TL&S", IDC_PE_TLS1, 208, 86, 66, 10
+    GROUPBOX        "Session 2 (optional: leave the host empty)", -1, 7, 107, 276, 46
+    LTEXT           "H&ost:", -1, 15, 121, 30, 8
+    EDITTEXT        IDC_PE_HOST2, 50, 119, 150, 13, ES_AUTOHSCROLL
+    LTEXT           "Port:", -1, 208, 121, 20, 8
+    EDITTEXT        IDC_PE_PORT2, 232, 119, 42, 13, ES_NUMBER
+    LTEXT           "Devi&ce:", -1, 15, 137, 30, 8
+    EDITTEXT        IDC_PE_DEV2, 50, 135, 80, 13, ES_AUTOHSCROLL | ES_UPPERCASE
+    LTEXT           "(optional)", -1, 136, 137, 50, 8
+    AUTOCHECKBOX    "Use T&LS", IDC_PE_TLS2, 208, 136, 66, 10
+    GROUPBOX        "TLS (for the sessions that use it)", -1, 7, 157, 276, 54
+    LTEXT           "", IDC_PE_TLS_SUMMARY, 15, 171, 260, 18
+    PUSHBUTTON      "TLS S&ettings...", IDC_PE_TLS_SETTINGS, 199, 191, 76, 14
+    DEFPUSHBUTTON   "Connect", IDOK, 169, 221, 54, 14
+    PUSHBUTTON      "Cancel", IDCANCEL, 229, 221, 54, 14
 END
 
 IDD_TLS DIALOGEX 0, 0, 300, 220
@@ -261,7 +268,7 @@ BEGIN
     IDS_APP_TITLE        "em34xx"
     IDS_UNTITLED         "Untitled Profile"
     IDS_TB_PROFILES      "Connect to Profile"
-    IDS_TB_CONNECT       "Connect"
+    IDS_TB_CONNECT       "New Connection"
     IDS_TB_SAVE          "Save Profile"
     IDS_TB_DISCONNECT    "Disconnect"
     IDS_TB_SETTINGS      "Settings"
@@ -269,6 +276,8 @@ BEGIN
     IDS_TB_ATTN          "Attn"
     IDS_TB_SYSRQ         "SysRq"
     IDS_TB_RESET         "Reset"
+    IDS_TB_RECONNECT     "Reconnect"
+    IDS_TB_REBOOT        "Reboot the terminal (power cycle; the sessions stay connected)"
     IDS_NOT_CONNECTED    "not connected"
     IDS_NO_PROFILE       "no profile"
     IDS_TLS_OFF          "TLS off"
@@ -277,7 +286,7 @@ BEGIN
     IDS_ASSOC_DONE       ".em34xx files now open with em34xxw."
     IDS_SAVE_CHANGES     "Save the changes to the profile \"%s\"?"
     IDS_DELETE_CONFIRM   "Delete the profile \"%s\"?"
-    IDS_CRT_RESET_CONFIRM "Changing to %s resets the terminal and reconnects the sessions. Continue?"
+    IDS_CRT_RESET_CONFIRM "Changing the CRT type to %s restarts the terminal and reconnects the sessions. Continue?"
     IDS_FILTER_ROMS      "ROM images (*.bin;*.rom)|*.bin;*.rom|All files (*.*)|*.*|"
     IDS_FILE_TYPE_NAME   "em34xx connection profile"
 END

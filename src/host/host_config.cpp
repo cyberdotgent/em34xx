@@ -100,6 +100,11 @@ bool parse_tls_version(const std::string& text, TlsVersion& out) {
 }
 
 void apply_station_tls(Tn5250Config& cfg, const StationConfig& station) {
+    if (station.tls >= 0) cfg.tls = station.tls != 0;
+    if (station.tls == 0) {   // plain telnet: nothing of [tn5250]'s TLS applies
+        cfg.tls_cert_sha256.clear();
+        cfg.ca_file.clear();
+    }
     TlsVersion v;
     if (!station.tls_min_version.empty() && parse_tls_version(station.tls_min_version, v)) cfg.tls_min_version = v;
     if (!station.tls_max_version.empty() && parse_tls_version(station.tls_max_version, v)) cfg.tls_max_version = v;

@@ -140,6 +140,7 @@ bool load_config_file(const std::string& path, AppConfig& cfg, std::string& erro
                     sc.port = uint16_t(i);
                 }
                 get(*st, "tls_cert_sha256", sc.tls_cert_sha256);
+                if (auto v = (*st)["tls"].value<bool>()) sc.tls = *v ? 1 : 0;
                 cfg.twinax.stations.push_back(sc);
             }
         }
@@ -484,6 +485,7 @@ std::string config_to_toml(const AppConfig& cfg) {
             if (!sc.host.empty()) st.insert("host", sc.host);
             if (sc.port) st.insert("port", int64_t(sc.port));
             if (!sc.tls_cert_sha256.empty()) st.insert("tls_cert_sha256", sc.tls_cert_sha256);
+            if (sc.tls >= 0) st.insert("tls", sc.tls != 0);
             stations.push_back(std::move(st));
         }
         root["twinax"].as_table()->insert("station", std::move(stations));

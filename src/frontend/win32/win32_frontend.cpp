@@ -134,19 +134,60 @@ struct CurrentProfile {
     bool accepted_once = false;   // a certificate was accepted for this connection only
 };
 
-// Toolbar: glyph index in the IDB_TOOLBAR* strips, command, string.
+// Toolbar glyphs in the IDB_TOOLBAR* strips (tools/gen_win32_assets.py).
+enum ToolImage {
+    kImgProfiles = 0,
+    kImgNew = 1,
+    kImgSave = 2,
+    kImgDisconnect = 3,
+    kImgSettings = 4,
+    kImgKeymap = 5,
+    kImgReconnect = 6,
+    kImgReboot = 7,
+    kToolImages = 8,
+};
+// Toolbar: glyph, command, string.
 struct ToolButton {
     int image;   // -1: separator; -2: text only
     int command;
     UINT text;
 };
 const ToolButton kToolbar[] = {
-    {0, ID_FILE_PROFILES, IDS_TB_PROFILES}, {1, ID_FILE_CONNECT, IDS_TB_CONNECT}, {2, ID_FILE_SAVE, IDS_TB_SAVE},
-    {-1, 0, 0},                             {3, ID_FILE_DISCONNECT, IDS_TB_DISCONNECT},
-    {-1, 0, 0},                             {4, ID_EDIT_SETTINGS, IDS_TB_SETTINGS},
-    {5, ID_EDIT_KEYMAP, IDS_TB_KEYMAP},     {-1, 0, 0},
-    {-2, ID_TERM_ATTN, IDS_TB_ATTN},        {-2, ID_TERM_SYSRQ, IDS_TB_SYSRQ},
+    {kImgNew, ID_FILE_NEW, IDS_TB_CONNECT},
+    {kImgProfiles, ID_FILE_PROFILES, IDS_TB_PROFILES},
+    {kImgSave, ID_FILE_SAVE, IDS_TB_SAVE},
+    {-1, 0, 0},
+    {kImgDisconnect, ID_FILE_DISCONNECT, IDS_TB_DISCONNECT},   // a toggle: Reconnect when off line
+    {kImgReboot, ID_TERM_POWER_CYCLE, IDS_TB_REBOOT},
+    {-1, 0, 0},
+    {kImgSettings, ID_EDIT_SETTINGS, IDS_TB_SETTINGS},
+    {kImgKeymap, ID_EDIT_KEYMAP, IDS_TB_KEYMAP},
+    {-1, 0, 0},
+    {-2, ID_TERM_ATTN, IDS_TB_ATTN},
+    {-2, ID_TERM_SYSRQ, IDS_TB_SYSRQ},
     {-2, ID_TERM_RESET, IDS_TB_RESET},
+};
+
+// Status bar glyphs in the IDB_STATUS* strips: an orb per session and its
+// TLS lock.
+enum StatusImage {
+    kOrbGreen = 0,     // connected
+    kOrbGrey = 1,      // not configured
+    kOrbRed = 2,       // disconnected or failed
+    kOrbOrange = 3,    // connecting (or waiting on the certificate prompt)
+    kLockClosed = 4,   // TLS
+    kLockOpen = 5,     // plain telnet
+    kLockClosedDim = 6,
+    kLockOpenDim = 7,
+    kStatusImages = 8,
+};
+
+struct SessionIndicator {
+    int orb = kOrbGrey;
+    int lock = kLockOpenDim;
+    std::string tip;
+    bool operator==(const SessionIndicator& o) const { return orb == o.orb && lock == o.lock && tip == o.tip; }
+    bool operator!=(const SessionIndicator& o) const { return !(*this == o); }
 };
 
 class Win32Frontend : public Frontend {
@@ -202,10 +243,23 @@ private:
     void update_title();
     void update_status();
     void update_ui_state();
+    void draw_status_icons(const DRAWITEMSTRUCT& di);
+    RECT session_icon_rect(unsigned session) const;
+    SessionIndicator session_indicator(unsigned session, const std::vector<TwinaxSessionStatus>& all) const;
+    std::string tls_state_text(const TwinaxSessionStatus* s) const;
 
-    // Power-cycle the terminal (unless it was just rebuilt), then connect.
+    // Apply the profile's terminal settings (display subtype, scan lines).
+    // `rebuilt`: the change was visible to the firmware or the host, so the
+    // machine was rebuilt and is powering on (its sessions closed).
+    bool apply_terminal_settings(const Profile& p, bool& rebuilt);
+    DisplaySubtype current_display();
+    // Apply the profile's terminal settings, then connect: after a power
+    // cycle (as switching the terminal on) or, with power_cycle false, by
+    // plugging the controller in with the terminal running.
     void connect_profile(const Profile& p, bool power_cycle = true);
-    void change_display_subtype(DisplaySubtype to);
+    bool connected() const;
+    void new_connection();
+    void edit_connection();
     void open_profile_file(const std::string& path);
     bool save_current(bool save_as);
     bool confirm_discard();
@@ -213,6 +267,8 @@ private:
     void edit_settings();
     void handle_trust_requests();
     void disconnect();
+    void toggle_connection();
+    void reboot();
     std::string profile_display_name() const;
 
     Win32Launch& launch_;
@@ -225,8 +281,11 @@ private:
     std::atomic<HWND> hwnd_{nullptr};
     HWND toolbar_ = nullptr;
     HWND status_ = nullptr;
+    HWND tips_ = nullptr;            // the status bar's session tooltips
     HACCEL accel_ = nullptr;
     HIMAGELIST images_ = nullptr;
+    HIMAGELIST status_images_ = nullptr;
+    int status_icon_ = 16;           // status glyph size (px)
     HFONT font_ = nullptr;
     UINT dpi_ = 96;
 
@@ -250,8 +309,11 @@ private:
 
     std::shared_ptr<TrustQueue> trust_;
     bool showing_trust_ = false;
+    unsigned trust_station_ = 0;     // the session the open prompt is for
     CurrentProfile cur_;
-    std::string last_status_[4];
+    std::string last_status_text_;
+    SessionIndicator indicators_[Profile::kSessions];
+    bool toolbar_connected_ = true;  // the Disconnect/Reconnect toggle as shown
 };
 
 // ---------------------------------------------------------------------------
@@ -305,17 +367,36 @@ bool Win32Frontend::create_window(std::string& error) {
     return true;
 }
 
-void Win32Frontend::build_toolbar_images() {
-    const int size = dpi_ >= 168 ? 32 : dpi_ >= 120 ? 24 : 16;
-    const int id = size == 32 ? IDB_TOOLBAR32 : size == 24 ? IDB_TOOLBAR24 : IDB_TOOLBAR16;
-    HBITMAP bmp = static_cast<HBITMAP>(
-        LoadImageW(launch_.instance, MAKEINTRESOURCEW(id), IMAGE_BITMAP, 0, 0, LR_CREATEDIBSECTION));
-    HIMAGELIST il = ImageList_Create(size, size, ILC_COLOR32, 6, 0);
+namespace {
+HIMAGELIST load_strip(HINSTANCE inst, int id, int size, int count) {
+    HBITMAP bmp =
+        static_cast<HBITMAP>(LoadImageW(inst, MAKEINTRESOURCEW(id), IMAGE_BITMAP, 0, 0, LR_CREATEDIBSECTION));
+    HIMAGELIST il = ImageList_Create(size, size, ILC_COLOR32, count, 0);
     if (bmp && il) ImageList_Add(il, bmp, nullptr);
     if (bmp) DeleteObject(bmp);
+    return il;
+}
+} // namespace
+
+void Win32Frontend::build_toolbar_images() {
+    const int size = dpi_ >= 168 ? 32 : dpi_ >= 120 ? 24 : 16;
+    HIMAGELIST il = load_strip(launch_.instance,
+                               size == 32   ? IDB_TOOLBAR32
+                               : size == 24 ? IDB_TOOLBAR24
+                                            : IDB_TOOLBAR16,
+                               size, kToolImages);
     SendMessageW(toolbar_, TB_SETIMAGELIST, 0, reinterpret_cast<LPARAM>(il));
     if (images_) ImageList_Destroy(images_);
     images_ = il;
+    // The status glyphs follow the text height: 16 px up to 144 dpi.
+    status_icon_ = dpi_ >= 192 ? 32 : dpi_ >= 144 ? 24 : 16;
+    HIMAGELIST sl = load_strip(launch_.instance,
+                               status_icon_ == 32   ? IDB_STATUS32
+                               : status_icon_ == 24 ? IDB_STATUS24
+                                                    : IDB_STATUS16,
+                               status_icon_, kStatusImages);
+    if (status_images_) ImageList_Destroy(status_images_);
+    status_images_ = sl;
     HFONT f = create_ui_font(dpi_);
     SendMessageW(toolbar_, WM_SETFONT, reinterpret_cast<WPARAM>(f), TRUE);
     SendMessageW(status_, WM_SETFONT, reinterpret_cast<WPARAM>(f), TRUE);
@@ -333,6 +414,21 @@ void Win32Frontend::create_bars() {
     SendMessageW(toolbar_, TB_SETEXTENDEDSTYLE, 0, TBSTYLE_EX_DOUBLEBUFFER);
     status_ = CreateWindowExW(0, STATUSCLASSNAMEW, nullptr, WS_CHILD | WS_VISIBLE | SBARS_SIZEGRIP, 0, 0, 0, 0, h,
                               nullptr, launch_.instance, nullptr);
+    // One tooltip per session indicator (state, host, TLS).
+    tips_ = CreateWindowExW(WS_EX_TOPMOST, TOOLTIPS_CLASSW, nullptr, WS_POPUP | TTS_ALWAYSTIP | TTS_NOPREFIX,
+                            CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, h, nullptr, launch_.instance,
+                            nullptr);
+    for (unsigned i = 0; i < Profile::kSessions; ++i) {
+        TOOLINFOW ti;
+        ZeroMemory(&ti, sizeof ti);
+        ti.cbSize = sizeof ti;
+        ti.uFlags = TTF_SUBCLASS;
+        ti.hwnd = status_;
+        ti.uId = i;
+        ti.lpszText = const_cast<wchar_t*>(L"");
+        SendMessageW(tips_, TTM_ADDTOOLW, 0, reinterpret_cast<LPARAM>(&ti));
+    }
+    SendMessageW(tips_, TTM_SETMAXTIPWIDTH, 0, 600);
     build_toolbar_images();
     static std::vector<std::wstring> texts;   // TB_ADDBUTTONS copies the strings
     texts.clear();
@@ -359,20 +455,57 @@ void Win32Frontend::create_bars() {
     SendMessageW(toolbar_, TB_AUTOSIZE, 0, 0);
 }
 
+// Status bar: the profile name on the left; on the right, per session an
+// orb (its state) and a lock (TLS), then room for the size grip.
+namespace {
+int status_gap(UINT dpi) { return scale_px(2, dpi); }
+int status_session_gap(UINT dpi) { return scale_px(8, dpi); }
+} // namespace
+
 void Win32Frontend::layout() {
-    HWND h = hwnd_.load();
     SendMessageW(toolbar_, TB_AUTOSIZE, 0, 0);
     SendMessageW(status_, WM_SIZE, 0, 0);
     RECT sr;
     GetClientRect(status_, &sr);
     const int w = sr.right;
-    const int parts[4] = {scale_px(200, dpi_) < w ? scale_px(200, dpi_) : w / 4,
-                          scale_px(400, dpi_) < w ? scale_px(400, dpi_) : w / 2,
-                          scale_px(560, dpi_) < w ? scale_px(560, dpi_) : 3 * w / 4, -1};
-    SendMessageW(status_, SB_SETPARTS, 4, reinterpret_cast<LPARAM>(parts));
-    (void)h;
+    const int icons = int(Profile::kSessions) * (2 * status_icon_ + status_gap(dpi_)) +
+                      int(Profile::kSessions - 1) * status_session_gap(dpi_) + scale_px(8, dpi_) +
+                      GetSystemMetrics(SM_CXVSCROLL);
+    const int parts[2] = {std::max(1, w - icons), -1};
+    SendMessageW(status_, SB_SETPARTS, 2, reinterpret_cast<LPARAM>(parts));
+    SendMessageW(status_, SB_SETTEXTW, 1 | SBT_OWNERDRAW | SBT_NOBORDERS, 0);
+    for (unsigned i = 0; i < Profile::kSessions; ++i) {
+        TOOLINFOW ti;
+        ZeroMemory(&ti, sizeof ti);
+        ti.cbSize = sizeof ti;
+        ti.hwnd = status_;
+        ti.uId = i;
+        ti.rect = session_icon_rect(i);
+        SendMessageW(tips_, TTM_NEWTOOLRECTW, 0, reinterpret_cast<LPARAM>(&ti));
+    }
+    last_status_text_.clear();
     dirty_ = true;
     schedule_render();
+}
+
+// Where session `session`'s orb and lock are, in status bar coordinates.
+RECT Win32Frontend::session_icon_rect(unsigned session) const {
+    RECT part{};
+    SendMessageW(status_, SB_GETRECT, 1, reinterpret_cast<LPARAM>(&part));
+    const int pair = 2 * status_icon_ + status_gap(dpi_);
+    const int x0 = part.left + scale_px(4, dpi_) + int(session) * (pair + status_session_gap(dpi_));
+    const int y0 = part.top + std::max(0, int(part.bottom - part.top - status_icon_) / 2);
+    return RECT{x0, y0, x0 + pair, y0 + status_icon_};
+}
+
+void Win32Frontend::draw_status_icons(const DRAWITEMSTRUCT& di) {
+    if (!status_images_) return;
+    for (unsigned i = 0; i < Profile::kSessions; ++i) {
+        const RECT r = session_icon_rect(i);
+        ImageList_Draw(status_images_, indicators_[i].orb, di.hDC, r.left, r.top, ILD_TRANSPARENT);
+        ImageList_Draw(status_images_, indicators_[i].lock, di.hDC, r.left + status_icon_ + status_gap(dpi_), r.top,
+                       ILD_TRANSPARENT);
+    }
 }
 
 RECT Win32Frontend::display_rect() const {
@@ -611,61 +744,138 @@ void Win32Frontend::update_title() {
     SetWindowTextW(hwnd_.load(), widen(t).c_str());
 }
 
+bool Win32Frontend::connected() const { return app_->host_link().controller_kind() == "tn5250"; }
+
+std::string Win32Frontend::tls_state_text(const TwinaxSessionStatus* s) const {
+    if (!s || !s->connected) return "TLS";
+    switch (cur_.p.tls_mode) {
+    case ProfileTlsMode::System: return cur_.accepted_once ? "TLS, certificate accepted once" : "TLS, verified";
+    case ProfileTlsMode::AcceptAll: return "TLS, certificate not verified";
+    case ProfileTlsMode::Fingerprint:
+        return cur_.accepted_once ? "TLS, certificate accepted once" : "TLS, trusted certificate";
+    }
+    return "TLS";
+}
+
+SessionIndicator Win32Frontend::session_indicator(unsigned i, const std::vector<TwinaxSessionStatus>& all) const {
+    SessionIndicator ind;
+    const std::string label = format("Session %u", i + 1);
+    if (!cur_.active || !cur_.p.sessions[i].used()) {
+        ind.orb = kOrbGrey;
+        ind.lock = kLockOpenDim;
+        ind.tip = label + ": not configured";
+        return ind;
+    }
+    const ProfileSession& ps = cur_.p.sessions[i];
+    const TwinaxSessionStatus* s = nullptr;
+    for (const TwinaxSessionStatus& x : all)
+        if (!x.printer && x.address == i) s = &x;
+    const bool tls = s ? s->tls : ps.tls;
+    ind.lock = tls ? kLockClosed : kLockOpen;
+    std::string state;
+    if (showing_trust_ && trust_station_ == i) {
+        ind.orb = kOrbOrange;
+        state = "connecting, the certificate is not trusted: waiting for your answer";
+    } else if (!s) {
+        ind.orb = kOrbRed;
+        state = "disconnected";
+    } else if (s->connected && s->state == "ready") {
+        ind.orb = kOrbGreen;
+        state = "connected";
+    } else if (s->held || s->state == "closed" || s->state == "failed" || s->state == "disconnected") {
+        ind.orb = kOrbRed;
+        state = s->held ? "disconnected" : s->state == "failed" ? "failed" : "closed";
+        if (!s->error.empty()) state += " (" + s->error + ")";
+        if (!s->held) state += ", retrying";
+    } else {
+        ind.orb = kOrbOrange;
+        state = s->state.empty() ? "connecting" : s->state;
+    }
+    const std::string peer = s && !s->peer.empty() ? s->peer : format("%s:%u", ps.host.c_str(), ps.port);
+    ind.tip = label + ": " + peer + "\n" + state + "\n" + (tls ? tls_state_text(s) : "TLS off (plain telnet)");
+    return ind;
+}
+
 void Win32Frontend::update_status() {
     const std::vector<TwinaxSessionStatus> sessions = app_->host_link().sessions();
-    std::string text[4];
-    for (unsigned i = 0; i < 2; ++i) {
-        const TwinaxSessionStatus* s = nullptr;
-        for (const TwinaxSessionStatus& x : sessions)
-            if (!x.printer && x.address == i) s = &x;
-        if (!s) {
-            text[i] = format("Session %u: %s", i + 1, i == 0 || sessions.empty() ? "not connected" : "-");
-            continue;
+    const std::string text = cur_.active ? "Profile: " + profile_display_name() : narrow(load_string(IDS_NO_PROFILE));
+    if (text != last_status_text_) {
+        last_status_text_ = text;
+        SendMessageW(status_, SB_SETTEXTW, 0, reinterpret_cast<LPARAM>(widen(text).c_str()));
+    }
+    bool repaint = false;
+    for (unsigned i = 0; i < Profile::kSessions; ++i) {
+        const SessionIndicator ind = session_indicator(i, sessions);
+        if (ind == indicators_[i]) continue;
+        if (ind.tip != indicators_[i].tip) {
+            const std::wstring tip = widen(ind.tip);
+            TOOLINFOW ti;
+            ZeroMemory(&ti, sizeof ti);
+            ti.cbSize = sizeof ti;
+            ti.hwnd = status_;
+            ti.uId = i;
+            ti.lpszText = const_cast<wchar_t*>(tip.c_str());
+            SendMessageW(tips_, TTM_UPDATETIPTEXTW, 0, reinterpret_cast<LPARAM>(&ti));
         }
-        std::string state = s->state == "ready" ? "connected" : s->state;
-        text[i] = format("Session %u: %s %s", i + 1, state.c_str(), s->peer.c_str());
-        if (!s->connected && !s->error.empty()) text[i] += " (" + s->error + ")";
+        indicators_[i] = ind;
+        repaint = true;
     }
-    bool tls = false, tls_up = false;
-    for (const TwinaxSessionStatus& x : sessions) {
-        tls = tls || x.tls;
-        tls_up = tls_up || (x.tls && x.connected);
+    if (repaint) {
+        RECT part{};
+        SendMessageW(status_, SB_GETRECT, 1, reinterpret_cast<LPARAM>(&part));
+        InvalidateRect(status_, &part, TRUE);
     }
-    if (!tls || !cur_.active) {
-        text[2] = narrow(load_string(IDS_TLS_OFF));
-    } else if (showing_trust_) {
-        // The TCP connection is up but the handshake waits on the prompt.
-        text[2] = "TLS: certificate not trusted, waiting";
-    } else if (!tls_up) {
-        text[2] = "TLS: not connected";
-    } else {
-        switch (cur_.p.tls_mode) {
-        case ProfileTlsMode::System: text[2] = cur_.accepted_once ? "TLS: accepted once" : "TLS: verified"; break;
-        case ProfileTlsMode::AcceptAll: text[2] = "TLS: not verified"; break;
-        case ProfileTlsMode::Fingerprint:
-            text[2] = cur_.accepted_once ? "TLS: accepted once" : "TLS: trusted fingerprint";
-            break;
-        }
+    // Disconnect / Reconnect toggle.
+    const bool on_line = connected();
+    if (on_line != toolbar_connected_) {
+        toolbar_connected_ = on_line;
+        SendMessageW(toolbar_, TB_CHANGEBITMAP, ID_FILE_DISCONNECT,
+                     MAKELPARAM(on_line ? kImgDisconnect : kImgReconnect, 0));
     }
-    text[3] = cur_.active ? "Profile: " + profile_display_name() : narrow(load_string(IDS_NO_PROFILE));
-    for (int i = 0; i < 4; ++i) {
-        if (text[i] == last_status_[i]) continue;
-        last_status_[i] = text[i];
-        SendMessageW(status_, SB_SETTEXTW, WPARAM(i), reinterpret_cast<LPARAM>(widen(text[i]).c_str()));
-    }
-    const bool connected = !sessions.empty();
-    SendMessageW(toolbar_, TB_ENABLEBUTTON, ID_FILE_DISCONNECT, MAKELPARAM(connected ? TRUE : FALSE, 0));
+    SendMessageW(toolbar_, TB_ENABLEBUTTON, ID_FILE_DISCONNECT,
+                 MAKELPARAM(on_line || cur_.active ? TRUE : FALSE, 0));
     SendMessageW(toolbar_, TB_ENABLEBUTTON, ID_FILE_SAVE, MAKELPARAM(cur_.active ? TRUE : FALSE, 0));
 }
 
 void Win32Frontend::update_ui_state() {
     update_title();
-    for (auto& s : last_status_) s.clear();
+    last_status_text_.clear();
     update_status();
 }
 
 // ---------------------------------------------------------------------------
 // Profiles and connections
+
+DisplaySubtype Win32Frontend::current_display() {
+    return emu_->with_machine([](Machine& m) { return m.options().display; });
+}
+
+bool Win32Frontend::apply_terminal_settings(const Profile& p, bool& rebuilt) {
+    HWND h = hwnd_.load();
+    rebuilt = false;
+    if (crt_params_.enabled != p.crt) {
+        crt_params_.enabled = p.crt;
+        app_->set_crt(crt_params_);
+        crt_.invalidate();
+    }
+    if (current_display() != p.display) {
+        rebuilt = app_->display_change_needs_power_cycle(p.display);
+        if (rebuilt) {
+            trust_->cancel_all();
+            release_keys();
+        }
+        std::string error;
+        if (!app_->set_display_subtype(p.display, error)) {
+            rebuilt = false;
+            error_box(h, std::string("Cannot change the CRT type: ") + error);
+            return false;
+        }
+    }
+    dirty_ = true;
+    schedule_render();
+    InvalidateRect(h, nullptr, FALSE);
+    return true;
+}
 
 void Win32Frontend::connect_profile(const Profile& p, bool power_cycle) {
     HWND h = hwnd_.load();
@@ -680,14 +890,17 @@ void Win32Frontend::connect_profile(const Profile& p, bool power_cycle) {
         error_box(h, "Cannot connect: " + error);
         return;
     }
+    bool rebuilt = false;
+    apply_terminal_settings(p, rebuilt);
     trust_->cancel_all();
     release_keys();
     cur_.accepted_once = false;
     // Like switching the terminal on: the running sessions close, the
     // terminal runs its power-on self test, and the controller brings the
-    // sessions up once it answers the polls.
-    const bool ok = power_cycle ? app_->connect_after_power_cycle(cfg, message, error)
-                                : app_->host_link().connect(cfg, message, error);
+    // sessions up once it answers the polls. A rebuilt machine is already
+    // powering on.
+    const bool ok = power_cycle && !rebuilt ? app_->connect_after_power_cycle(cfg, message, error)
+                                            : app_->host_link().connect(cfg, message, error);
     if (!ok) {
         error_box(h, error);
         update_ui_state();
@@ -697,42 +910,57 @@ void Win32Frontend::connect_profile(const Profile& p, bool power_cycle) {
     update_ui_state();
 }
 
-// Edit > Settings changed the CRT type. Green, amber (and paper-white where
-// the model's straps do not follow it) only change the picture; a change the
-// firmware or the host can see (colour: the device type; 3477 paper-white:
-// the display-type straps) rebuilds and power-cycles the terminal and
-// reconnects, after asking.
-void Win32Frontend::change_display_subtype(DisplaySubtype to) {
+void Win32Frontend::new_connection() {
+    release_keys();
+    Profile p;
+    p.model = model_name_;
+    if (!profile_editor_dialog(hwnd_.load(), p, ProfileEditMode::Connect, settings(), "New Connection")) return;
+    if (!confirm_discard()) return;
+    cur_ = CurrentProfile();
+    cur_.active = true;
+    cur_.p = p;
+    cur_.untitled = true;
+    cur_.modified = true;   // never saved
+    connect_profile(cur_.p);
+}
+
+// Edit > Connection Settings: the running profile in the editor. Changes
+// mark it modified (saved with File > Save, or asked about on exit or when
+// another profile is opened) and apply now: the CRT type at once (or after
+// a confirmation when the terminal must restart), connection changes by
+// reconnecting the sessions with the terminal running.
+void Win32Frontend::edit_connection() {
     HWND h = hwnd_.load();
-    const DisplaySubtype from = settings().display;
-    if (app_->display_change_needs_power_cycle(to)) {
-        std::string label = subtype_label(to);
-        if (!label.empty()) label[0] = char(std::tolower(static_cast<unsigned char>(label[0])));
-        if (message_box(h, string_with(IDS_CRT_RESET_CONFIRM, label), MB_YESNO | MB_ICONQUESTION) != IDYES) {
-            settings().display = from;   // keep the old setting
-            return;
-        }
-        const bool was_connected = app_->host_link().controller_kind() == "tn5250";
-        trust_->cancel_all();
-        release_keys();
-        std::string error;
-        if (!app_->set_display_subtype(to, error)) {
-            settings().display = from;
-            error_box(h, "Cannot change the CRT type: " + error);
-            update_ui_state();
-            return;
-        }
-        settings().display = to;
-        if (was_connected && cur_.active) connect_profile(cur_.p, false);   // just rebuilt: already powering on
-    } else {
-        std::string error;
-        app_->set_display_subtype(to, error);
-        settings().display = to;
+    if (!cur_.active) {
+        new_connection();
+        return;
     }
-    crt_.invalidate();
-    dirty_ = true;
-    schedule_render();
-    InvalidateRect(h, nullptr, FALSE);
+    release_keys();
+    Profile p = cur_.p;
+    const std::string title =
+        "Connection Settings: " + (cur_.untitled ? narrow(load_string(IDS_UNTITLED)) : cur_.name);
+    if (!profile_editor_dialog(h, p, ProfileEditMode::Apply, settings(), title)) return;
+    if (p == cur_.p) return;
+    const Profile old = cur_.p;
+    if (p.display != current_display() && app_->display_change_needs_power_cycle(p.display)) {
+        std::string label = subtype_label(p.display);
+        if (!label.empty()) label[0] = char(std::tolower(static_cast<unsigned char>(label[0])));
+        if (message_box(h, string_with(IDS_CRT_RESET_CONFIRM, label), MB_YESNO | MB_ICONQUESTION) != IDYES)
+            p.display = old.display;   // keep the rest of the changes
+    }
+    Profile same_terminal = old;
+    same_terminal.display = p.display;
+    same_terminal.crt = p.crt;
+    const bool connection_changed = same_terminal != p;
+    const bool was_connected = connected();
+    bool rebuilt = false;
+    if (!apply_terminal_settings(p, rebuilt)) p.display = current_display();
+    if (p != old) {
+        cur_.p = p;
+        cur_.modified = true;
+    }
+    // A rebuilt terminal lost its sessions; changed sessions reconnect.
+    if (was_connected && (rebuilt || connection_changed)) connect_profile(cur_.p, false);
     update_ui_state();
 }
 
@@ -741,6 +969,22 @@ void Win32Frontend::disconnect() {
     std::string error;
     app_->host_link().disconnect(error);   // "not connected" is fine
     update_ui_state();
+}
+
+// The Disconnect toolbar button and menu item: off line -> reconnect the
+// current profile (the terminal keeps running, as when plugging the cable
+// back in).
+void Win32Frontend::toggle_connection() {
+    if (connected()) disconnect();
+    else if (cur_.active) connect_profile(cur_.p, false);
+}
+
+// Terminal > Reboot: switch the terminal off and on. The controller keeps
+// the sessions; the terminal runs its self test, comes back on line and
+// the host's screen is repainted.
+void Win32Frontend::reboot() {
+    release_keys();
+    app_->power_on();
 }
 
 void Win32Frontend::open_profile_file(const std::string& path) {
@@ -814,6 +1058,8 @@ void Win32Frontend::handle_trust_requests() {
     while (auto p = trust_->take()) {
         const std::string name = cur_.active ? (cur_.untitled ? narrow(load_string(IDS_UNTITLED)) : cur_.name)
                                              : std::string("(none)");
+        trust_station_ = p->req.station;
+        update_status();   // that session's orb: waiting for the answer
         const tn5250::TlsTrustDecision d = trust_dialog(hwnd_.load(), p->req, name);
         if (d == tn5250::TlsTrustDecision::AcceptPermanently && cur_.active) {
             profile_trust_certificate(cur_.p, p->req.station, p->req.peer.sha256);
@@ -868,26 +1114,13 @@ void Win32Frontend::edit_settings() {
     release_keys();
     AppSettings s = settings();
     if (!settings_dialog(h, dirs(), s)) return;
-    const bool crt_changed = s.crt != settings().crt;
     const bool speed_changed = s.speed_percent != settings().speed_percent;
-    const DisplaySubtype display = s.display;
     s.window = settings().window;
     s.zoom = settings().zoom;
-    s.display = settings().display;   // change_display_subtype() decides
     settings() = s;
     if (speed_changed) app_->set_speed_percent(s.speed_percent);
-    if (display != settings().display) change_display_subtype(display);
     std::string error;
     if (!save_settings(dirs().settings_file(), settings(), error)) error_box(h, error);
-    if (crt_changed) {
-        crt_params_.enabled = s.crt;
-        CrtParams p = crt_params_;
-        app_->set_crt(p);
-        crt_.invalidate();
-        dirty_ = true;
-        schedule_render();
-        InvalidateRect(h, nullptr, FALSE);
-    }
 }
 
 void Win32Frontend::command(int id) {
@@ -899,39 +1132,11 @@ void Win32Frontend::command(int id) {
         if (!name.empty()) open_profile_file(dirs().profile_path(name));
         break;
     }
-    case ID_FILE_CONNECT: {
-        release_keys();
-        Profile p;
-        p.model = model_name_;
-        if (!profile_editor_dialog(h, p, ProfileEditMode::Connect, settings(), "Connect")) break;
-        if (!confirm_discard()) break;
-        cur_ = CurrentProfile();
-        cur_.active = true;
-        cur_.p = p;
-        cur_.untitled = true;
-        cur_.modified = true;   // never saved
-        connect_profile(cur_.p);
-        break;
-    }
-    case ID_FILE_EDIT_PROFILE: {
-        if (!cur_.active) {
-            command(ID_FILE_CONNECT);
-            break;
-        }
-        release_keys();
-        Profile p = cur_.p;
-        const std::string title = "Profile: " + (cur_.untitled ? narrow(load_string(IDS_UNTITLED)) : cur_.name);
-        if (!profile_editor_dialog(h, p, ProfileEditMode::Connect, settings(), title)) break;
-        if (p != cur_.p) {
-            cur_.p = p;
-            cur_.modified = true;
-        }
-        connect_profile(cur_.p);
-        break;
-    }
+    case ID_FILE_NEW: new_connection(); break;
+    case ID_EDIT_CONNECTION: edit_connection(); break;
     case ID_FILE_SAVE: save_current(false); break;
     case ID_FILE_SAVE_AS: save_current(true); break;
-    case ID_FILE_DISCONNECT: disconnect(); break;
+    case ID_FILE_DISCONNECT: toggle_connection(); break;
     case ID_FILE_EXIT: PostMessageW(h, WM_CLOSE, 0, 0); break;
     case ID_EDIT_KEYMAP: edit_keymap(); break;
     case ID_EDIT_SETTINGS: edit_settings(); break;
@@ -948,7 +1153,7 @@ void Win32Frontend::command(int id) {
     case ID_TERM_ATTN: terminal_key("attn"); break;
     case ID_TERM_SYSRQ: terminal_key("sysrq"); break;
     case ID_TERM_RESET: terminal_key("reset"); break;
-    case ID_TERM_POWER_CYCLE: release_keys(); app_->power_on(); break;
+    case ID_TERM_POWER_CYCLE: reboot(); break;
     case ID_HELP_ABOUT: release_keys(); about_dialog(h, dirs()); break;
     default: break;
     }
@@ -1055,14 +1260,26 @@ LRESULT Win32Frontend::handle(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
         return 0;
     case WM_NOTIFY: {
         NMHDR* n = reinterpret_cast<NMHDR*>(lp);
-        if (n->code == TTN_GETDISPINFOW) {
+        if (n->code == TTN_GETDISPINFOW && n->hwndFrom != tips_) {
             NMTTDISPINFOW* di = reinterpret_cast<NMTTDISPINFOW*>(lp);
             for (const ToolButton& b : kToolbar)
                 if (b.command && UINT_PTR(b.command) == n->idFrom) {
                     di->hinst = launch_.instance;
                     di->lpszText = MAKEINTRESOURCEW(b.text);
                 }
+            if (n->idFrom == ID_FILE_DISCONNECT && !connected()) {
+                di->hinst = launch_.instance;
+                di->lpszText = MAKEINTRESOURCEW(IDS_TB_RECONNECT);
+            }
             return 0;
+        }
+        break;
+    }
+    case WM_DRAWITEM: {
+        const DRAWITEMSTRUCT* di = reinterpret_cast<const DRAWITEMSTRUCT*>(lp);
+        if (di->hwndItem == status_) {
+            draw_status_icons(*di);
+            return TRUE;
         }
         break;
     }
@@ -1071,9 +1288,12 @@ LRESULT Win32Frontend::handle(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
         const UINT active = cur_.active ? MF_ENABLED : MF_GRAYED;
         EnableMenuItem(m, ID_FILE_SAVE, MF_BYCOMMAND | active);
         EnableMenuItem(m, ID_FILE_SAVE_AS, MF_BYCOMMAND | active);
-        EnableMenuItem(m, ID_FILE_EDIT_PROFILE, MF_BYCOMMAND | active);
-        const bool connected = app_->host_link().controller_kind() == "tn5250";
-        EnableMenuItem(m, ID_FILE_DISCONNECT, MF_BYCOMMAND | (connected ? MF_ENABLED : MF_GRAYED));
+        const bool on_line = connected();
+        if (GetMenuState(m, ID_FILE_DISCONNECT, MF_BYCOMMAND) != UINT(-1)) {
+            ModifyMenuW(m, ID_FILE_DISCONNECT, MF_BYCOMMAND | MF_STRING, ID_FILE_DISCONNECT,
+                        on_line ? L"&Disconnect\tCtrl+Shift+D" : L"&Reconnect\tCtrl+Shift+D");
+            EnableMenuItem(m, ID_FILE_DISCONNECT, MF_BYCOMMAND | (on_line || cur_.active ? MF_ENABLED : MF_GRAYED));
+        }
         const double z = settings().zoom;
         CheckMenuRadioItem(m, ID_VIEW_ZOOM_100, ID_VIEW_ZOOM_200,
                            z >= 2.0 ? ID_VIEW_ZOOM_200 : z >= 1.5 ? ID_VIEW_ZOOM_150 : ID_VIEW_ZOOM_100, MF_BYCOMMAND);
@@ -1159,8 +1379,10 @@ bool Win32Frontend::run(Application& app, const FrontendOptions& opts, std::stri
         DispatchMessageW(&msg);
     }
     if (images_) ImageList_Destroy(images_);
+    if (status_images_) ImageList_Destroy(status_images_);
     if (font_) DeleteObject(font_);
     images_ = nullptr;
+    status_images_ = nullptr;
     font_ = nullptr;
     return true;
 }
@@ -1232,17 +1454,24 @@ bool win32_prepare(Win32Launch& launch) {
     }
     if (argv) LocalFree(argv);
 
-    // The model: from the settings when it can run, else the first that can.
+    // The terminal starts as the command-line profile describes it (model,
+    // CRT type, scan lines), else as a new profile would: the first model
+    // that can run, green, with scan lines. Connecting applies a profile's
+    // settings in any case.
     const auto models = runnable_models();
     if (models.empty()) {
         error_box(nullptr, "No terminal model of this build can run yet.");
         launch.exit_code = 2;
         return false;
     }
+    Profile start;
+    if (!launch.profile_path.empty()) {
+        std::string ignored;   // reported when the window opens it
+        if (!load_profile(launch.profile_path, start, ignored)) start = Profile();
+    }
     const Model* model = models.front();
     for (const Model* m : models)
-        if (m->info().name == launch.settings.model) model = m;
-    launch.settings.model = model->info().name;
+        if (m->info().name == start.model) model = m;
 
     // First start (or ROMs gone): the ROM manager.
     if (!model_roms_ready(*model, launch.dirs->roms()) &&
@@ -1272,7 +1501,7 @@ bool win32_prepare(Win32Launch& launch) {
                    "--rom-dir",
                    runtime_path(launch.dirs->roms()),
                    "--display",
-                   display_subtype_name(launch.settings.display),
+                   display_subtype_name(start.display),
                    "--speed",
                    std::to_string(launch.settings.speed_percent),
                    "--keymap",
@@ -1283,7 +1512,7 @@ bool win32_prepare(Win32Launch& launch) {
                    log_spec(),
                    "--log-file",
                    runtime_path(launch.dirs->root() + "\\em34xxw.log")};
-    if (!launch.settings.crt) launch.args.push_back("--no-crt");
+    if (!start.crt) launch.args.push_back("--no-crt");
     return true;
 }
 

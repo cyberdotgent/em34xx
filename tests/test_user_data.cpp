@@ -181,17 +181,12 @@ TEST_CASE("settings: defaults, round trip, tolerance") {
     CHECK(s.speed_percent == 100);
     CHECK_FALSE(s.window.valid);
 
-    s.model = "3477";
-    s.display = DisplaySubtype::Amber;
-    s.crt = false;
     s.speed_percent = 0;
     s.tls_min_version = TlsVersion::Tls1_0;
     s.zoom = 1.5;
     s.window = {true, -20, 30, 1024, 800, true};
     AppSettings back;
     REQUIRE(parse_settings(settings_to_toml(s), "rt", back, err));
-    CHECK(back.display == DisplaySubtype::Amber);
-    CHECK_FALSE(back.crt);
     CHECK(back.speed_percent == 0);
     CHECK(back.tls_min_version == TlsVersion::Tls1_0);
     CHECK(back.zoom == 1.5);
@@ -202,7 +197,6 @@ TEST_CASE("settings: defaults, round trip, tolerance") {
 
     REQUIRE(parse_settings("[window]\nzoom = 1.7\nunknown = 3\n[display]\nsubtype = \"plaid\"\n", "t", back, err));
     CHECK(back.zoom == 1.5);
-    CHECK(back.display == DisplaySubtype::Green);
     CHECK(snap_zoom(3.0) == 2.0);
     CHECK_FALSE(parse_settings("[window", "bad", back, err));
 
@@ -218,12 +212,13 @@ TEST_CASE("settings: defaults, round trip, tolerance") {
 TEST_CASE("profile: TOML round trip and validation") {
     Profile p;
     p.model = "3477";
-    p.tls = true;
+    p.display = DisplaySubtype::Amber;
+    p.crt = false;
     p.tls_mode = ProfileTlsMode::Fingerprint;
     p.tls_cert_sha256 = format_sha256_fingerprint(digest(1));
     p.tls_min_version = "1.1";
-    p.sessions[0] = {"pub400.com", 992, "QPADEV0001", ""};
-    p.sessions[1] = {"other.example", 9992, "", format_sha256_fingerprint(digest(9))};
+    p.sessions[0] = {"pub400.com", 992, "QPADEV0001", "", true};
+    p.sessions[1] = {"other.example", 9992, "", format_sha256_fingerprint(digest(9)), false};
     CHECK(p.validate().empty());
     const std::string text = profile_to_toml(p);
     CHECK(text.find("password") == std::string::npos);   // never stored (the comment says "Passwords")
@@ -231,6 +226,16 @@ TEST_CASE("profile: TOML round trip and validation") {
     std::string err;
     REQUIRE(parse_profile(text, "rt.em34xx", back, err));
     CHECK(back == p);
+    CHECK(back.display == DisplaySubtype::Amber);
+    CHECK_FALSE(back.crt);
+    CHECK(back.sessions[0].tls);
+    CHECK_FALSE(back.sessions[1].tls);
+    Profile changed = p;
+    changed.display = DisplaySubtype::Color;
+    CHECK(changed != p);
+    changed = p;
+    changed.sessions[1].tls = true;
+    CHECK(changed != p);
 
     TempRoot tmp;
     const std::string path = (tmp.path / "x.em34xx").string();
@@ -250,6 +255,8 @@ TEST_CASE("profile: TOML round trip and validation") {
     CHECK(bad.validate().find("session 1") != std::string::npos);
     bad = one;
     bad.tls_mode = ProfileTlsMode::Fingerprint;
+    CHECK(bad.validate().empty());   // no session uses TLS
+    bad.sessions[0].tls = true;
     CHECK_FALSE(bad.validate().empty());
     bad.tls_cert_sha256 = "zz";
     CHECK_FALSE(bad.validate().empty());
@@ -265,6 +272,17 @@ TEST_CASE("profile: TOML round trip and validation") {
     CHECK_FALSE(parse_profile("[tls]\nverify = \"maybe\"\n", "v", back, err));
     CHECK_FALSE(parse_profile("[[session]]\nport = 0\n", "p", back, err));
     CHECK_FALSE(parse_profile("[[session]]\n[[session]]\n[[session]]\n", "3", back, err));
+    CHECK_FALSE(parse_profile("[display]\nsubtype = \"plaid\"\n", "d", back, err));
+
+    // Format 1 (em34xx 0.1): one tls.enabled for every session, no [display].
+    REQUIRE(parse_profile("format = 1\nmodel = \"3477\"\n[tls]\nenabled = true\nverify = \"system\"\n"
+                          "[[session]]\nhost = \"a\"\nport = 992\n[[session]]\nhost = \"b\"\nport = 992\n",
+                          "v1", back, err));
+    CHECK(back.sessions[0].tls);
+    CHECK(back.sessions[1].tls);
+    CHECK(back.display == DisplaySubtype::Green);
+    CHECK(back.crt);
+    CHECK(profile_to_toml(back).find("format = 2") != std::string::npos);
 }
 
 TEST_CASE("profile: the connect configuration and trusting a certificate") {
@@ -282,10 +300,10 @@ TEST_CASE("profile: the connect configuration and trusting a certificate") {
     CHECK(c.tn5250.port == 23);
     CHECK_FALSE(c.tn5250.tls);
 
-    p.tls = true;
     p.tls_mode = ProfileTlsMode::AcceptAll;
     p.sessions[0].port = 992;
-    p.sessions[1] = {"pub400.com", 992, "SECOND", ""};
+    p.sessions[0].tls = true;
+    p.sessions[1] = {"pub400.com", 992, "SECOND", "", true};
     REQUIRE(profile_connect_config(p, base, TlsVersion::Tls1_0, c, err));
     CHECK(c.tn5250.tls);
     CHECK(c.tn5250.tls_verify == TlsVerify::None);
@@ -316,6 +334,38 @@ TEST_CASE("profile: the connect configuration and trusting a certificate") {
     CHECK(c.twinax.stations[1].host == "other.example");
     CHECK(c.twinax.stations[1].port == 9992);
     CHECK(c.twinax.stations[1].tls_cert_sha256 == p.sessions[1].cert_sha256);
+
+    CHECK(c.twinax.stations[1].tls == 1);
+
+    // Mixed: session 1 plain, session 2 with TLS and the profile's pin.
+    Profile mixed;
+    mixed.tls_mode = ProfileTlsMode::Fingerprint;
+    mixed.tls_cert_sha256 = format_sha256_fingerprint(digest(4));
+    mixed.sessions[0] = {"pub400.com", 23, "", "", false};
+    mixed.sessions[1] = {"pub400.com", 992, "", "", true};
+    REQUIRE(profile_connect_config(mixed, base, TlsVersion::Tls1_2, c, err));
+    CHECK_FALSE(c.tn5250.tls);
+    CHECK(c.tn5250.tls_cert_sha256.empty());
+    REQUIRE(c.twinax.stations.size() == 2);
+    CHECK(c.twinax.stations[1].tls == 1);
+    CHECK(c.twinax.stations[1].port == 992);
+    CHECK(c.twinax.stations[1].tls_cert_sha256 == mixed.tls_cert_sha256);
+    Tn5250Config s2 = c.tn5250;
+    apply_station_tls(s2, c.twinax.stations[1]);
+    CHECK(s2.tls);
+    CHECK(s2.tls_cert_sha256 == mixed.tls_cert_sha256);
+    // And the other way round: session 2 plain.
+    mixed.sessions[0].tls = true;
+    mixed.sessions[0].port = 992;
+    mixed.sessions[1].tls = false;
+    mixed.sessions[1].port = 23;
+    REQUIRE(profile_connect_config(mixed, base, TlsVersion::Tls1_2, c, err));
+    CHECK(c.tn5250.tls);
+    CHECK(c.twinax.stations[1].tls == 0);
+    s2 = c.tn5250;
+    apply_station_tls(s2, c.twinax.stations[1]);
+    CHECK_FALSE(s2.tls);
+    CHECK(s2.validate().empty());
 
     Profile invalid;
     CHECK_FALSE(profile_connect_config(invalid, base, TlsVersion::Tls1_2, c, err));

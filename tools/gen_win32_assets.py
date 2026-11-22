@@ -5,14 +5,20 @@
 Writes into src/frontend/win32/res/:
   em34xxw.ico      application icon: a terminal (16, 24, 32, 48, 64 px)
   profile.ico      .em34xx document icon (16, 32, 48 px)
-  toolbar16.bmp    toolbar strip, 6 glyphs, 32-bit BGRA with alpha
+  toolbar16.bmp    toolbar strip, 8 glyphs, 32-bit BGRA with alpha
   toolbar24.bmp    the same at 24 px (picked at 120-167 dpi)
   toolbar32.bmp    the same at 32 px (168 dpi and more)
+  status16.bmp     status bar strip (16, 24, 32 px like the toolbar): session
+  status24.bmp     orbs and TLS locks
+  status32.bmp
 
 The glyphs are drawn from simple shapes in unit coordinates with 4x4
 supersampling, so every size is rendered, not scaled. Toolbar order (must
-match kToolbarImages in src/frontend/win32/win32_frontend.cpp):
-  0 connect to profile, 1 connect, 2 save, 3 disconnect, 4 settings, 5 keymap
+match the image indices in src/frontend/win32/win32_frontend.cpp):
+  0 connect to profile, 1 new connection, 2 save, 3 disconnect, 4 settings,
+  5 keymap, 6 reconnect, 7 reboot (power cycle)
+Status strip order: 0 orb green, 1 orb grey, 2 orb red, 3 orb orange,
+  4 lock closed, 5 lock open, 6 lock closed (dimmed), 7 lock open (dimmed)
 Run from the repository root: python3 tools/gen_win32_assets.py
 """
 import math
@@ -110,6 +116,42 @@ def plug(dx=0.0, dy=0.0, color=GREEN):
 
 def g_connect():
     return plug()
+
+
+def g_new_connection():
+    badge = union(rect(0.66, 0.04, 0.78, 0.40), rect(0.54, 0.16, 0.90, 0.28))
+    return plug(dx=-0.12) + [(circle(0.72, 0.22, 0.24), WHITE), (circle(0.72, 0.22, 0.20), GREEN),
+                             (badge, WHITE)]
+
+
+def g_reboot():
+    # The power symbol: a broken ring and a bar through the gap.
+    ring_shape = minus(ring(0.5, 0.54, 0.24, 0.38), poly([(0.5, 0.54), (0.26, 0.0), (0.74, 0.0)]))
+    bar = rect(0.43, 0.06, 0.57, 0.50, 0.05)
+    return [(ring_shape, DARK), (bar, WHITE), (rect(0.45, 0.08, 0.55, 0.48, 0.04), AMBER),
+            (minus(ring(0.5, 0.54, 0.27, 0.35), poly([(0.5, 0.54), (0.22, 0.0), (0.78, 0.0)])), AMBER)]
+
+
+def g_orb(color):
+    r, g, b, a = color
+    dark = (int(r * 0.6), int(g * 0.6), int(b * 0.6), 255)
+    light = (min(255, r + 90), min(255, g + 90), min(255, b + 90), 255)
+    return [(circle(0.5, 0.5, 0.36), dark), (circle(0.5, 0.5, 0.30), color),
+            (circle(0.42, 0.40, 0.11), light)]
+
+
+def g_lock(closed, dim=False):
+    edge = (150, 156, 166, 255) if dim else DARK
+    body_col = (214, 218, 224, 255) if dim else AMBER if closed else GREY
+    if closed:
+        shackle = minus(ring(0.5, 0.40, 0.15, 0.25), rect(0.0, 0.40, 1.0, 1.0))
+        legs = union(rect(0.25, 0.40, 0.35, 0.50), rect(0.65, 0.40, 0.75, 0.50))
+    else:
+        shackle = minus(ring(0.66, 0.30, 0.15, 0.25), rect(0.0, 0.30, 1.0, 1.0))
+        legs = rect(0.81, 0.30, 0.91, 0.42)
+    body = rect(0.18, 0.46, 0.82, 0.92, 0.06)
+    return [(union(shackle, legs), edge), (body, edge), (rect(0.23, 0.51, 0.77, 0.87, 0.04), body_col),
+            (rect(0.46, 0.60, 0.54, 0.78, 0.02), edge)]
 
 
 def g_save():
@@ -252,9 +294,13 @@ def main():
     os.makedirs(OUT, exist_ok=True)
     write_ico(os.path.join(OUT, "em34xxw.ico"), g_terminal(), [16, 24, 32, 48, 64])
     write_ico(os.path.join(OUT, "profile.ico"), g_document(), [16, 32, 48])
-    glyphs = [g_profiles(), g_connect(), g_save(), g_disconnect(), g_settings(), g_keymap()]
+    glyphs = [g_profiles(), g_new_connection(), g_save(), g_disconnect(), g_settings(), g_keymap(), g_connect(),
+              g_reboot()]
+    status = [g_orb(GREEN), g_orb(GREY), g_orb(RED), g_orb(AMBER), g_lock(True), g_lock(False),
+              g_lock(True, True), g_lock(False, True)]
     for s in (16, 24, 32):
         write_strip(os.path.join(OUT, "toolbar%d.bmp" % s), glyphs, s)
+        write_strip(os.path.join(OUT, "status%d.bmp" % s), status, s)
 
 
 if __name__ == "__main__":
