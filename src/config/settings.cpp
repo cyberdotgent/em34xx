@@ -72,6 +72,8 @@ bool parse_settings(const std::string& text, const std::string& origin, AppSetti
     }
     AppSettings s;
     // model and [display] of em34xx 0.1 are ignored: they are in the profiles now.
+    if (auto v = root["startup"]["open_profile"].value<bool>()) s.startup_open = *v;
+    if (auto v = root["startup"]["profile"].value<std::string>()) s.startup_profile = *v;
     if (auto v = root["emulator"]["speed"].value<int64_t>()) s.speed_percent = unsigned(*v < 0 ? 0 : *v > 10000 ? 10000 : *v);
     if (auto v = root["tls"]["min_version"].value<std::string>()) {
         TlsVersion t;
@@ -105,6 +107,7 @@ std::string settings_to_toml(const AppSettings& s) {
         window.insert("height", int64_t(s.window.height));
     }
     toml::table root{
+        {"startup", toml::table{{"open_profile", s.startup_open}, {"profile", s.startup_profile}}},
         {"emulator", toml::table{{"speed", int64_t(s.speed_percent)}}},
         {"tls", toml::table{{"min_version", tls_version_name(s.tls_min_version)}}},
         {"window", window},

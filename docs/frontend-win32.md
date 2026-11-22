@@ -49,7 +49,9 @@ with `GetProcAddress` and fall back to the system DPI.
    the scan code the controller decodes and each record sent to the host
    (docs/keyboard.md, "Diagnosing input").
 7. The main window opens. With a profile on the command line, that
-   profile connects (below); otherwise **Connect to Profile** (the profile
+   profile connects (below); otherwise the startup profile does when
+   Settings > Startup has "Open session on startup" checked and names a
+   profile that still exists; otherwise **Connect to Profile** (the profile
    manager) opens at once, modal over the main window and centred on it.
    Close/Cancel leaves the terminal idle and not connected.
 
@@ -121,6 +123,9 @@ display belong to the profile. em34xx 0.1 kept `model` and `[display]`
 here; they are now ignored.
 
 ```toml
+[startup]
+open_profile = false     # open `profile` at start (Settings > Startup)
+profile = ""
 [emulator]
 speed = 100              # percent; 0 = unthrottled (immediately)
 [tls]
@@ -218,7 +223,7 @@ message.
 | File | Exit | | asks to save an unsaved or changed profile |
 | Edit | Connection Settings... (Ctrl+Shift+E) | | the running profile in the editor (OK, Cancel). A change marks the profile modified (`*`; saved with Save, asked about on exit or when another profile is opened) and applies at once: the CRT type and scan lines as in "Applying a profile's terminal settings", connection changes (hosts, ports, devices, TLS) by reconnecting with the terminal running. Without a profile it is New Connection |
 | Edit | Keymap... | yes | the keymap editor |
-| Edit | Settings... | yes | speed, default TLS minimum, ROM images, file association |
+| Edit | Settings... | yes | startup profile, speed, default TLS minimum, ROM images, file association |
 | View | Zoom > 1x / 1.5x / 2x | | radio items; the picture area becomes the presented frame times the zoom times the DPI scale (shrunk to the work area if it does not fit); manual resizing stays possible and choosing a zoom snaps back. Saved in settings.toml |
 | Terminal | Attn, SysRq, Reset, Setup | yes (text buttons) | press the terminal's own key through the keyboard model (`Machine::terminal_key()`, set-3 position with the Shift/Alt its legend needs), so the firmware and the controller see the real key |
 | Terminal | Reboot (Power Cycle) | yes | switch the terminal off and on with the sessions left connected (see "Connecting") |

@@ -68,6 +68,8 @@
 #define IDC_SET_ROMS            2024
 #define IDC_SET_ASSOC           2025
 #define IDC_SET_FOLDER          2026
+#define IDC_SET_STARTUP         2027
+#define IDC_SET_STARTUP_PROFILE 2028
 
 #define IDC_PROF_LIST           2040
 #define IDC_PROF_CONNECT        2041

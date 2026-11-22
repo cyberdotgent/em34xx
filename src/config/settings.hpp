@@ -5,6 +5,9 @@
 // profile (config/profile.hpp); em34xx 0.1 kept them here and those keys
 // are now ignored.
 //
+//   [startup]
+//   open_profile = false      open `profile` at start (when no profile is
+//   profile = ""              given on the command line and it exists)
 //   [emulator]
 //   speed = 100               percent of the nominal clock, 0 = unthrottled
 //   [tls]
@@ -38,6 +41,8 @@ struct AppSettings {
     TlsVersion tls_min_version = TlsVersion::Tls1_2;
     double zoom = 1.0;
     WindowPlacement window;
+    bool startup_open = false;
+    std::string startup_profile;   // profile name (file stem in profiles\)
 };
 
 // The zoom levels offered (View > Zoom); zoom values are snapped to these.

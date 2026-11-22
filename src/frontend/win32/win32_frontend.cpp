@@ -1225,9 +1225,17 @@ LRESULT Win32Frontend::handle(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
         return 0;
     }
     case WM_APP_STARTUP:
-        // No profile on the command line: offer the profiles, modal over
-        // the main window. Cancel leaves the terminal idle.
-        if (!quit_.load()) command(ID_FILE_PROFILES);
+        // No profile on the command line: the startup profile (Settings)
+        // when one is set and still exists, else the profile manager,
+        // modal over the main window. Cancel leaves the terminal idle.
+        if (quit_.load()) return 0;
+        if (settings().startup_open && !settings().startup_profile.empty() &&
+            dirs().profile_exists(settings().startup_profile)) {
+            open_profile_file(dirs().profile_path(settings().startup_profile));
+            SetFocus(hwnd);
+        } else {
+            command(ID_FILE_PROFILES);
+        }
         return 0;
     case WM_APP_QUIT:
         cur_.modified = false;   // asked to end: no questions

@@ -241,12 +241,26 @@ namespace {
 struct SettingsDlg {
     const UserDirs* dirs;
     AppSettings s;
+    std::vector<std::string> profiles;   // the startup combo's entries after the blank one
 };
+
+void settings_update_startup(HWND dlg) {
+    EnableWindow(GetDlgItem(dlg, IDC_SET_STARTUP_PROFILE), IsDlgButtonChecked(dlg, IDC_SET_STARTUP) == BST_CHECKED);
+}
 
 INT_PTR CALLBACK settings_proc(HWND dlg, UINT msg, WPARAM wp, LPARAM lp) {
     switch (msg) {
     case WM_INITDIALOG: {
         SettingsDlg* d = init_dialog_data<SettingsDlg>(dlg, lp);
+        CheckDlgButton(dlg, IDC_SET_STARTUP, d->s.startup_open ? BST_CHECKED : BST_UNCHECKED);
+        d->profiles = d->dirs->list_profiles();
+        combo_add(dlg, IDC_SET_STARTUP_PROFILE, "");
+        combo_set_sel(dlg, IDC_SET_STARTUP_PROFILE, 0);
+        for (size_t i = 0; i < d->profiles.size(); ++i) {
+            combo_add(dlg, IDC_SET_STARTUP_PROFILE, d->profiles[i]);
+            if (d->profiles[i] == d->s.startup_profile) combo_set_sel(dlg, IDC_SET_STARTUP_PROFILE, int(i + 1));
+        }
+        settings_update_startup(dlg);
         int speed_sel = 2;
         for (size_t i = 0; i < sizeof kSpeeds / sizeof kSpeeds[0]; ++i) {
             combo_add(dlg, IDC_SET_SPEED, kSpeeds[i] ? format("%u %%", kSpeeds[i]) : std::string("Unthrottled"));
@@ -263,6 +277,9 @@ INT_PTR CALLBACK settings_proc(HWND dlg, UINT msg, WPARAM wp, LPARAM lp) {
     case WM_COMMAND: {
         SettingsDlg* d = dialog_data<SettingsDlg>(dlg);
         switch (LOWORD(wp)) {
+        case IDC_SET_STARTUP:
+            settings_update_startup(dlg);
+            return TRUE;
         case IDC_SET_ROMS:
             rom_manager_dialog(dlg, *d->dirs, nullptr);
             return TRUE;
@@ -279,6 +296,9 @@ INT_PTR CALLBACK settings_proc(HWND dlg, UINT msg, WPARAM wp, LPARAM lp) {
             return TRUE;
         }
         case IDOK: {
+            d->s.startup_open = IsDlgButtonChecked(dlg, IDC_SET_STARTUP) == BST_CHECKED;
+            const int pr = combo_sel(dlg, IDC_SET_STARTUP_PROFILE);
+            d->s.startup_profile = pr > 0 && size_t(pr) <= d->profiles.size() ? d->profiles[size_t(pr - 1)] : "";
             const int sp = combo_sel(dlg, IDC_SET_SPEED);
             if (sp >= 0 && sp < int(sizeof kSpeeds / sizeof kSpeeds[0])) d->s.speed_percent = kSpeeds[sp];
             const int tv = combo_sel(dlg, IDC_SET_TLSMIN);
@@ -299,7 +319,7 @@ INT_PTR CALLBACK settings_proc(HWND dlg, UINT msg, WPARAM wp, LPARAM lp) {
 } // namespace
 
 bool settings_dialog(HWND owner, const UserDirs& dirs, AppSettings& s) {
-    SettingsDlg d{&dirs, s};
+    SettingsDlg d{&dirs, s, {}};
     if (DialogBoxParamW(instance(), MAKEINTRESOURCEW(IDD_SETTINGS), owner, settings_proc,
                         reinterpret_cast<LPARAM>(&d)) != IDOK)
         return false;
