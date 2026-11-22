@@ -22,9 +22,10 @@ public:
     BatteryBackedRam(std::string name, Bus& bus, uint32_t base, uint32_t size);
     ~BatteryBackedRam() override;
 
-    // Select the image file. An existing file must hold exactly size()
-    // bytes and is copied into RAM; a missing file is created at power-off.
-    // An empty path keeps the RAM volatile.
+    // Select the image file. An existing file of exactly size() bytes is
+    // copied into RAM; a missing file is created at power-off. A file of
+    // another size is moved aside (FILE.bad) with a warning and the RAM
+    // starts cleared. An empty path keeps the RAM volatile.
     bool open(const std::string& path, std::string& error);
     bool volatile_ram() const { return path_.empty(); }
     uint32_t size() const { return size_; }

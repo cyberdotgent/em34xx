@@ -1,12 +1,11 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "devices/battery_ram.hpp"
 
+#include "util/file_io.hpp"
 #include "util/log.hpp"
 #include "util/strings.hpp"
 
-#include <cstdio>
 #include <fstream>
-#include <iterator>
 #include <stdexcept>
 
 namespace em34xx {
@@ -30,23 +29,34 @@ BatteryBackedRam::~BatteryBackedRam() {
 }
 
 bool BatteryBackedRam::open(const std::string& path, std::string& error) {
+    (void)error;   // an unusable image is no longer an error
     path_ = path;
     if (path.empty()) {
         LOG_INFO("nvram", "%s is volatile: RAM starts cleared and is not kept at exit "
                  "(use --nvram FILE to keep it, e.g. the setup configuration)", name().c_str());
         return true;
     }
-    std::ifstream f(path, std::ios::binary);
-    if (!f) {
+    uint64_t on_disk = 0;
+    std::ifstream f(path_from_utf8(path), std::ios::binary);
+    if (!f || !file_size(path, on_disk)) {
         LOG_INFO("nvram", "%s: image %s does not exist yet; it is created at exit", name().c_str(),
                  path.c_str());
         return true;
     }
-    std::vector<uint8_t> image((std::istreambuf_iterator<char>(f)), std::istreambuf_iterator<char>());
-    if (image.size() != size_) {
-        error = format("RAM image %s has %zu bytes, expected %u", path.c_str(), image.size(), size_);
-        path_.clear();
-        return false;
+    // The size is checked before anything is read.
+    std::vector<uint8_t> image(on_disk == size_ ? size_ : 0);
+    if (on_disk != size_ || !f.read(reinterpret_cast<char*>(image.data()), std::streamsize(size_))) {
+        // Not this RAM's image. Refusing it would stop every start until
+        // the file is deleted by hand: keep it under another name and
+        // start cleared, as with no image.
+        f.close();
+        std::string why;
+        const bool kept = replace_file(path, path + ".bad", why);
+        LOG_WARN("nvram", "%s: image %s has %llu bytes, expected %u; starting cleared, %s", name().c_str(),
+                 path.c_str(), static_cast<unsigned long long>(on_disk), size_,
+                 kept ? ("the old file is kept as " + path + ".bad").c_str()
+                      : ("it is overwritten at exit (" + why + ")").c_str());
+        return true;
     }
     for (uint32_t i = 0; i < size_; ++i) bus_.poke8(base_ + i, image[i]);
     LOG_INFO("nvram", "%s: loaded %s", name().c_str(), path.c_str());
@@ -54,22 +64,9 @@ bool BatteryBackedRam::open(const std::string& path, std::string& error) {
 }
 
 static bool write_image(const std::string& path, const uint8_t* bytes, size_t n, std::string& error) {
-    // Write a temporary file and rename it over the image, so a crash never
-    // leaves a truncated image behind.
-    const std::string tmp = path + ".tmp";
-    {
-        std::ofstream f(tmp, std::ios::binary | std::ios::trunc);
-        if (!f || !f.write(reinterpret_cast<const char*>(bytes), std::streamsize(n))) {
-            error = "cannot write " + tmp;
-            return false;
-        }
-    }
-    std::remove(path.c_str());   // rename() does not replace on Windows
-    if (std::rename(tmp.c_str(), path.c_str()) != 0) {
-        error = "cannot rename " + tmp + " to " + path;
-        return false;
-    }
-    return true;
+    // Through a temporary file that replaces the image in one step, so a
+    // crash or a full disk never costs the previous image.
+    return write_file_atomic(path, bytes, n, error);
 }
 
 bool BatteryBackedRam::flush(std::string& error) {

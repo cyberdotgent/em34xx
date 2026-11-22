@@ -401,13 +401,19 @@ TEST_CASE("I2C EEPROM persistence") {
         e.set_byte(0x07, 0x77);
     }
     {
-        // Wrong size is refused.
+        // An image of the wrong size is moved aside, not refused: the
+        // EEPROM starts blank and keeps its file name.
         I2cEeprom e("eeprom", 512, 16);
         std::string err;
-        CHECK_FALSE(e.open(path, err));
-        CHECK(err.find("expected 512") != std::string::npos);
+        REQUIRE(e.open(path, err));
+        CHECK_FALSE(e.ephemeral());
+        CHECK(e.byte(0x05) == 0xFF);
+        CHECK_FALSE(std::ifstream(path, std::ios::binary).good());
+        CHECK(std::ifstream(path + ".bad", std::ios::binary).good());
     }
+    CHECK_FALSE(std::ifstream(path + ".tmp", std::ios::binary).good());
     std::remove(path.c_str());
+    std::remove((path + ".bad").c_str());
 }
 
 TEST_CASE("I2C EEPROM ephemeral contents are discarded") {
@@ -458,14 +464,27 @@ TEST_CASE("Battery-backed RAM keeps its contents across power cycles") {
         CHECK(bus.peek8(0x1FFFF) == 0xA5);
     }
     {
-        // A wrong-sized image is refused; without a file the RAM is volatile.
+        // A wrong-sized image is moved aside, not refused: the RAM starts
+        // cleared and a fresh image is written at power-off.
         Bus bus{20};
         bus.map_ram("ram", 0, 0x20000);
         BatteryBackedRam nv("nvram", bus, 0, 0x10000);
         std::string err;
-        CHECK_FALSE(nv.open(path, err));
-        CHECK(err.find("expected 65536") != std::string::npos);
-        CHECK(nv.volatile_ram());
+        REQUIRE(nv.open(path, err));
+        CHECK_FALSE(nv.volatile_ram());
+        CHECK(bus.peek8(0x1A0) == 0x00);
+        CHECK_FALSE(std::ifstream(path, std::ios::binary).good());
+        bus.poke8(0x1A0, 0x3C);
     }
+    {
+        std::ifstream bad(path + ".bad", std::ios::binary | std::ios::ate);
+        REQUIRE(bad.good());
+        CHECK(bad.tellg() == std::streampos(0x20000));
+        std::ifstream fresh(path, std::ios::binary | std::ios::ate);
+        REQUIRE(fresh.good());
+        CHECK(fresh.tellg() == std::streampos(0x10000));
+    }
+    CHECK_FALSE(std::ifstream(path + ".tmp", std::ios::binary).good());
     std::remove(path.c_str());
+    std::remove((path + ".bad").c_str());
 }

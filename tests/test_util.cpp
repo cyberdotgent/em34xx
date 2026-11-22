@@ -1,10 +1,14 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "config/config.hpp"
+#include "util/file_io.hpp"
 #include "util/sha256.hpp"
 #include "util/strings.hpp"
 
 #include <doctest/doctest.h>
 
+#include <cstdio>
+#include <fstream>
+#include <iterator>
 #include <string>
 
 using namespace em34xx;
@@ -58,4 +62,30 @@ TEST_CASE("command line overrides") {
     AppConfig bad;
     const char* argv2[] = {"em34xx", "--station-address", "7"};
     CHECK_FALSE(parse_command_line(3, const_cast<char**>(argv2), bad, err));
+}
+
+TEST_CASE("atomic file replacement") {
+    const std::string path = "em34xx_test_file_io.bin";
+    const auto contents = [&] {
+        std::ifstream f(path, std::ios::binary);
+        return std::string((std::istreambuf_iterator<char>(f)), std::istreambuf_iterator<char>());
+    };
+    std::string err;
+    const uint8_t a[] = {'o', 'n', 'e'}, b[] = {'t', 'w', 'o', '!'};
+    REQUIRE(write_file_atomic(path, a, sizeof a, err));
+    CHECK(contents() == "one");
+    REQUIRE(write_file_atomic(path, b, sizeof b, err));   // replaces
+    CHECK(contents() == "two!");
+    CHECK_FALSE(std::ifstream(path + ".tmp").good());
+    uint64_t size = 0;
+    CHECK(file_size(path, size));
+    CHECK(size == 4);
+    CHECK_FALSE(file_size(path + ".absent", size));
+
+    // A failed write reports the error and keeps the previous file.
+    CHECK_FALSE(write_file_atomic("em34xx_no_such_dir/x.bin", a, sizeof a, err));
+    CHECK_FALSE(err.empty());
+    CHECK_FALSE(replace_file(path + ".absent", path, err));
+    CHECK(contents() == "two!");
+    std::remove(path.c_str());
 }

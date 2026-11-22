@@ -1,13 +1,12 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "devices/ibm3477/i2c.hpp"
 
+#include "util/file_io.hpp"
 #include "util/log.hpp"
 #include "util/strings.hpp"
 
 #include <algorithm>
-#include <cstdio>
 #include <fstream>
-#include <iterator>
 
 namespace em34xx {
 
@@ -26,6 +25,7 @@ void I2cEeprom::attach(I2cBus& bus, uint8_t base_addr8) {
 }
 
 bool I2cEeprom::open(const std::string& path, std::string& error) {
+    (void)error;   // an unusable image is no longer an error
     path_ = path;
     dirty_ = false;
     std::fill(data_.begin(), data_.end(), 0xFF);
@@ -34,17 +34,28 @@ bool I2cEeprom::open(const std::string& path, std::string& error) {
                  "(use --eeprom FILE to keep them)", name().c_str());
         return true;
     }
-    std::ifstream f(path, std::ios::binary);
-    if (!f) {
+    uint64_t on_disk = 0;
+    std::ifstream f(path_from_utf8(path), std::ios::binary);
+    if (!f || !file_size(path, on_disk)) {
         LOG_INFO("eeprom", "%s: image %s does not exist yet; starting blank, it is created on the first write",
                  name().c_str(), path.c_str());
         return true;
     }
-    std::vector<uint8_t> image((std::istreambuf_iterator<char>(f)), std::istreambuf_iterator<char>());
-    if (image.size() != data_.size()) {
-        error = format("EEPROM image %s has %zu bytes, expected %zu", path.c_str(), image.size(), data_.size());
-        path_.clear();
-        return false;
+    // The size is checked before anything is read.
+    std::vector<uint8_t> image(on_disk == data_.size() ? data_.size() : 0);
+    if (on_disk != data_.size() ||
+        !f.read(reinterpret_cast<char*>(image.data()), std::streamsize(image.size()))) {
+        // Not this EEPROM's image. Refusing it would stop every start
+        // until the file is deleted by hand: keep it under another name
+        // and start blank, as with no image.
+        f.close();
+        std::string why;
+        const bool kept = replace_file(path, path + ".bad", why);
+        LOG_WARN("eeprom", "%s: image %s has %llu bytes, expected %zu; starting blank, %s", name().c_str(),
+                 path.c_str(), static_cast<unsigned long long>(on_disk), data_.size(),
+                 kept ? ("the old file is kept as " + path + ".bad").c_str()
+                      : ("it is overwritten on the first write (" + why + ")").c_str());
+        return true;
     }
     data_ = std::move(image);
     LOG_INFO("eeprom", "%s: loaded %s", name().c_str(), path.c_str());
@@ -52,22 +63,9 @@ bool I2cEeprom::open(const std::string& path, std::string& error) {
 }
 
 static bool write_file(const std::string& path, const std::vector<uint8_t>& data, std::string& error) {
-    // Write a temporary file and rename it over the image, so a crash never
-    // leaves a truncated image behind.
-    const std::string tmp = path + ".tmp";
-    {
-        std::ofstream f(tmp, std::ios::binary | std::ios::trunc);
-        if (!f || !f.write(reinterpret_cast<const char*>(data.data()), std::streamsize(data.size()))) {
-            error = "cannot write " + tmp;
-            return false;
-        }
-    }
-    std::remove(path.c_str());   // rename() does not replace on Windows
-    if (std::rename(tmp.c_str(), path.c_str()) != 0) {
-        error = "cannot rename " + tmp + " to " + path;
-        return false;
-    }
-    return true;
+    // Through a temporary file that replaces the image in one step, so a
+    // crash or a full disk never costs the previous image.
+    return write_file_atomic(path, data.data(), data.size(), error);
 }
 
 bool I2cEeprom::flush(std::string& error) {
@@ -132,7 +130,8 @@ uint8_t I2cEeprom::i2c_read() {
 void I2cEeprom::i2c_stop() {
     if (!wrote_) return;
     wrote_ = false;
-    // Commit to the image at once so that a crash loses nothing.
+    // Commit to the image at once so that a crash loses nothing. flush()
+    // does nothing when the write changed no byte.
     std::string error;
     if (!flush(error)) LOG_ERROR("eeprom", "%s", error.c_str());
 }

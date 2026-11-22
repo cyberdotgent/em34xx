@@ -119,6 +119,7 @@ em34xx_library(em34xx_emu
   src/util/sha256.cpp
   src/util/fingerprint.cpp
   src/util/strings.cpp
+  src/util/file_io.cpp
   src/bus/bus.cpp
   src/cpu/cpu.cpp
   src/cpu/i86.cpp

@@ -142,7 +142,14 @@ TEST_CASE("user folder: ROM status and import") {
     write_bytes(fs::path(dirs.roms()) / spec.file, std::vector<uint8_t>(16, 0));
     st = check_rom_file(dirs.roms(), spec, m3477->info().known_bad_roms);
     CHECK(st.state == RomFileStatus::State::WrongSize);
+    CHECK(st.note.find("16 bytes") != std::string::npos);
     CHECK_FALSE(st.usable());
+
+    // Importing over an existing image replaces it and leaves no temporary.
+    REQUIRE(dirs.import_rom(src.string(), stored, note, err));
+    CHECK(check_rom_file(dirs.roms(), spec, m3477->info().known_bad_roms).state ==
+          RomFileStatus::State::UnknownHash);
+    CHECK_FALSE(fs::exists(fs::path(dirs.roms()) / (spec.file + ".tmp")));
 
     // A file nobody needs keeps its name.
     const fs::path other = tmp.path / "other.bin";

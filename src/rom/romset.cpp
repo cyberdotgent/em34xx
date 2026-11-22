@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "rom/romset.hpp"
 
+#include "util/file_io.hpp"
 #include "util/sha256.hpp"
 #include "util/strings.hpp"
 
@@ -60,6 +61,13 @@ bool load_roms(const std::string& dir, const std::vector<RomSpec>& specs,
         LoadedRom rom;
         rom.spec = spec;
         const std::string path = dir.empty() ? spec.file : dir + "/" + spec.file;
+        // The size first: a huge file named like a ROM is never read.
+        uint64_t on_disk = 0;
+        if (file_size(path, on_disk) && on_disk != spec.size) {
+            error = format("ROM '%s' is %llu bytes, expected %u", path.c_str(),
+                           static_cast<unsigned long long>(on_disk), spec.size);
+            return false;
+        }
         if (!read_file(path, rom.data)) {
             error = format("cannot read ROM '%s' (%s)", path.c_str(), spec.label.c_str());
             return false;
@@ -110,6 +118,14 @@ RomFileStatus check_rom_file(const std::string& dir, const RomSpec& spec, const 
     FILE* f = open_utf8(path, "rb");
     if (!f) return st;   // Missing
     std::fclose(f);
+    // The size first: a huge file named like a ROM is never read (and a
+    // file of the wrong size is not hashed).
+    uint64_t on_disk = 0;
+    if (file_size(path, on_disk) && on_disk != spec.size) {
+        st.state = RomFileStatus::State::WrongSize;
+        st.note = format("%llu bytes, expected %u", static_cast<unsigned long long>(on_disk), spec.size);
+        return st;
+    }
     std::vector<uint8_t> data;
     if (!read_file(path, data)) {
         st.state = RomFileStatus::State::Unreadable;

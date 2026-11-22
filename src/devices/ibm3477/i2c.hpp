@@ -33,9 +33,10 @@ public:
     // 256-byte block.
     void attach(I2cBus& bus, uint8_t base_addr8 = 0xA0);
 
-    // Select the backing image. An existing file must have exactly size()
-    // bytes; a missing file is created on the first write. An empty path
-    // makes the EEPROM ephemeral (blank, never saved).
+    // Select the backing image. An existing file of exactly size() bytes
+    // is loaded; a missing file is created on the first write. A file of
+    // another size is moved aside (FILE.bad) with a warning and the EEPROM
+    // starts blank. An empty path makes it ephemeral (blank, never saved).
     bool open(const std::string& path, std::string& error);
     bool ephemeral() const { return path_.empty(); }
     const std::string& path() const { return path_; }

@@ -2,6 +2,7 @@
 #include "config/user_dirs.hpp"
 
 #include "models/model.hpp"
+#include "util/file_io.hpp"
 #include "util/strings.hpp"
 
 #include <algorithm>
@@ -212,13 +213,22 @@ bool UserDirs::import_rom(const std::string& source, std::string& stored_as, std
     const fs::path dest = upath(roms()) / upath(stored_as);
     if (fs::exists(dest, ec) && fs::equivalent(src, dest, ec)) return true;   // already in place
     fs::create_directories(upath(roms()), ec);
-    // Replace an older image. (Removed first: MinGW's libstdc++ refuses
-    // copy_options::overwrite_existing on Windows with "File exists".)
-    fs::remove(dest, ec);
+    // Copy next to the destination, then replace an older image in one
+    // step: a failed copy keeps it. (The stale temporary is removed first:
+    // MinGW's libstdc++ refuses copy_options::overwrite_existing on Windows
+    // with "File exists".)
+    fs::path tmp = dest;
+    tmp += ".tmp";
+    fs::remove(tmp, ec);
     ec.clear();
-    fs::copy_file(src, dest, ec);
+    fs::copy_file(src, tmp, ec);
     if (ec) {
         error = "cannot copy " + source + " to " + ustr(dest) + ": " + ec.message();
+        fs::remove(tmp, ec);
+        return false;
+    }
+    if (!replace_file(ustr(tmp), ustr(dest), error)) {
+        fs::remove(tmp, ec);
         return false;
     }
     return true;
