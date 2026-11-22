@@ -121,6 +121,14 @@ std::string certificate_text(const tn5250::PeerCertificate& c) {
     t += "Valid until:\t" + c.expires + (c.expired ? "  (EXPIRED)" : "") + "\r\n";
     t += "SHA-256:\t" + (c.have_digest ? format_sha256_fingerprint(c.sha256) : std::string("unavailable")) + "\r\n";
     t += c.chain_ok ? std::string("Verification:\tOK\r\n") : "Verification:\tfailed: " + c.chain_error + "\r\n";
+    // Validity period and revocation, apart from trust: a pin does not
+    // settle these.
+    for (const std::string& e : tn5250::tls_validity_errors(c)) t += "NOT VALID:\t" + e + "\r\n";
+    if (!c.revoked)
+        t += c.revocation_checked ? std::string("Revocation:\tnot revoked\r\n")
+                                  : "Revocation:\tnot checked" +
+                                        (c.revocation_note.empty() ? std::string() : " (" + c.revocation_note + ")") +
+                                        "\r\n";
     return t;
 }
 
@@ -875,6 +883,60 @@ tn5250::TlsTrustDecision trust_dialog(HWND owner, const tn5250::TlsTrustRequest&
     if (r == int(tn5250::TlsTrustDecision::AcceptOnce) + 100) return tn5250::TlsTrustDecision::AcceptOnce;
     if (r == int(tn5250::TlsTrustDecision::AcceptPermanently) + 100) return tn5250::TlsTrustDecision::AcceptPermanently;
     return tn5250::TlsTrustDecision::Reject;
+}
+
+// ---------------------------------------------------------------------------
+// Invalid certificate prompt
+
+namespace {
+INT_PTR CALLBACK invalid_proc(HWND dlg, UINT msg, WPARAM wp, LPARAM lp) {
+    switch (msg) {
+    case WM_INITDIALOG: {
+        const tn5250::TlsTrustRequest& r = *init_dialog_data<const tn5250::TlsTrustRequest>(dlg, lp);
+        SendDlgItemMessageW(dlg, IDC_INVALID_ICON, STM_SETICON,
+                            reinterpret_cast<WPARAM>(LoadIconW(nullptr, MAKEINTRESOURCEW(32515) /* IDI_WARNING */)),
+                            0);
+        set_text(dlg, IDC_INVALID_TEXT,
+                 format("The server certificate of %s:%u (session %u) is not valid. The connection may not be "
+                        "secure: the server may be badly maintained, this computer's clock may be wrong, or someone "
+                        "may be intercepting the connection.",
+                        r.host.c_str(), r.port, r.station + 1));
+        std::string errors;
+        for (const std::string& e : r.errors) errors += e + "\r\n";
+        if (errors.empty()) errors = r.reason + "\r\n";
+        set_text(dlg, IDC_INVALID_ERRORS, errors);
+        const UINT tabs = 44;   // dialog units
+        SendDlgItemMessageW(dlg, IDC_INVALID_DETAILS, EM_SETTABSTOPS, 1, reinterpret_cast<LPARAM>(&tabs));
+        set_text(dlg, IDC_INVALID_DETAILS, certificate_text(r.peer));
+        EnableWindow(GetDlgItem(dlg, IDC_INVALID_CONNECT), FALSE);
+        SetFocus(GetDlgItem(dlg, IDCANCEL));
+        MessageBeep(MB_ICONWARNING);
+        return FALSE;
+    }
+    case WM_COMMAND:
+        switch (LOWORD(wp)) {
+        case IDC_INVALID_UNDERSTAND:
+            EnableWindow(GetDlgItem(dlg, IDC_INVALID_CONNECT),
+                         IsDlgButtonChecked(dlg, IDC_INVALID_UNDERSTAND) == BST_CHECKED);
+            return TRUE;
+        case IDC_INVALID_CONNECT:
+            // Only with the box ticked (an accelerator reaches a disabled
+            // button's command through no path, but be sure).
+            if (IsDlgButtonChecked(dlg, IDC_INVALID_UNDERSTAND) == BST_CHECKED) EndDialog(dlg, IDOK);
+            return TRUE;
+        case IDCANCEL:
+            EndDialog(dlg, IDCANCEL);
+            return TRUE;
+        }
+        break;
+    }
+    return FALSE;
+}
+} // namespace
+
+bool certificate_invalid_dialog(HWND owner, const tn5250::TlsTrustRequest& req) {
+    return DialogBoxParamW(instance(), MAKEINTRESOURCEW(IDD_CERT_INVALID), owner, guarded_dialog<invalid_proc>,
+                           reinterpret_cast<LPARAM>(&req)) == IDOK;
 }
 
 // ---------------------------------------------------------------------------

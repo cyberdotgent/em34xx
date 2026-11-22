@@ -404,6 +404,214 @@ TEST_CASE("TLS trust broker: one handler per bridge, accepted certificates remem
     CHECK(calls == 4);
 }
 
+TEST_CASE("TLS validity: expired, not yet valid and revoked certificates are their own class") {
+    Tn5250Config cfg;
+    cfg.host = "h";
+    cfg.tls = true;
+    PeerCertificate good;
+    good.have_digest = true;
+    good.sha256 = sample_digest();
+    good.subject = "CN=h";
+    good.issuer = "CN=Test CA";
+    good.valid_from = "2020-01-01 00:00:00 UTC";
+    good.expires = "2024-03-01 12:00:00 UTC";
+    good.chain_ok = true;
+    good.revocation_checked = true;
+    PeerCertificate expired = good;
+    expired.expired = true;
+    expired.validity_errors = {"The certificate expired on 2024-03-01 12:00:00 UTC (test code 10)"};
+    PeerCertificate revoked = good;
+    revoked.revoked = true;
+    revoked.validity_errors = {"The certificate has been revoked by its issuer (test code 23)"};
+    std::string err;
+    std::vector<TlsTrustRequest> asked;
+    TlsTrustDecision answer = TlsTrustDecision::Reject;
+    TlsTrustHandler ask = [&](const TlsTrustRequest& r) {
+        asked.push_back(r);
+        return answer;
+    };
+    const std::string pin = format_sha256_fingerprint(good.sha256);
+
+    SUBCASE("expired but trusted, nobody to ask: refused with the exact error") {
+        LogCapture log;
+        CHECK_FALSE(tls_accept_peer(cfg, "h", expired, log.fn(), err));
+        CHECK(err.find("expired on 2024-03-01 12:00:00 UTC (test code 10)") != std::string::npos);
+        CHECK(log.has("TLS certificate is not valid: The certificate expired on"));
+        CHECK(log.has("(expired)"));
+    }
+    SUBCASE("expired, with a handler: asked as Invalid; rejecting fails, accepting connects") {
+        LogCapture log;
+        CHECK_FALSE(tls_accept_peer(cfg, "h", expired, log.fn(), err, ask, 992));
+        REQUIRE(asked.size() == 1);
+        CHECK(asked[0].problem == TlsTrustProblem::Invalid);
+        CHECK(asked[0].host == "h");
+        CHECK(asked[0].port == 992);
+        CHECK(asked[0].errors == expired.validity_errors);   // trusted: nothing else to say
+        CHECK(asked[0].reason == expired.validity_errors[0]);
+        CHECK(asked[0].peer.chain_ok);
+        CHECK(err.find("expired on") != std::string::npos);
+        CHECK(log.has("rejected by the user"));
+        answer = TlsTrustDecision::AcceptOnce;
+        LogCapture log2;
+        CHECK(tls_accept_peer(cfg, "h", expired, log2.fn(), err, ask, 992));
+        CHECK(asked.size() == 2);
+        CHECK(log2.has("for this connection only"));
+    }
+    SUBCASE("accept permanently counts as once: nothing says permanent") {
+        answer = TlsTrustDecision::AcceptPermanently;
+        LogCapture log;
+        CHECK(tls_accept_peer(cfg, "h", expired, log.fn(), err, ask, 992));
+        REQUIRE(asked.size() == 1);
+        CHECK(log.has("for this connection only"));
+        CHECK_FALSE(log.has("permanently"));
+    }
+    SUBCASE("expired and untrusted: one Invalid request with both errors") {
+        PeerCertificate both = expired;
+        both.chain_ok = false;
+        both.chain_error = "self-signed certificate (depth 0)";
+        CHECK_FALSE(tls_accept_peer(cfg, "h", both, nullptr, err, ask, 992));
+        REQUIRE(asked.size() == 1);
+        CHECK(asked[0].problem == TlsTrustProblem::Invalid);
+        REQUIRE(asked[0].errors.size() == 2);
+        CHECK(asked[0].errors[0] == expired.validity_errors[0]);
+        CHECK(asked[0].errors[1].find("not trusted: self-signed") != std::string::npos);
+        CHECK(err.find("expired on") != std::string::npos);
+        CHECK(err.find("self-signed") != std::string::npos);
+    }
+    SUBCASE("a pin match on an expired certificate still asks, every time") {
+        cfg.tls_cert_sha256 = pin;
+        answer = TlsTrustDecision::AcceptOnce;
+        CHECK(tls_accept_peer(cfg, "h", expired, nullptr, err, ask, 992));
+        CHECK(tls_accept_peer(cfg, "h", expired, nullptr, err, ask, 992));
+        REQUIRE(asked.size() == 2);
+        CHECK(asked[1].problem == TlsTrustProblem::Invalid);
+        CHECK(asked[1].errors == expired.validity_errors);   // the pin matches: no trust error
+        answer = TlsTrustDecision::Reject;
+        CHECK_FALSE(tls_accept_peer(cfg, "h", expired, nullptr, err, ask, 992));
+    }
+    SUBCASE("a pin mismatch on an expired certificate: Invalid, with the mismatch listed") {
+        Sha256Digest other = good.sha256;
+        other[0] ^= 1;
+        cfg.tls_cert_sha256 = format_sha256_fingerprint(other);
+        CHECK_FALSE(tls_accept_peer(cfg, "h", expired, nullptr, err, ask, 992));
+        REQUIRE(asked.size() == 1);
+        CHECK(asked[0].problem == TlsTrustProblem::Invalid);
+        REQUIRE(asked[0].errors.size() == 2);
+        CHECK(asked[0].errors[1].find("does not match the trusted SHA-256") != std::string::npos);
+        CHECK_FALSE(tls_accept_peer(cfg, "h", expired, nullptr, err));   // and nobody to ask: refused
+    }
+    SUBCASE("a pin match on an expired certificate, nobody to ask: accepted with a warning") {
+        cfg.tls_cert_sha256 = pin;
+        LogCapture log;
+        CHECK(tls_accept_peer(cfg, "h", expired, log.fn(), err));
+        CHECK(log.has("matches the pinned"));
+        CHECK(log.has("although it is not valid: The certificate expired on"));
+        bool warned = false;
+        for (LogLevel l : log.levels) warned = warned || l == LogLevel::Warn;
+        CHECK(warned);
+    }
+    SUBCASE("revoked: refused without a handler, pin or not; asked with one") {
+        CHECK_FALSE(tls_accept_peer(cfg, "h", revoked, nullptr, err));
+        CHECK(err.find("revoked by its issuer") != std::string::npos);
+        cfg.tls_cert_sha256 = pin;
+        LogCapture log;
+        CHECK_FALSE(tls_accept_peer(cfg, "h", revoked, log.fn(), err));
+        CHECK(err.find("revoked by its issuer") != std::string::npos);
+        CHECK(log.has("(revoked)"));
+        answer = TlsTrustDecision::AcceptOnce;
+        CHECK(tls_accept_peer(cfg, "h", revoked, nullptr, err, ask, 992));
+        REQUIRE(asked.size() == 1);
+        CHECK(asked[0].problem == TlsTrustProblem::Invalid);
+    }
+    SUBCASE("not yet valid: the same class") {
+        PeerCertificate early = good;
+        early.not_yet_valid = true;   // flags alone: the policy words the line
+        CHECK_FALSE(tls_accept_peer(cfg, "h", early, nullptr, err, ask, 992));
+        REQUIRE(asked.size() == 1);
+        CHECK(asked[0].problem == TlsTrustProblem::Invalid);
+        REQUIRE(asked[0].errors.size() == 1);
+        CHECK(asked[0].errors[0] == "The certificate is not valid before 2020-01-01 00:00:00 UTC");
+    }
+    SUBCASE("revocation status unknown: accepted, not asked, one info line") {
+        PeerCertificate unknown = good;
+        unknown.revocation_checked = false;
+        unknown.revocation_note = "the revocation server could not be reached";
+        LogCapture log;
+        CHECK(tls_accept_peer(cfg, "h", unknown, log.fn(), err, ask, 992));
+        CHECK(asked.empty());
+        CHECK(log.has("revocation status not checked: the revocation server could not be reached"));
+        for (LogLevel l : log.levels) CHECK(l == LogLevel::Info);
+        cfg.tls_cert_sha256 = pin;
+        CHECK(tls_accept_peer(cfg, "h", unknown, nullptr, err, ask, 992));
+        CHECK(asked.empty());
+    }
+    SUBCASE("verification off: accepted without asking, the errors logged") {
+        cfg.tls_verify = TlsVerify::None;
+        LogCapture log;
+        CHECK(tls_accept_peer(cfg, "h", expired, log.fn(), err, ask, 992));
+        CHECK(tls_accept_peer(cfg, "h", revoked, nullptr, err, ask, 992));
+        CHECK(asked.empty());
+        CHECK(log.has("verification is OFF"));
+        CHECK(log.has("TLS certificate is not valid: The certificate expired on"));
+    }
+    SUBCASE("no validity error: the trust decisions are what they were") {
+        PeerCertificate untrusted = good;
+        untrusted.chain_ok = false;
+        untrusted.chain_error = "self-signed certificate (depth 0)";
+        CHECK(tls_accept_peer(cfg, "h", good, nullptr, err, ask, 992));
+        CHECK(asked.empty());
+        answer = TlsTrustDecision::AcceptPermanently;
+        LogCapture log;
+        CHECK(tls_accept_peer(cfg, "h", untrusted, log.fn(), err, ask, 992));
+        REQUIRE(asked.size() == 1);
+        CHECK(asked[0].problem == TlsTrustProblem::Unverified);
+        CHECK(asked[0].reason == untrusted.chain_error);
+        REQUIRE(asked[0].errors.size() == 1);
+        CHECK(log.has("accept permanently"));
+        cfg.tls_cert_sha256 = pin;
+        CHECK(tls_accept_peer(cfg, "h", untrusted, nullptr, err, ask, 992));   // the pin: no question
+        CHECK(asked.size() == 1);
+    }
+}
+
+TEST_CASE("TLS trust broker: a certificate that is not valid is asked about every time") {
+    TlsTrustBroker broker;
+    std::vector<TlsTrustProblem> calls;
+    TlsTrustDecision answer = TlsTrustDecision::AcceptOnce;
+    broker.set_handler([&](const TlsTrustRequest& r) {
+        calls.push_back(r.problem);
+        return answer;
+    });
+    TlsTrustRequest invalid;
+    invalid.host = "h";
+    invalid.port = 992;
+    invalid.peer.have_digest = true;
+    invalid.peer.sha256 = sample_digest();
+    invalid.problem = TlsTrustProblem::Invalid;
+    TlsTrustRequest unverified = invalid;   // the same host, port and certificate
+    unverified.problem = TlsTrustProblem::Unverified;
+
+    TlsTrustHandler bridge = broker.for_new_bridge();
+    REQUIRE(bridge);
+    CHECK(bridge(invalid) == TlsTrustDecision::AcceptOnce);
+    CHECK(bridge(invalid) == TlsTrustDecision::AcceptOnce);      // a reconnect: asked again
+    CHECK(calls.size() == 2);
+    // Accepting an invalid certificate put nothing in the memory...
+    CHECK(bridge(unverified) == TlsTrustDecision::AcceptOnce);
+    CHECK(calls.size() == 3);
+    CHECK(bridge(unverified) == TlsTrustDecision::AcceptOnce);   // ...an ordinary decision is remembered...
+    CHECK(calls.size() == 3);
+    // ...and does not answer for the certificate once it is not valid.
+    answer = TlsTrustDecision::Reject;
+    CHECK(bridge(invalid) == TlsTrustDecision::Reject);
+    CHECK(calls.size() == 4);
+    CHECK(calls.back() == TlsTrustProblem::Invalid);
+    answer = TlsTrustDecision::AcceptPermanently;
+    CHECK(bridge(invalid) == TlsTrustDecision::AcceptPermanently);   // passed through; the policy treats it as once
+    CHECK(bridge(invalid) == TlsTrustDecision::AcceptPermanently);
+    CHECK(calls.size() == 6);
+}
+
 TEST_CASE("TLS transport: plain TCP stays the default") {
     Tn5250Config cfg;
     cfg.host = "h";
@@ -470,12 +678,14 @@ TEST_CASE("TCP socket: loopback connect, and a cancel flag abandons the attempt"
 
 #include <openssl/err.h>
 #include <openssl/evp.h>
+#include <openssl/ocsp.h>
 #include <openssl/pem.h>
 #include <openssl/ssl.h>
 #include <openssl/x509v3.h>
 
 #include <arpa/inet.h>
 #include <csignal>
+#include <cstring>
 #include <netinet/in.h>
 #include <poll.h>
 #include <sys/socket.h>
@@ -490,28 +700,35 @@ struct TestCert {
     Sha256Digest sha256{};
     std::string pem_path;
 
-    explicit TestCert(const char* san) {
+    // Self-signed, or signed by `ca`; valid from now + `from_s` to now +
+    // `until_s` seconds. `san` null: a CA certificate ("em34xx test CA").
+    explicit TestCert(const char* san, long from_s = -3600, long until_s = 86400, const TestCert* ca = nullptr) {
         key = EVP_EC_gen("P-256");
         cert = X509_new();
         X509_set_version(cert, 2);
-        ASN1_INTEGER_set(X509_get_serialNumber(cert), 1);
-        X509_gmtime_adj(X509_getm_notBefore(cert), -3600);
-        X509_gmtime_adj(X509_getm_notAfter(cert), 86400);
+        ASN1_INTEGER_set(X509_get_serialNumber(cert), san ? (ca ? 2 : 1) : 100);
+        X509_gmtime_adj(X509_getm_notBefore(cert), from_s);
+        X509_gmtime_adj(X509_getm_notAfter(cert), until_s);
         X509_set_pubkey(cert, key);
         X509_NAME* name = X509_get_subject_name(cert);
-        X509_NAME_add_entry_by_txt(name, "CN", MBSTRING_ASC, reinterpret_cast<const unsigned char*>("em34xx test"),
+        X509_NAME_add_entry_by_txt(name, "CN", MBSTRING_ASC,
+                                   reinterpret_cast<const unsigned char*>(san ? "em34xx test" : "em34xx test CA"),
                                    -1, -1, 0);
-        X509_set_issuer_name(cert, name);
+        X509_set_issuer_name(cert, ca ? X509_get_subject_name(ca->cert) : name);
         X509V3_CTX ctx;
         X509V3_set_ctx_nodb(&ctx);
-        X509V3_set_ctx(&ctx, cert, cert, nullptr, nullptr, 0);
-        X509_EXTENSION* ext = X509V3_EXT_conf_nid(nullptr, &ctx, NID_subject_alt_name, san);
+        X509V3_set_ctx(&ctx, ca ? ca->cert : cert, cert, nullptr, nullptr, 0);
+        X509_EXTENSION* ext = san ? X509V3_EXT_conf_nid(nullptr, &ctx, NID_subject_alt_name, san)
+                                  : X509V3_EXT_conf_nid(nullptr, &ctx, NID_basic_constraints, "critical,CA:TRUE");
         X509_add_ext(cert, ext, -1);
         X509_EXTENSION_free(ext);
-        X509_sign(cert, key, EVP_sha256());
+        X509_sign(cert, ca ? ca->key : key, EVP_sha256());
         unsigned int len = 0;
         X509_digest(cert, EVP_sha256(), sha256.data(), &len);
-        pem_path = (std::filesystem::temp_directory_path() / "em34xx_test_tls_ca.pem").string();
+        static int roots = 0;   // each CA keeps its own file
+        pem_path = (std::filesystem::temp_directory_path() /
+                    (san ? std::string("em34xx_test_tls_ca.pem") : "em34xx_test_tls_root" + std::to_string(++roots) + ".pem"))
+                       .string();
         FILE* f = std::fopen(pem_path.c_str(), "wb");
         PEM_write_X509(f, cert);
         std::fclose(f);
@@ -522,15 +739,50 @@ struct TestCert {
     }
 };
 
+// A DER OCSP response about `leaf`, signed by its issuer `ca`: `status` is
+// V_OCSP_CERTSTATUS_GOOD or _REVOKED.
+std::vector<unsigned char> ocsp_response(const TestCert& leaf, const TestCert& ca, int status) {
+    OCSP_BASICRESP* basic = OCSP_BASICRESP_new();
+    OCSP_CERTID* id = OCSP_cert_to_id(EVP_sha256(), leaf.cert, ca.cert);
+    ASN1_TIME* revoked_at = X509_gmtime_adj(nullptr, -600);
+    ASN1_TIME* this_update = X509_gmtime_adj(nullptr, -60);
+    ASN1_TIME* next_update = X509_gmtime_adj(nullptr, 3600);
+    OCSP_basic_add1_status(basic, id, status, OCSP_REVOKED_STATUS_KEYCOMPROMISE,
+                           status == V_OCSP_CERTSTATUS_REVOKED ? revoked_at : nullptr, this_update, next_update);
+    OCSP_basic_sign(basic, ca.cert, ca.key, EVP_sha256(), nullptr, 0);
+    OCSP_RESPONSE* resp = OCSP_response_create(OCSP_RESPONSE_STATUS_SUCCESSFUL, basic);
+    unsigned char* der = nullptr;
+    const int len = i2d_OCSP_RESPONSE(resp, &der);
+    std::vector<unsigned char> out(der, der + (len > 0 ? len : 0));
+    OPENSSL_free(der);
+    OCSP_RESPONSE_free(resp);
+    OCSP_BASICRESP_free(basic);
+    OCSP_CERTID_free(id);
+    ASN1_TIME_free(revoked_at);
+    ASN1_TIME_free(this_update);
+    ASN1_TIME_free(next_update);
+    return out;
+}
+
+int staple_callback(SSL* ssl, void* arg) {
+    const auto* der = static_cast<const std::vector<unsigned char>*>(arg);
+    auto* copy = static_cast<unsigned char*>(OPENSSL_malloc(der->size()));
+    std::memcpy(copy, der->data(), der->size());
+    SSL_set_tlsext_status_ocsp_resp(ssl, copy, long(der->size()));   // takes the copy
+    return SSL_TLSEXT_ERR_OK;
+}
+
 // Accepts one connection, completes the handshake, sends "hello", then
-// waits for the client to go away.
+// waits for the client to go away. `staple`: an OCSP response to staple.
 struct TestServer {
     int listen_fd = -1;
     uint16_t port = 0;
     std::thread thread;
     bool handshake_ok = false;
+    std::vector<unsigned char> staple_;
 
-    TestServer(const TestCert& tc, int min_version, int max_version) {
+    TestServer(const TestCert& tc, int min_version, int max_version, std::vector<unsigned char> staple = {})
+        : staple_(std::move(staple)) {
         listen_fd = ::socket(AF_INET, SOCK_STREAM, 0);
         sockaddr_in a{};
         a.sin_family = AF_INET;
@@ -546,6 +798,10 @@ struct TestServer {
         SSL_CTX_set_min_proto_version(ctx, min_version);
         SSL_CTX_set_max_proto_version(ctx, max_version);
         if (min_version < TLS1_2_VERSION) SSL_CTX_set_security_level(ctx, 0);
+        if (!staple_.empty()) {
+            SSL_CTX_set_tlsext_status_cb(ctx, staple_callback);
+            SSL_CTX_set_tlsext_status_arg(ctx, &staple_);
+        }
         thread = std::thread([this, ctx] {
             pollfd p{listen_fd, POLLIN, 0};
             if (::poll(&p, 1, 5000) == 1) {
@@ -750,6 +1006,193 @@ TEST_CASE("TLS transport (OpenSSL): handshake with a self-signed server certific
             CHECK(o.log.has("legacy protocol"));
             CHECK(o.log.has("TLS negotiated TLSv1 "));
         }
+    }
+}
+
+namespace {
+
+// Like run_client(), with a trust handler; returns what it was asked.
+struct Asked {
+    bool connected = false;
+    std::string error;
+    std::vector<TlsTrustRequest> requests;
+    LogCapture log;
+    PeerCertificate peer;
+};
+
+Asked run_client_asking(Tn5250Config cfg, const std::string& host, uint16_t port, TlsTrustDecision answer) {
+    Asked a;
+    cfg.host = host;
+    cfg.port = port;
+    cfg.tls = true;
+    std::string err;
+    auto t = make_transport(cfg, err);
+    REQUIRE(t);
+    t->set_log(a.log.fn());
+    t->set_trust_handler([&](const TlsTrustRequest& r) {
+        a.requests.push_back(r);
+        return answer;
+    });
+    a.connected = t->connect(host, port, a.error);
+    if (t->peer_certificate()) a.peer = *t->peer_certificate();
+    t->close();
+    return a;
+}
+
+} // namespace
+
+TEST_CASE("TLS transport (OpenSSL): validity period errors are reported apart from trust") {
+    std::signal(SIGPIPE, SIG_IGN);
+    Tn5250Config base;
+
+    SUBCASE("expired and self-signed: both errors; refused without a handler") {
+        const TestCert tc("DNS:localhost", -7200, -3600);
+        {
+            TestServer srv(tc, TLS1_2_VERSION, 0);
+            Outcome o = run_client(base, "127.0.0.1", srv.port);
+            CHECK_FALSE(o.connected);
+            CHECK(o.error.find("The certificate expired on") != std::string::npos);
+            CHECK(o.error.find("not trusted") != std::string::npos);
+        }
+        {
+            TestServer srv(tc, TLS1_2_VERSION, 0);
+            Asked a = run_client_asking(base, "127.0.0.1", srv.port, TlsTrustDecision::AcceptOnce);
+            CHECK(a.connected);
+            REQUIRE(a.requests.size() == 1);
+            const TlsTrustRequest& r = a.requests[0];
+            CHECK(r.problem == TlsTrustProblem::Invalid);
+            CHECK(r.peer.expired);
+            CHECK_FALSE(r.peer.not_yet_valid);
+            CHECK_FALSE(r.peer.chain_ok);
+            CHECK(r.peer.chain_error.find("expired") == std::string::npos);   // trust only
+            REQUIRE(r.peer.validity_errors.size() == 1);
+            CHECK(r.peer.validity_errors[0].find("The certificate expired on 20") == 0);
+            CHECK(r.peer.validity_errors[0].find("X509 error 10") != std::string::npos);
+            CHECK(r.errors.size() == 2);
+        }
+    }
+    SUBCASE("expired but from a trusted CA: trust is fine, validity is not") {
+        const TestCert ca(nullptr);
+        const TestCert leaf("DNS:localhost", -7200, -3600, &ca);
+        Tn5250Config c = base;
+        c.ca_file = ca.pem_path;
+        {
+            TestServer srv(leaf, TLS1_2_VERSION, 0);
+            Asked a = run_client_asking(c, "localhost", srv.port, TlsTrustDecision::Reject);
+            CHECK_FALSE(a.connected);
+            REQUIRE(a.requests.size() == 1);
+            CHECK(a.requests[0].problem == TlsTrustProblem::Invalid);
+            CHECK(a.requests[0].peer.chain_ok);
+            CHECK(a.requests[0].peer.chain_error.empty());
+            CHECK(a.requests[0].errors.size() == 1);
+        }
+        {   // pinned as well: still asked
+            TestServer srv(leaf, TLS1_2_VERSION, 0);
+            Tn5250Config p = c;
+            p.tls_cert_sha256 = format_sha256_fingerprint(leaf.sha256);
+            Asked a = run_client_asking(p, "localhost", srv.port, TlsTrustDecision::AcceptOnce);
+            CHECK(a.connected);
+            REQUIRE(a.requests.size() == 1);
+            CHECK(a.requests[0].problem == TlsTrustProblem::Invalid);
+        }
+        {   // pinned, nobody to ask: accepted with the warning
+            TestServer srv(leaf, TLS1_2_VERSION, 0);
+            Tn5250Config p = c;
+            p.tls_cert_sha256 = format_sha256_fingerprint(leaf.sha256);
+            Outcome o = run_client(p, "localhost", srv.port);
+            CHECK(o.connected);
+            CHECK(o.log.has("although it is not valid"));
+        }
+    }
+    SUBCASE("not yet valid") {
+        const TestCert ca(nullptr);
+        const TestCert leaf("DNS:localhost", 3600, 86400, &ca);
+        Tn5250Config c = base;
+        c.ca_file = ca.pem_path;
+        TestServer srv(leaf, TLS1_2_VERSION, 0);
+        Asked a = run_client_asking(c, "localhost", srv.port, TlsTrustDecision::Reject);
+        CHECK_FALSE(a.connected);
+        REQUIRE(a.requests.size() == 1);
+        CHECK(a.requests[0].peer.not_yet_valid);
+        CHECK_FALSE(a.requests[0].peer.expired);
+        CHECK(a.requests[0].peer.chain_ok);
+        REQUIRE(a.requests[0].errors.size() == 1);
+        CHECK(a.requests[0].errors[0].find("The certificate is not valid before 20") == 0);
+    }
+    SUBCASE("fetch certificate: the validity errors come with it") {
+        const TestCert tc("DNS:localhost", -7200, -3600);
+        TestServer srv(tc, TLS1_2_VERSION, 0);
+        Tn5250Config c = base;
+        c.host = "127.0.0.1";
+        c.port = srv.port;
+        PeerCertificate peer;
+        std::string err;
+        REQUIRE(tls_fetch_certificate(c, peer, err));
+        CHECK(peer.expired);
+        CHECK(peer.validity_errors.size() == 1);
+        CHECK_FALSE(peer.chain_ok);
+    }
+}
+
+TEST_CASE("TLS transport (OpenSSL): revocation from a stapled OCSP response") {
+    std::signal(SIGPIPE, SIG_IGN);
+    const TestCert ca(nullptr);
+    const TestCert leaf("DNS:localhost", -3600, 86400, &ca);
+    Tn5250Config c;
+    c.ca_file = ca.pem_path;
+
+    SUBCASE("no staple: not checked, and that is not an error") {
+        TestServer srv(leaf, TLS1_2_VERSION, 0);
+        Asked a = run_client_asking(c, "localhost", srv.port, TlsTrustDecision::Reject);
+        CHECK(a.connected);
+        CHECK(a.requests.empty());
+        CHECK_FALSE(a.peer.revocation_checked);
+        CHECK_FALSE(a.peer.revoked);
+        CHECK(a.log.has("revocation status not checked: the server stapled no OCSP response"));
+    }
+    SUBCASE("good staple: checked") {
+        for (int version : {TLS1_2_VERSION, TLS1_3_VERSION}) {
+            TestServer srv(leaf, version, version, ocsp_response(leaf, ca, V_OCSP_CERTSTATUS_GOOD));
+            Asked a = run_client_asking(c, "localhost", srv.port, TlsTrustDecision::Reject);
+            CHECK(a.connected);
+            CHECK(a.requests.empty());
+            CHECK(a.peer.revocation_checked);
+            CHECK_FALSE(a.peer.revoked);
+            CHECK_FALSE(a.log.has("revocation status not checked"));
+        }
+    }
+    SUBCASE("revoked staple: a validity error; refused without a handler even when pinned") {
+        for (int version : {TLS1_2_VERSION, TLS1_3_VERSION}) {
+            {
+                TestServer srv(leaf, version, version, ocsp_response(leaf, ca, V_OCSP_CERTSTATUS_REVOKED));
+                Asked a = run_client_asking(c, "localhost", srv.port, TlsTrustDecision::AcceptOnce);
+                CHECK(a.connected);
+                REQUIRE(a.requests.size() == 1);
+                CHECK(a.requests[0].problem == TlsTrustProblem::Invalid);
+                CHECK(a.requests[0].peer.revoked);
+                CHECK(a.requests[0].peer.chain_ok);
+                REQUIRE(a.requests[0].errors.size() == 1);
+                CHECK(a.requests[0].errors[0].find("revoked by its issuer on 20") != std::string::npos);
+                CHECK(a.requests[0].errors[0].find("keyCompromise") != std::string::npos);
+            }
+            {
+                TestServer srv(leaf, version, version, ocsp_response(leaf, ca, V_OCSP_CERTSTATUS_REVOKED));
+                Tn5250Config p = c;
+                p.tls_cert_sha256 = format_sha256_fingerprint(leaf.sha256);
+                Outcome o = run_client(p, "localhost", srv.port);
+                CHECK_FALSE(o.connected);
+                CHECK(o.error.find("revoked") != std::string::npos);
+            }
+        }
+    }
+    SUBCASE("a staple signed by someone else: not usable, so not checked") {
+        const TestCert other_ca(nullptr);   // same name, another key
+        TestServer srv(leaf, TLS1_2_VERSION, 0, ocsp_response(leaf, other_ca, V_OCSP_CERTSTATUS_REVOKED));
+        Asked a = run_client_asking(c, "localhost", srv.port, TlsTrustDecision::Reject);
+        CHECK(a.connected);
+        CHECK(a.requests.empty());
+        CHECK_FALSE(a.peer.revocation_checked);
+        CHECK_FALSE(a.peer.revoked);
     }
 }
 #endif

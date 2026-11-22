@@ -15,6 +15,14 @@
 // The verify callback never aborts the handshake; tls_accept_peer() decides
 // afterwards with the certificate in hand (see tls_policy.hpp). No
 // application data is read or sent before that decision.
+//
+// Validity: the callback collects every error, and the validity period
+// errors are reported apart from the trust errors (tls_trust.hpp).
+// Revocation: only a stapled OCSP response is looked at (the client asks
+// for one with the status_request extension); no CRL or OCSP server is
+// contacted. A staple that verifies against the trust store and says
+// "revoked" is a validity error; no staple, or one that cannot be used,
+// leaves the status undetermined, which is not an error.
 #include "tn5250/tls_policy.hpp"
 
 #include "net/socket.hpp"
@@ -24,6 +32,9 @@
 #include <openssl/err.h>
 #include <openssl/evp.h>
 #include <openssl/opensslv.h>
+#ifndef OPENSSL_NO_OCSP
+#include <openssl/ocsp.h>
+#endif
 #include <openssl/ssl.h>
 #include <openssl/x509.h>
 #include <openssl/x509_vfy.h>
@@ -34,6 +45,8 @@
 #include <cstdio>
 #include <cstdlib>
 #include <ctime>
+#include <utility>
+#include <vector>
 
 #if OPENSSL_VERSION_NUMBER < 0x10101000L
 #error "the TLS transport needs OpenSSL 1.1.1 or newer"
@@ -162,20 +175,28 @@ int protocol_number(TlsVersion v) {
     return 0;
 }
 
-// Records the first chain or host name error; never fails the handshake.
+// Records every chain, validity period and host name error (verification
+// goes on after each one); never fails the handshake.
 struct VerifyState {
-    int error = X509_V_OK;
-    int depth = -1;
+    std::vector<std::pair<int, int>> errors;   // X509_V_ERR_*, depth
+
+    void add(int error, int depth) {
+        for (const auto& e : errors)
+            if (e.first == error && e.second == depth) return;
+        errors.emplace_back(error, depth);
+    }
 };
 
 int verify_callback(int ok, X509_STORE_CTX* store) {
     SSL* ssl = static_cast<SSL*>(X509_STORE_CTX_get_ex_data(store, SSL_get_ex_data_X509_STORE_CTX_idx()));
     auto* st = ssl ? static_cast<VerifyState*>(SSL_get_app_data(ssl)) : nullptr;
-    if (!ok && st && st->error == X509_V_OK) {
-        st->error = X509_STORE_CTX_get_error(store);
-        st->depth = X509_STORE_CTX_get_error_depth(store);
-    }
+    if (!ok && st) st->add(X509_STORE_CTX_get_error(store), X509_STORE_CTX_get_error_depth(store));
     return 1;
+}
+
+// "certificate has expired, X509 error 10": OpenSSL's own text and code.
+std::string verify_error_text(int error) {
+    return format("%s, X509 error %d", X509_verify_cert_error_string(error), error);
 }
 
 bool file_exists(const char* path) {
@@ -213,6 +234,10 @@ public:
             return false;
         }
         SSL_set_app_data(ssl_, &verify_);
+#ifndef OPENSSL_NO_OCSP
+        // Ask the server to staple an OCSP response (check_revocation()).
+        if (SSL_set_tlsext_status_type(ssl_, TLSEXT_STATUSTYPE_ocsp) != 1) ERR_clear_error();
+#endif
         X509_VERIFY_PARAM* param = SSL_get0_param(ssl_);
         if (X509_VERIFY_PARAM_set1_ip_asc(param, host.c_str()) != 1) {
             // Not an IP address: a host name, for SNI and the name check.
@@ -409,6 +434,85 @@ private:
         }
     }
 
+    // The revocation status of the leaf from the stapled OCSP response, if
+    // the server sent one that verifies. Anything short of a verified
+    // "good" or "revoked" leaves revocation_checked false with the reason.
+    void check_revocation(X509* cert, PeerCertificate& peer) {
+#ifdef OPENSSL_NO_OCSP
+        (void)cert;
+        peer.revocation_note = "this OpenSSL has no OCSP support";
+#else
+        const unsigned char* data = nullptr;
+        const long len = SSL_get_tlsext_status_ocsp_resp(ssl_, &data);
+        if (len <= 0 || !data) {
+            peer.revocation_note = "the server stapled no OCSP response, and no CRL or OCSP server is contacted";
+            return;
+        }
+        OCSP_RESPONSE* resp = d2i_OCSP_RESPONSE(nullptr, &data, len);
+        OCSP_BASICRESP* basic = resp && OCSP_response_status(resp) == OCSP_RESPONSE_STATUS_SUCCESSFUL
+                                    ? OCSP_response_get1_basic(resp)
+                                    : nullptr;
+        // The issuer: next in the chain as verified, else as sent.
+        STACK_OF(X509)* chain = SSL_get0_verified_chain(ssl_);
+        STACK_OF(X509)* sent = SSL_get_peer_cert_chain(ssl_);
+        if (!chain || sk_X509_num(chain) < 2) chain = sent;
+        X509* issuer = chain && sk_X509_num(chain) >= 2 ? sk_X509_value(chain, 1) : nullptr;
+        int status = -1, reason = -1;
+        ASN1_GENERALIZEDTIME* revoked_at = nullptr;
+        ASN1_GENERALIZEDTIME* this_update = nullptr;
+        ASN1_GENERALIZEDTIME* next_update = nullptr;
+        // The single response about this certificate. Its certificate ID is
+        // rebuilt with the digest each response uses.
+        bool found = false;
+        for (int i = 0; basic && issuer && !found && i < OCSP_resp_count(basic); ++i) {
+            OCSP_SINGLERESP* single = OCSP_resp_get0(basic, i);
+            const OCSP_CERTID* theirs = single ? OCSP_SINGLERESP_get0_id(single) : nullptr;
+            ASN1_OBJECT* digest_oid = nullptr;
+            if (!theirs || OCSP_id_get0_info(nullptr, &digest_oid, nullptr, nullptr,
+                                             const_cast<OCSP_CERTID*>(theirs)) != 1)
+                continue;
+            const EVP_MD* md = EVP_get_digestbyobj(digest_oid);
+            OCSP_CERTID* ours = md ? OCSP_cert_to_id(md, cert, issuer) : nullptr;
+            if (ours && OCSP_id_cmp(ours, theirs) == 0) {
+                status = OCSP_single_get0_status(single, &reason, &revoked_at, &this_update, &next_update);
+                found = true;
+            }
+            if (ours) OCSP_CERTID_free(ours);
+        }
+        if (!basic) {
+            peer.revocation_note = "the stapled OCSP response is not a successful response";
+        } else if (!issuer) {
+            peer.revocation_note = "the stapled OCSP response cannot be matched without the issuer certificate";
+        } else if (OCSP_basic_verify(basic, sent, SSL_CTX_get_cert_store(ctx_), 0) <= 0) {
+            peer.revocation_note = "the stapled OCSP response does not verify against the trusted CAs";
+        } else if (!found) {
+            peer.revocation_note = "the stapled OCSP response is not about this certificate";
+        } else if (OCSP_check_validity(this_update, next_update, 300, -1) != 1) {
+            peer.revocation_note = "the stapled OCSP response is out of date";
+        } else if (status == V_OCSP_CERTSTATUS_REVOKED) {
+            peer.revoked = true;
+            peer.revocation_checked = true;
+            std::string when = "?";
+            struct tm tm{};
+            if (revoked_at && ASN1_TIME_to_tm(revoked_at, &tm) == 1) {
+                char buf[32];
+                std::strftime(buf, sizeof buf, "%Y-%m-%d %H:%M:%S UTC", &tm);
+                when = buf;
+            }
+            peer.validity_errors.push_back(
+                format("The certificate has been revoked by its issuer on %s (stapled OCSP response: revoked, %s)",
+                       when.c_str(), reason >= 0 ? OCSP_crl_reason_str(reason) : "no reason given"));
+        } else if (status == V_OCSP_CERTSTATUS_GOOD) {
+            peer.revocation_checked = true;
+        } else {
+            peer.revocation_note = "the stapled OCSP response says the status is unknown";
+        }
+        if (basic) OCSP_BASICRESP_free(basic);
+        if (resp) OCSP_RESPONSE_free(resp);
+        ERR_clear_error();
+#endif
+    }
+
     bool check_peer(const std::string& host, std::string& error) {
 #if OPENSSL_VERSION_NUMBER >= 0x30000000L
         X509* cert = SSL_get1_peer_certificate(ssl_);
@@ -431,14 +535,43 @@ private:
         peer.valid_from = time_text(X509_get0_notBefore(cert));
         const ASN1_TIME* not_after = X509_get0_notAfter(cert);
         peer.expires = time_text(not_after);
+        // The leaf's validity period, from its own dates.
         peer.expired = X509_cmp_current_time(not_after) < 0;
-        X509_free(cert);
+        peer.not_yet_valid = X509_cmp_current_time(X509_get0_notBefore(cert)) > 0;
+        if (peer.expired)
+            peer.validity_errors.push_back(format("The certificate expired on %s (%s)", peer.expires.c_str(),
+                                                  verify_error_text(X509_V_ERR_CERT_HAS_EXPIRED).c_str()));
+        if (peer.not_yet_valid)
+            peer.validity_errors.push_back(format("The certificate is not valid before %s (%s)",
+                                                  peer.valid_from.c_str(),
+                                                  verify_error_text(X509_V_ERR_CERT_NOT_YET_VALID).c_str()));
 
+        // Everything verification reported: validity period errors of the
+        // other certificates in the chain join the validity errors, the
+        // rest (no trusted root, wrong name, bad signature...) is the trust
+        // result.
         const long result = SSL_get_verify_result(ssl_);
-        const int chain_error = verify_.error != X509_V_OK ? verify_.error : int(result);
-        peer.chain_ok = chain_error == X509_V_OK;
-        if (!peer.chain_ok)
-            peer.chain_error = format("%s (depth %d)", X509_verify_cert_error_string(chain_error), verify_.depth);
+        if (result != X509_V_OK) {
+            bool seen = false;
+            for (const auto& e : verify_.errors) seen = seen || e.first == int(result);
+            if (!seen) verify_.add(int(result), -1);
+        }
+        for (const auto& e : verify_.errors) {
+            const bool clock = e.first == X509_V_ERR_CERT_HAS_EXPIRED || e.first == X509_V_ERR_CERT_NOT_YET_VALID;
+            if (clock && e.second == 0 && (peer.expired || peer.not_yet_valid)) continue;   // the leaf, above
+            if (clock) {
+                peer.validity_errors.push_back(
+                    format("A certificate in the chain (depth %d) %s (%s)", e.second,
+                           e.first == X509_V_ERR_CERT_HAS_EXPIRED ? "has expired" : "is not yet valid",
+                           verify_error_text(e.first).c_str()));
+                continue;
+            }
+            if (!peer.chain_error.empty()) peer.chain_error += "; ";
+            peer.chain_error += format("%s (depth %d)", X509_verify_cert_error_string(e.first), e.second);
+        }
+        peer.chain_ok = peer.chain_error.empty();
+        check_revocation(cert, peer);
+        X509_free(cert);
         set_peer_certificate(peer);
         return tls_accept_peer(cfg_, host, peer, [this](LogLevel l, const std::string& s) { note(l, s); }, error,
                                trust_handler(), port_);

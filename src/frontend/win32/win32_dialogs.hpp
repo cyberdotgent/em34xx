@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // em34xxw dialogs (templates in em34xxw.rc): ROM images, settings, profile
-// manager and editor, TLS settings, the TLS trust prompt, the keymap
-// editor and About. All modal; each returns once the user closes it.
+// manager and editor, TLS settings, the TLS trust prompt, the invalid
+// certificate prompt, the keymap editor and About. All modal; each returns once the user closes it.
 #pragma once
 
 #include "config/profile.hpp"
@@ -56,6 +56,12 @@ bool name_dialog(HWND owner, const std::wstring& title, const std::wstring& prom
 // The TLS trust prompt: certificate details and Stop / Connect / Trust
 // Permanently.
 tn5250::TlsTrustDecision trust_dialog(HWND owner, const tn5250::TlsTrustRequest& req, const std::string& profile);
+
+// The prompt for a certificate that is expired, not yet valid or revoked
+// (TlsTrustProblem::Invalid): every error, the certificate, and Cancel or
+// Connect Anyway behind an "I understand the risk" box. True: connect, this
+// once. There is no way to remember the answer.
+bool certificate_invalid_dialog(HWND owner, const tn5250::TlsTrustRequest& req);
 
 // Edit > Keymap: the global keymap's entries; add, edit (with key
 // capture), remove, reset to the PCOMM default.

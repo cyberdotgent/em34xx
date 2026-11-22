@@ -158,6 +158,9 @@ struct CurrentProfile {
     bool untitled = false;
     bool modified = false;
     bool accepted_once = false;   // a certificate was accepted for this connection only
+    // Per session: it runs on a certificate that is not valid (expired, not
+    // yet valid, revoked), let through by the user for that connection.
+    bool overridden[Profile::kSessions] = {};
 };
 
 // Toolbar glyphs in the IDB_TOOLBAR* strips (tools/gen_win32_assets.py).
@@ -340,6 +343,7 @@ private:
     std::shared_ptr<TrustQueue> trust_;
     bool showing_trust_ = false;
     unsigned trust_station_ = 0;     // the session the open prompt is for
+    bool trust_invalid_ = false;     // the open prompt is the invalid-certificate one
     CurrentProfile cur_;
     std::string last_status_text_;
     SessionIndicator indicators_[Profile::kSessions];
@@ -779,6 +783,8 @@ bool Win32Frontend::connected() const { return app_->host_link().controller_kind
 std::string Win32Frontend::tls_state_text(const TwinaxSessionStatus* s) const {
     if (cur_.p.tls_mode == ProfileTlsMode::AcceptAll) return "TLS, certificate not verified";
     if (!s || !s->connected) return "TLS";
+    if (s->address < Profile::kSessions && cur_.overridden[s->address])
+        return "TLS, certificate NOT VALID (accepted for this connection)";
     switch (cur_.p.tls_mode) {
     case ProfileTlsMode::System: return cur_.accepted_once ? "TLS, certificate accepted once" : "TLS, verified";
     case ProfileTlsMode::AcceptAll: break;
@@ -807,7 +813,8 @@ SessionIndicator Win32Frontend::session_indicator(unsigned i, const std::vector<
     std::string state;
     if (showing_trust_ && trust_station_ == i) {
         ind.orb = kOrbOrange;
-        state = "connecting, the certificate is not trusted: waiting for your answer";
+        state = trust_invalid_ ? "connecting, the certificate is not valid: waiting for your answer"
+                               : "connecting, the certificate is not trusted: waiting for your answer";
     } else if (!s) {
         ind.orb = kOrbRed;
         state = "disconnected";
@@ -938,6 +945,7 @@ void Win32Frontend::connect_profile(const Profile& p, bool power_cycle) {
         app_->host_link().disconnect(ignored);   // "not connected" is fine
     }
     cur_.accepted_once = false;
+    for (bool& o : cur_.overridden) o = false;
     // Like switching the terminal on: the running sessions close, the
     // terminal runs its power-on self test, and the controller brings the
     // sessions up once it answers the polls. A rebuilt machine is already
@@ -1151,9 +1159,26 @@ void Win32Frontend::handle_trust_requests() {
         const std::string name = cur_.active ? (cur_.untitled ? narrow(load_string(IDS_UNTITLED)) : cur_.name)
                                              : std::string("(none)");
         trust_station_ = p->req.station;
+        trust_invalid_ = p->req.problem == tn5250::TlsTrustProblem::Invalid;
         update_status();   // that session's orb: waiting for the answer
-        const tn5250::TlsTrustDecision d = trust_dialog(hwnd_.load(), p->req, name);
-        if (d == tn5250::TlsTrustDecision::AcceptPermanently && cur_.active) {
+        // A certificate that is not valid has its own prompt, with no way
+        // to remember the answer: nothing below touches the profile for it,
+        // and every connection attempt comes back here.
+        tn5250::TlsTrustDecision d;
+        if (trust_invalid_) {
+            d = certificate_invalid_dialog(hwnd_.load(), p->req) ? tn5250::TlsTrustDecision::AcceptOnce
+                                                                 : tn5250::TlsTrustDecision::Reject;
+            if (p->req.station < Profile::kSessions)
+                cur_.overridden[p->req.station] = d == tn5250::TlsTrustDecision::AcceptOnce;
+        } else {
+            d = trust_dialog(hwnd_.load(), p->req, name);
+            // A later connection of this session that needed no override.
+            if (p->req.station < Profile::kSessions && d != tn5250::TlsTrustDecision::Reject)
+                cur_.overridden[p->req.station] = false;
+        }
+        if (trust_invalid_) {
+            // Nothing to record.
+        } else if (d == tn5250::TlsTrustDecision::AcceptPermanently && cur_.active) {
             profile_trust_certificate(cur_.p, p->req.station, p->req.peer.sha256);
             std::string error;
             if (!cur_.untitled && save_profile(cur_.path, cur_.p, error)) {

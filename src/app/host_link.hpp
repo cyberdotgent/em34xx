@@ -24,6 +24,8 @@ class Emulator;
 // Each bridge gets its own wrapper that remembers the certificates the user
 // accepted, so the bridge's automatic reconnects do not ask again; a new
 // connect() asks again (unless the profile now pins the certificate).
+// Requests about a certificate that is not valid (TlsTrustProblem::Invalid)
+// bypass that memory in both directions: every one reaches the handler.
 class TlsTrustBroker {
 public:
     void set_handler(tn5250::TlsTrustHandler fn);

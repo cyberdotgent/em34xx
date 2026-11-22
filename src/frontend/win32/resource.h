@@ -53,6 +53,7 @@
 #define IDD_KEYMAP              307
 #define IDD_KEYMAP_ENTRY        308
 #define IDD_ABOUT               309
+#define IDD_CERT_INVALID        310
 
 /* Controls */
 #define IDC_STATIC_TEXT         2000
@@ -110,6 +111,13 @@
 #define IDC_TRUST_DETAILS       2122
 #define IDC_TRUST_ONCE          2123
 #define IDC_TRUST_ALWAYS        2124
+
+#define IDC_INVALID_ICON        2130
+#define IDC_INVALID_TEXT        2131
+#define IDC_INVALID_ERRORS      2132
+#define IDC_INVALID_DETAILS     2133
+#define IDC_INVALID_UNDERSTAND  2134
+#define IDC_INVALID_CONNECT     2135
 
 #define IDC_KM_LIST             2140
 #define IDC_KM_ADD              2141

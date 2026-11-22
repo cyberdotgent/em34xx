@@ -23,6 +23,13 @@ namespace tn5250 {
 // with `error` set when the connection must be dropped. When the
 // configuration refuses the certificate and `ask` is set, `ask` decides
 // instead (tls_trust.hpp); `port` goes into its request.
+//
+// A certificate that is expired, not yet valid or revoked (in any mode but
+// tls_verify = none) is a TlsTrustProblem::Invalid request, even when it
+// matches the pin; any answer but Reject accepts this one connection.
+// Without a handler it is refused, except that a pin match still accepts a
+// certificate outside its validity period (with a warning), never a revoked
+// one. An undetermined revocation status is logged and otherwise ignored.
 bool tls_accept_peer(const Tn5250Config& cfg, const std::string& host, const PeerCertificate& peer,
                      const Transport::LogFn& note, std::string& error, const TlsTrustHandler& ask = nullptr,
                      uint16_t port = 0);

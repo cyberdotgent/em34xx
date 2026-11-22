@@ -214,6 +214,23 @@ BEGIN
     DEFPUSHBUTTON   "&Stop", IDCANCEL, 259, 169, 54, 14
 END
 
+IDD_CERT_INVALID DIALOGEX 0, 0, 320, 244
+STYLE DS_SHELLFONT | DS_MODALFRAME | DS_CENTER | WS_POPUP | WS_CAPTION | WS_SYSMENU
+CAPTION "Certificate Not Valid"
+FONT 8, "MS Shell Dlg", 400, 0, 1
+BEGIN
+    ICON            "", IDC_INVALID_ICON, 7, 7, 21, 20, SS_ICON
+    LTEXT           "", IDC_INVALID_TEXT, 36, 7, 277, 34
+    LTEXT           "What is wrong with the certificate:", -1, 7, 45, 306, 8
+    EDITTEXT        IDC_INVALID_ERRORS, 7, 56, 306, 44, ES_MULTILINE | ES_READONLY | ES_AUTOVSCROLL | WS_VSCROLL
+    LTEXT           "The certificate the server sent:", -1, 7, 106, 306, 8
+    EDITTEXT        IDC_INVALID_DETAILS, 7, 117, 306, 66, ES_MULTILINE | ES_READONLY | ES_AUTOVSCROLL | WS_VSCROLL
+    LTEXT           "This cannot be remembered: you are asked again for every connection.", -1, 7, 189, 306, 8
+    AUTOCHECKBOX    "I &understand the risk and want to connect to this server anyway", IDC_INVALID_UNDERSTAND, 7, 203, 306, 10
+    PUSHBUTTON      "Connect &Anyway", IDC_INVALID_CONNECT, 173, 223, 80, 14, WS_DISABLED
+    DEFPUSHBUTTON   "Cancel", IDCANCEL, 259, 223, 54, 14
+END
+
 IDD_KEYMAP DIALOGEX 0, 0, 380, 240
 STYLE DS_SHELLFONT | DS_MODALFRAME | DS_CENTER | WS_POPUP | WS_CAPTION | WS_SYSMENU
 CAPTION "Keymap"

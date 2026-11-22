@@ -12,6 +12,14 @@
 // insecure and pinned modes possible. ca_file adds PEM certificates as
 // extra trust anchors through a private chain engine.
 //
+// The chain is built with revocation checking (CRL / OCSP, as Windows
+// does it, every certificate but the root, with a bounded retrieval time).
+// The validity period and a definite "revoked" are read from the chain's
+// trust status and reported apart from the trust result (tls_trust.hpp);
+// the SSL policy is then asked with dates and revocation ignored, so its
+// answer is about trust alone: root, name, signature, usage. A revocation
+// status Windows could not determine is not an error.
+//
 // Protocols come from SCHANNEL_CRED::grbitEnabledProtocols (SSL 3.0 to
 // TLS 1.2). TLS 1.3 would need the newer SCH_CREDENTIALS API, which
 // Windows 7 lacks, so it is not offered. Windows' own policy (SCHANNEL
@@ -53,6 +61,50 @@ constexpr int kHandshakeDeadlineMs = 30000;   // the whole handshake
 #ifndef SCH_USE_STRONG_CRYPTO
 #define SCH_USE_STRONG_CRYPTO 0x00400000
 #endif
+
+// Chain building flags and status bits that older SDK headers may lack
+// (all of them are understood by Windows 7).
+#ifndef CERT_CHAIN_REVOCATION_CHECK_CHAIN_EXCLUDE_ROOT
+#define CERT_CHAIN_REVOCATION_CHECK_CHAIN_EXCLUDE_ROOT 0x40000000
+#endif
+#ifndef CERT_CHAIN_REVOCATION_ACCUMULATIVE_TIMEOUT
+#define CERT_CHAIN_REVOCATION_ACCUMULATIVE_TIMEOUT 0x08000000
+#endif
+#ifndef CERT_TRUST_IS_OFFLINE_REVOCATION
+#define CERT_TRUST_IS_OFFLINE_REVOCATION 0x01000000
+#endif
+#ifndef CERT_CHAIN_POLICY_IGNORE_ALL_NOT_TIME_VALID_FLAGS
+#define CERT_CHAIN_POLICY_IGNORE_ALL_NOT_TIME_VALID_FLAGS 0x00000007
+#endif
+#ifndef CERT_CHAIN_POLICY_IGNORE_ALL_REV_UNKNOWN_FLAGS
+#define CERT_CHAIN_POLICY_IGNORE_ALL_REV_UNKNOWN_FLAGS 0x00000F00
+#endif
+
+// HTTPSPolicyCallbackData::fdwChecks: the errors the SSL policy is to
+// ignore. The documented SECURITY_FLAG_IGNORE_* values of wininet.h, which
+// is not included for four constants.
+constexpr DWORD kIgnoreRevocation = 0x00000080;    // SECURITY_FLAG_IGNORE_REVOCATION
+constexpr DWORD kIgnoreUnknownCa = 0x00000100;     // SECURITY_FLAG_IGNORE_UNKNOWN_CA
+constexpr DWORD kIgnoreDateInvalid = 0x00002000;   // SECURITY_FLAG_IGNORE_CERT_DATE_INVALID
+
+// All CRL / OCSP retrievals of one chain together (the check runs on the
+// session's I/O thread, after the handshake): a dead server costs a
+// connect this long at most, then the status is "not determined".
+constexpr DWORD kRevocationTimeoutMs = 6000;
+
+// CERT_CHAIN_PARA with the documented extra members up to the retrieval
+// timeout and cache resync time, the Windows Vista / 7 layout. The header's
+// own extended layout (CERT_CHAIN_PARA_HAS_EXTRA_FIELDS) ends in members
+// newer than Windows 7; cbSize tells Windows which one it is given.
+struct ChainPara {
+    DWORD cbSize;
+    CERT_USAGE_MATCH RequestedUsage;
+    CERT_USAGE_MATCH RequestedIssuancePolicy;
+    DWORD dwUrlRetrievalTimeout;   // milliseconds
+    BOOL fCheckRevocationFreshnessTime;
+    DWORD dwRevocationFreshnessTime;
+    LPFILETIME pftCacheResync;
+};
 
 std::wstring widen(const std::string& s) {
     if (s.empty()) return std::wstring();
@@ -540,9 +592,86 @@ private:
         return 1;
     }
 
+    // The validity period of one certificate against `now`, as lines for
+    // PeerCertificate::validity_errors. `who`: "The certificate" for the
+    // leaf, or a description of another one in the chain.
+    static void period_errors(PCCERT_CONTEXT cert, const FILETIME& now, const std::string& who, bool& expired,
+                              bool& not_yet_valid, std::vector<std::string>& out) {
+        expired = CompareFileTime(&cert->pCertInfo->NotAfter, &now) < 0;
+        not_yet_valid = CompareFileTime(&cert->pCertInfo->NotBefore, &now) > 0;
+        // Windows has one code for both directions.
+        if (expired)
+            out.push_back(format("%s expired on %s (CERT_E_EXPIRED, 0x%08lX)", who.c_str(),
+                                 filetime_text(cert->pCertInfo->NotAfter).c_str(),
+                                 static_cast<unsigned long>(CERT_E_EXPIRED)));
+        if (not_yet_valid)
+            out.push_back(format("%s is not valid before %s (CERT_E_EXPIRED, 0x%08lX)", who.c_str(),
+                                 filetime_text(cert->pCertInfo->NotBefore).c_str(),
+                                 static_cast<unsigned long>(CERT_E_EXPIRED)));
+    }
+
+    // Validity (dates, revocation) from the built chain's trust status.
+    void classify_validity(PCCERT_CHAIN_CONTEXT chain, const FILETIME& now, PeerCertificate& peer) {
+        const DWORD all = chain->TrustStatus.dwErrorStatus;
+        const CERT_SIMPLE_CHAIN* simple = chain->cChain ? chain->rgpChain[0] : nullptr;
+        bool time_named = peer.expired || peer.not_yet_valid;   // the leaf, by its own dates
+        bool revoked_named = false;
+        for (DWORD i = 0; simple && i < simple->cElement; ++i) {
+            const CERT_CHAIN_ELEMENT* el = simple->rgpElement[i];
+            const DWORD st = el->TrustStatus.dwErrorStatus;
+            const std::string who =
+                i == 0 ? std::string("The certificate")
+                       : "A certificate in the chain (" + cert_name(&el->pCertContext->pCertInfo->Subject) + ")";
+            if (i > 0 && (st & CERT_TRUST_IS_NOT_TIME_VALID)) {
+                bool expired = false, early = false;
+                const size_t before = peer.validity_errors.size();
+                period_errors(el->pCertContext, now, who, expired, early, peer.validity_errors);
+                if (peer.validity_errors.size() == before)
+                    peer.validity_errors.push_back(format("%s is outside its validity period (CERT_E_EXPIRED, 0x%08lX)",
+                                                          who.c_str(), static_cast<unsigned long>(CERT_E_EXPIRED)));
+                time_named = true;
+            }
+            if (st & CERT_TRUST_IS_REVOKED) {
+                if (i == 0) peer.revoked = true;
+                peer.validity_errors.push_back(format("%s has been revoked by its issuer (CRYPT_E_REVOKED, 0x%08lX)",
+                                                      who.c_str(), static_cast<unsigned long>(CRYPT_E_REVOKED)));
+                revoked_named = true;
+            }
+        }
+        // Set on the chain but on no element looked at: still an error.
+        if ((all & CERT_TRUST_IS_NOT_TIME_VALID) && !time_named)
+            peer.validity_errors.push_back(
+                format("A certificate in the chain is outside its validity period (CERT_E_EXPIRED, 0x%08lX)",
+                       static_cast<unsigned long>(CERT_E_EXPIRED)));
+        if ((all & CERT_TRUST_IS_REVOKED) && !revoked_named)
+            peer.validity_errors.push_back(
+                format("A certificate in the chain has been revoked by its issuer (CRYPT_E_REVOKED, 0x%08lX)",
+                       static_cast<unsigned long>(CRYPT_E_REVOKED)));
+        // A revocation anywhere in the chain is as final as one of the leaf.
+        if (all & CERT_TRUST_IS_REVOKED) peer.revoked = true;
+
+        if (all & CERT_TRUST_IS_REVOKED) {
+            peer.revocation_checked = true;
+        } else if (all & CERT_TRUST_IS_OFFLINE_REVOCATION) {
+            peer.revocation_note = format("the revocation server could not be reached (CRYPT_E_REVOCATION_OFFLINE, "
+                                          "0x%08lX)", static_cast<unsigned long>(CRYPT_E_REVOCATION_OFFLINE));
+        } else if (all & CERT_TRUST_REVOCATION_STATUS_UNKNOWN) {
+            peer.revocation_note = format("Windows could not determine it (CRYPT_E_NO_REVOCATION_CHECK, 0x%08lX)",
+                                          static_cast<unsigned long>(CRYPT_E_NO_REVOCATION_CHECK));
+        } else if (all & CERT_TRUST_IS_PARTIAL_CHAIN) {
+            peer.revocation_note = "the issuer's certificate is not known";
+        } else if (!simple || simple->cElement < 2) {
+            peer.revocation_note = "a self-signed certificate has no issuer to revoke it";
+        } else {
+            peer.revocation_checked = true;
+        }
+    }
+
     // Chain + SSL policy for the server name, against the system store,
     // plus ca_file roots through a private chain engine when given.
-    void verify_chain(PCCERT_CONTEXT cert, PeerCertificate& peer) {
+    // Dates and revocation go to the validity fields, the rest to chain_ok
+    // / chain_error.
+    void verify_chain(PCCERT_CONTEXT cert, const FILETIME& now, PeerCertificate& peer) {
         HCERTSTORE extra = nullptr;
         HCERTCHAINENGINE engine = nullptr;
         if (!extra_roots_.empty()) {
@@ -562,7 +691,7 @@ private:
             if (!CertCreateCertificateChainEngine(&ec, &engine)) engine = nullptr;
         }
 
-        CERT_CHAIN_PARA cp;
+        ChainPara cp;
         std::memset(&cp, 0, sizeof cp);
         cp.cbSize = sizeof cp;
         static LPSTR kUsages[] = {const_cast<LPSTR>(szOID_PKIX_KP_SERVER_AUTH),
@@ -571,18 +700,30 @@ private:
         cp.RequestedUsage.dwType = USAGE_MATCH_TYPE_OR;
         cp.RequestedUsage.Usage.cUsageIdentifier = 3;
         cp.RequestedUsage.Usage.rgpszUsageIdentifier = kUsages;
+        cp.dwUrlRetrievalTimeout = kRevocationTimeoutMs;
+        // Revocation of every certificate but the root (a root is trusted by
+        // being in the store), within one time budget for all retrievals.
+        const DWORD flags = CERT_CHAIN_REVOCATION_CHECK_CHAIN_EXCLUDE_ROOT | CERT_CHAIN_REVOCATION_ACCUMULATIVE_TIMEOUT;
         PCCERT_CHAIN_CONTEXT chain = nullptr;
-        if (!CertGetCertificateChain(engine, cert, nullptr, cert->hCertStore, &cp, 0, nullptr, &chain)) {
+        if (!CertGetCertificateChain(engine, cert, nullptr, cert->hCertStore, reinterpret_cast<PCERT_CHAIN_PARA>(&cp),
+                                     flags, nullptr, &chain)) {
             peer.chain_error = "CertGetCertificateChain: " + status_text(long(GetLastError()));
+            peer.revocation_note = "no certificate chain could be built";
         } else {
+            classify_validity(chain, now, peer);
             HTTPSPolicyCallbackData https;
             std::memset(&https, 0, sizeof https);
             https.cbStruct = sizeof https;
             https.dwAuthType = AUTHTYPE_SERVER;
             https.pwszServerName = &whost_[0];
+            // Dates and revocation were classified above; with them ignored
+            // here the policy's one error code is about trust: the root,
+            // the name, a signature, the usage.
+            https.fdwChecks = kIgnoreRevocation | kIgnoreDateInvalid;
             CERT_CHAIN_POLICY_PARA pp;
             std::memset(&pp, 0, sizeof pp);
             pp.cbSize = sizeof pp;
+            pp.dwFlags = CERT_CHAIN_POLICY_IGNORE_ALL_NOT_TIME_VALID_FLAGS | CERT_CHAIN_POLICY_IGNORE_ALL_REV_UNKNOWN_FLAGS;
             pp.pvExtraPolicyPara = &https;
             CERT_CHAIN_POLICY_STATUS ps;
             std::memset(&ps, 0, sizeof ps);
@@ -593,8 +734,9 @@ private:
                 peer.chain_ok = true;
             } else if (DWORD(ps.dwError) == DWORD(CERT_E_UNTRUSTEDROOT) && root_is_extra(chain)) {
                 // Untrusted only because the root is a ca_file one: check the
-                // rest of the policy (names, dates) with that error ignored.
-                https.fdwChecks = 0x00000100;   // SECURITY_FLAG_IGNORE_UNKNOWN_CA
+                // rest of the policy (the name, the usage) with that error
+                // ignored as well.
+                https.fdwChecks |= kIgnoreUnknownCa;
                 std::memset(&ps, 0, sizeof ps);
                 ps.cbSize = sizeof ps;
                 if (CertVerifyCertificateChainPolicy(CERT_CHAIN_POLICY_SSL, chain, &pp, &ps) && ps.dwError == 0)
@@ -603,6 +745,33 @@ private:
                     peer.chain_error = chain_error_text(ps.dwError);
             } else {
                 peer.chain_error = chain_error_text(ps.dwError);
+            }
+            // The policy's answer is not taken alone for the errors that
+            // mean "no chain to a trusted root": the chain's own status
+            // must agree. (Windows reports these through the policy; wine
+            // 9.0 was observed to pass a chain whose issuer is unknown.)
+            if (peer.chain_ok) {
+                const DWORD st = chain->TrustStatus.dwErrorStatus;
+                DWORD code = 0;
+                if (st & CERT_TRUST_IS_PARTIAL_CHAIN) code = DWORD(CERT_E_CHAINING);
+                else if (st & CERT_TRUST_IS_NOT_SIGNATURE_VALID) code = DWORD(TRUST_E_CERT_SIGNATURE);
+                else if ((st & CERT_TRUST_IS_UNTRUSTED_ROOT) && !root_is_extra(chain)) code = DWORD(CERT_E_UNTRUSTEDROOT);
+                if (code) {
+                    peer.chain_ok = false;
+                    peer.chain_error = chain_error_text(code);
+                }
+            }
+            // Should the policy name a date or revocation error all the
+            // same, it is a validity error, not a trust one.
+            if (!peer.chain_ok && (DWORD(ps.dwError) == DWORD(CERT_E_EXPIRED) ||
+                                   DWORD(ps.dwError) == DWORD(CERT_E_REVOKED) ||
+                                   DWORD(ps.dwError) == DWORD(CRYPT_E_REVOKED))) {
+                const bool revoked = DWORD(ps.dwError) != DWORD(CERT_E_EXPIRED);
+                if (revoked) peer.revoked = true;
+                if (peer.validity_errors.empty())
+                    peer.validity_errors.push_back(revoked ? "The certificate has been revoked: " + peer.chain_error
+                                                           : "The certificate is outside its validity period: " +
+                                                                 peer.chain_error);
             }
             CertFreeCertificateChain(chain);
         }
@@ -636,8 +805,8 @@ private:
         peer.expires = filetime_text(cert->pCertInfo->NotAfter);
         FILETIME now;
         GetSystemTimeAsFileTime(&now);
-        peer.expired = CompareFileTime(&cert->pCertInfo->NotAfter, &now) < 0;
-        verify_chain(cert, peer);
+        period_errors(cert, now, "The certificate", peer.expired, peer.not_yet_valid, peer.validity_errors);
+        verify_chain(cert, now, peer);
         CertFreeCertificateContext(cert);
         set_peer_certificate(peer);
         return tls_accept_peer(cfg_, host, peer, [this](LogLevel l, const std::string& s) { note(l, s); }, error,

@@ -12,7 +12,7 @@ Sources: `src/main_win32.cpp`, `src/frontend/win32/`:
 | File | What |
 | --- | --- |
 | `win32_frontend.*` | launch (user folder, settings, first-start ROM check, command line), the main window, picture, keyboard, profiles and connections, the TLS trust queue |
-| `win32_dialogs.*` | ROM images, Settings, profile manager and editor, TLS Settings, the trust prompt, Keymap, About, file association |
+| `win32_dialogs.*` | ROM images, Settings, profile manager and editor, TLS Settings, the trust prompt, the invalid-certificate prompt, Keymap, About, file association |
 | `win32_util.*` | UTF-8/UTF-16, DPI helpers (newer APIs loaded at run time), scan code -> HID table, message boxes, the open-file dialog, the exception guard for window and dialog procedures |
 | `res/notices.txt` | third-party licence notices, embedded as RCDATA and shown in Help > About (no separate notices file ships) |
 | `version.h.in` | generated `em34xxw_version.h`: version (from `project(VERSION)`) and project page (`EM34XX_HOMEPAGE_URL`, empty = "to be announced") for VERSIONINFO and About |
@@ -277,7 +277,9 @@ with "Accept all certificates" (encrypted, the server not verified) and
 open for plain telnet (dimmed for a session that is not configured).
 Hovering an orb or lock
 shows the host:port, the state with the last error, and the TLS state
-(verified, trusted certificate, not verified, accepted once).
+(verified, trusted certificate, not verified, accepted once, or
+"certificate NOT VALID (accepted for this connection)" for a session the
+user let through the invalid-certificate prompt).
 
 Accelerators use Ctrl+Shift only; every other key belongs to the terminal.
 
@@ -295,7 +297,10 @@ TLS:
 - *Accept only the certificate with this SHA-256 hash*, with **Fetch**:
   it connects to the first TLS session's host and port on a worker thread
   (`tls_fetch_certificate()`), shows subject, issuer, validity, the
-  fingerprint and whether it verifies, and fills in the hash. The dialog
+  fingerprint, whether it verifies, a `NOT VALID:` line per validity error
+  (expired, not yet valid, revoked) and the revocation status, and fills in
+  the hash. A hash does not settle a validity error: connecting to such a
+  certificate still asks every time (below). The dialog
   can close while a fetch runs; the result is then dropped.
 - *Minimum version*: Default (the settings' value) or SSL 3.0 ... TLS 1.3
   (SChannel offers up to TLS 1.2).
@@ -303,7 +308,7 @@ TLS:
 ## The TLS trust prompt
 
 When TLS is on and a certificate is refused (not trusted, wrong name,
-expired, or not the pinned one), the session's I/O thread asks the front
+or not the pinned one), the session's I/O thread asks the front
 end through the trust hook (`docs/tn5250.md`, "Asking the user"). The
 request is queued and the thread waits; the window shows **Untrusted
 Certificate** with the reason and the certificate (subject, issuer, valid
@@ -326,6 +331,37 @@ Disconnect, a new connection and Exit answer any waiting request with Stop
 first, and while the old sessions are being closed a new request is
 refused at once (`TrustQueue::begin_drain()`), so no session thread is
 blocked on a prompt when it is joined.
+
+## The invalid-certificate prompt
+
+A certificate that is expired, not yet valid or revoked
+(`TlsTrustProblem::Invalid`; `docs/tn5250.md`, "Validity and revocation")
+gets a different dialog, **Certificate Not Valid** (`IDD_CERT_INVALID`,
+`certificate_invalid_dialog()`), instead of the trust prompt, whether or
+not the certificate is trusted or pinned:
+
+- a warning icon and the headline: the certificate of host:port (session
+  n) is not valid and the connection may not be secure;
+- *What is wrong with the certificate*: every error, one per line, as the
+  TLS backend worded it (with Windows' code), followed by the trust or pin
+  failure when there is one as well;
+- *The certificate the server sent*: subject, issuer, valid from/until,
+  SHA-256, verification, validity and revocation lines;
+- "This cannot be remembered: you are asked again for every connection.";
+- an unticked **I understand the risk and want to connect to this server
+  anyway**, which enables **Connect Anyway**; **Cancel** is the default
+  button. Esc and closing the dialog are Cancel.
+
+There is no "trust permanently" here, and nothing is written to the
+profile. Every connection attempt of every session asks again, the
+bridge's automatic reconnects included (`TlsTrustBroker` does not remember
+these answers). Cancel holds the session, like Stop. The prompt goes
+through the same queue as the trust prompt, so the deferral behind another
+dialog, the orange orb ("the certificate is not valid: waiting for your
+answer"), the ten-minute limit and the drain on disconnect apply
+unchanged. A session connected this way says so in its tooltip until the
+next Connect; a certificate renewed during an automatic reconnect does not
+clear that text (known gap).
 
 ## End of the Windows session
 
@@ -426,7 +462,9 @@ composite them. Observed (November 2026, wine 9.0, x86 and x64 builds):
   on the main window); Yes rebuilds (POST in colour), reconnects as
   `IBM-3477-FC` and shows the sign-on screen in colour.
 
-Not tested: real Windows 7/10/11, `WM_DPICHANGED` between monitors, a
+Not tested: the invalid-certificate prompt (built for x86 and x64, not yet
+run; its decision path is covered by `tests/test_tn5250_tls.cpp` and the
+SChannel classification by `tn5250-probe.exe` under wine), real Windows 7/10/11, `WM_DPICHANGED` between monitors, a
 non-ASCII user folder.
 
 ## Known gaps

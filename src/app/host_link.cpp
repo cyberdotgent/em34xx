@@ -32,6 +32,9 @@ tn5250::TlsTrustHandler TlsTrustBroker::for_new_bridge() {
     };
     auto accepted = std::make_shared<Accepted>();
     return [fn, accepted](const tn5250::TlsTrustRequest& req) {
+        // An expired, not yet valid or revoked certificate is asked about
+        // every time: neither answered from the memory nor added to it.
+        if (req.problem == tn5250::TlsTrustProblem::Invalid) return fn(req);
         const std::string key =
             format("%s:%u %s", req.host.c_str(), req.port, format_sha256_fingerprint(req.peer.sha256).c_str());
         {
