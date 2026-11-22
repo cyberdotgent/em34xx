@@ -17,6 +17,7 @@
 #include "tn5250/tls_trust.hpp"
 #include "util/log.hpp"
 
+#include <atomic>
 #include <cstddef>
 #include <cstdint>
 #include <functional>
@@ -39,6 +40,9 @@ public:
     virtual void close() = 0;
     virtual std::string describe() const = 0;
 
+    // A flag that abandons a connect() in progress when it becomes true
+    // (it must outlive the transport). Set before connect().
+    void set_cancel(const std::atomic<bool>* flag) { cancel_ = flag; }
     // Where connection diagnostics go (certificate details, fingerprints).
     void set_log(LogFn fn) { log_ = std::move(fn); }
     // Who is asked when the configuration refuses the server certificate
@@ -53,6 +57,7 @@ protected:
         if (log_) log_(level, line);
     }
     const TlsTrustHandler& trust_handler() const { return trust_; }
+    const std::atomic<bool>* cancel_flag() const { return cancel_; }
     void set_peer_certificate(const PeerCertificate& p) {
         peer_cert_ = p;
         have_peer_ = true;
@@ -61,6 +66,7 @@ protected:
 private:
     LogFn log_;
     TlsTrustHandler trust_;
+    const std::atomic<bool>* cancel_ = nullptr;
     PeerCertificate peer_cert_;
     bool have_peer_ = false;
 };

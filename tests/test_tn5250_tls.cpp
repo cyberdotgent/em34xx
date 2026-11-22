@@ -5,12 +5,14 @@
 #include "app/host_link.hpp"
 #include "config/config.hpp"
 #include "host/host_config.hpp"
+#include "net/socket.hpp"
 #include "tn5250/tls_policy.hpp"
 #include "tn5250/transport.hpp"
 #include "util/fingerprint.hpp"
 
 #include <doctest/doctest.h>
 
+#include <atomic>
 #include <cctype>
 #include <filesystem>
 #include <fstream>
@@ -414,6 +416,53 @@ TEST_CASE("TLS transport: plain TCP stays the default") {
         CHECK(make_transport(cfg, err) == nullptr);
         CHECK(err.find("no TLS support") != std::string::npos);
     }
+}
+
+TEST_CASE("TCP socket: loopback connect, and a cancel flag abandons the attempt") {
+    // No ephemeral-port query in TcpSocket: try a few fixed ports.
+    TcpSocket listener;
+    uint16_t port = 0;
+    std::string err;
+    for (uint16_t p = 47361; p < 47369 && !port; ++p)
+        if (listener.listen(p, true, err)) port = p;
+    REQUIRE_MESSAGE(port != 0, err);
+
+    TcpSocket client;
+    REQUIRE_MESSAGE(client.connect("127.0.0.1", port, err), err);
+    CHECK(err.empty());
+    TcpSocket served = listener.accept(5000);
+    REQUIRE(served.valid());
+    REQUIRE(client.send_all("ping", 4));
+    char buf[8] = {};
+    size_t got = 0;
+    while (got < 4) {
+        const int n = served.recv(buf + got, sizeof buf - got, 5000);
+        REQUIRE(n > 0);
+        got += size_t(n);
+    }
+    CHECK(std::string(buf, got) == "ping");
+    CHECK(client.recv(buf, sizeof buf, 0) == 0);   // nothing to read: a timeout, not an error
+    served.close();
+    CHECK(client.recv(buf, sizeof buf, 5000) == -1);
+
+    // A flag that is already set: no attempt is made, the listener sees
+    // nobody.
+    const std::atomic<bool> cancel{true};
+    TcpSocket refused;
+    CHECK_FALSE(refused.connect("127.0.0.1", port, err, &cancel));
+    CHECK_FALSE(refused.valid());
+    CHECK(err.find("cancelled") != std::string::npos);
+    CHECK_FALSE(listener.accept(0).valid());
+
+    // The plain transport hands its flag to the socket.
+    Tn5250Config cfg;
+    cfg.host = "127.0.0.1";
+    auto t = make_transport(cfg, err);
+    REQUIRE(t);
+    t->set_cancel(&cancel);
+    CHECK_FALSE(t->connect("127.0.0.1", port, err));
+    CHECK(err.find("cancelled") != std::string::npos);
+    CHECK_FALSE(listener.accept(0).valid());
 }
 
 #ifdef EM34XX_TLS_OPENSSL

@@ -11,7 +11,7 @@ namespace {
 class PlainTcpTransport : public Transport {
 public:
     bool connect(const std::string& host, uint16_t port, std::string& error) override {
-        return sock_.connect(host, port, error);
+        return sock_.connect(host, port, error, cancel_flag());
     }
     int recv(uint8_t* buf, size_t len, int timeout_ms) override { return sock_.recv(buf, len, timeout_ms); }
     bool send(const uint8_t* buf, size_t len) override { return sock_.send_all(buf, len); }
