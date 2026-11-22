@@ -131,7 +131,7 @@ What it uses:
 - **Terminal keys.** `Machine::terminal_key("attn", pressed)` presses the
   terminal's own key for a function (set-3 position plus the terminal
   Shift/Alt its legend needs), bypassing the host keymap: toolbar buttons
-  for Attn, SysRq, Reset. `Machine::set_keymap(spec)` replaces the host
+  for Attn, SysRq, Reset, Setup. `Machine::set_keymap(spec)` replaces the host
   keymap at run time.
 - **TLS trust.** `HostLink::set_tls_trust_handler()`: when TLS is on and
   the configuration refuses the server certificate (verification failed,

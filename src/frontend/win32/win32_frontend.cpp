@@ -166,6 +166,7 @@ const ToolButton kToolbar[] = {
     {-2, ID_TERM_ATTN, IDS_TB_ATTN},
     {-2, ID_TERM_SYSRQ, IDS_TB_SYSRQ},
     {-2, ID_TERM_RESET, IDS_TB_RESET},
+    {-2, ID_TERM_SETUP, IDS_TB_SETUP},
 };
 
 // Status bar glyphs in the IDB_STATUS* strips: an orb per session and its
@@ -445,7 +446,7 @@ void Win32Frontend::create_bars() {
             t.idCommand = b.command;
             t.fsState = TBSTATE_ENABLED;
             t.fsStyle = BTNS_BUTTON | BTNS_AUTOSIZE;
-            // Attn, SysRq and Reset show their names; the others are
+            // Attn, SysRq, Reset and Setup show their names; the others are
             // pictures with tooltips (TTN_GETDISPINFO).
             t.iString = b.image == -2 ? reinterpret_cast<INT_PTR>(texts[i].c_str()) : INT_PTR(-1);
         }
@@ -1153,6 +1154,7 @@ void Win32Frontend::command(int id) {
     case ID_TERM_ATTN: terminal_key("attn"); break;
     case ID_TERM_SYSRQ: terminal_key("sysrq"); break;
     case ID_TERM_RESET: terminal_key("reset"); break;
+    case ID_TERM_SETUP: terminal_key("setup"); break;
     case ID_TERM_POWER_CYCLE: reboot(); break;
     case ID_HELP_ABOUT: release_keys(); about_dialog(h, dirs()); break;
     default: break;

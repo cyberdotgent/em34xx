@@ -220,7 +220,7 @@ message.
 | Edit | Keymap... | yes | the keymap editor |
 | Edit | Settings... | yes | speed, default TLS minimum, ROM images, file association |
 | View | Zoom > 1x / 1.5x / 2x | | radio items; the picture area becomes the presented frame times the zoom times the DPI scale (shrunk to the work area if it does not fit); manual resizing stays possible and choosing a zoom snaps back. Saved in settings.toml |
-| Terminal | Attn, SysRq, Reset | yes (text buttons) | press the terminal's own key through the keyboard model (`Machine::terminal_key()`, set-3 position with the Shift/Alt its legend needs), so the firmware and the controller see the real key |
+| Terminal | Attn, SysRq, Reset, Setup | yes (text buttons) | press the terminal's own key through the keyboard model (`Machine::terminal_key()`, set-3 position with the Shift/Alt its legend needs), so the firmware and the controller see the real key |
 | Terminal | Reboot (Power Cycle) | yes | switch the terminal off and on with the sessions left connected (see "Connecting") |
 | Help | About... | | version, user folder, TLS backend, project page, third-party notices |
 

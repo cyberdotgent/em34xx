@@ -59,6 +59,7 @@ BEGIN
         MENUITEM "&Attn",                                ID_TERM_ATTN
         MENUITEM "&SysRq",                               ID_TERM_SYSRQ
         MENUITEM "&Reset",                               ID_TERM_RESET
+        MENUITEM "Set&up",                               ID_TERM_SETUP
         MENUITEM SEPARATOR
         MENUITEM "Re&boot (Power Cycle)",                ID_TERM_POWER_CYCLE
     END
@@ -278,6 +279,7 @@ BEGIN
     IDS_TB_RESET         "Reset"
     IDS_TB_RECONNECT     "Reconnect"
     IDS_TB_REBOOT        "Reboot (Power Cycle)"
+    IDS_TB_SETUP         "Setup"
     IDS_NOT_CONNECTED    "not connected"
     IDS_NO_PROFILE       "no profile"
     IDS_TLS_OFF          "TLS off"

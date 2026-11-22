@@ -39,6 +39,7 @@
 #define ID_TERM_SYSRQ           1031
 #define ID_TERM_RESET           1032
 #define ID_TERM_POWER_CYCLE     1033
+#define ID_TERM_SETUP           1034
 #define ID_HELP_ABOUT           1040
 
 /* Dialogs */
@@ -143,6 +144,7 @@
 #define IDS_TB_RESET            4018
 #define IDS_TB_RECONNECT        4019
 #define IDS_TB_REBOOT           4020
+#define IDS_TB_SETUP            4021
 #define IDS_NOT_CONNECTED       4030
 #define IDS_NO_PROFILE          4031
 #define IDS_TLS_OFF             4032

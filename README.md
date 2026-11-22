@@ -24,7 +24,7 @@ data from the ROMs.
 - A profile holds the terminal type, the CRT type and up to two sessions,
   each with or without TLS. **Edit > Connection Settings** changes the
   running profile.
-- The toolbar has Disconnect/Reconnect, Reboot, Attn, SysRq and Reset.
+- The toolbar has Disconnect/Reconnect, Reboot, Attn, SysRq, Reset and Setup.
 - The status bar shows each session's state and TLS lock.
 
 Settings, ROMs, profiles and the keymap live in `%APPDATA%\em34xx`. More in
