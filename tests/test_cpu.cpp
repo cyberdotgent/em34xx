@@ -6,6 +6,7 @@
 
 #include <doctest/doctest.h>
 
+#include <algorithm>
 #include <vector>
 
 using namespace em34xx;
@@ -97,6 +98,25 @@ TEST_CASE("hardware interrupt wakes HLT and IRET returns") {
     cpu.step();  // mov bl,0x22
     CHECK((cpu.regs().gpr[BX] & 0xFF) == 0x22);
     CHECK(cpu.regs().gpr[SP] == 0x1000);
+}
+
+TEST_CASE("a segment full of prefix bytes does not hang step()") {
+    for (uint8_t prefix : {uint8_t(0x26), uint8_t(0xF0), uint8_t(0xF3)}) {
+        RamBus bus;
+        std::fill(bus.mem.begin(), bus.mem.end(), prefix);
+        I86 cpu(bus, CpuLevel::I8088);
+        uint64_t cycles = cpu.cycles();
+        for (int i = 0; i < 200; ++i) {   // more than 64 KB of prefixes in all
+            CHECK(cpu.step() > 0);
+            CHECK(cpu.cycles() > cycles);
+            cycles = cpu.cycles();
+        }
+        CHECK(cpu.regs().seg[CS] == 0xFFFF);
+        // The chain still ends in whatever instruction follows it.
+        bus.mem[cpu.pc_linear() + 3] = 0xF4;   // hlt
+        cpu.step();
+        CHECK(cpu.halted());
+    }
 }
 
 TEST_CASE("80186 extensions are level dependent") {

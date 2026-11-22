@@ -16,6 +16,11 @@ bool parity8(uint8_t v) {
 constexpr uint32_t kBaseCycles = 2;
 constexpr uint32_t kBusCycles = 4;
 
+// Prefix bytes taken by one step(). A real 8086 has no limit, but IP wraps
+// within the segment, so 64 KB of prefix bytes would keep step() from ever
+// returning; no real code comes anywhere near this many.
+constexpr unsigned kMaxPrefixes = 1024;
+
 } // namespace
 
 const char* cpu_level_name(CpuLevel level) {
@@ -624,7 +629,16 @@ uint32_t I86::step() {
 
     // Prefixes.
     uint8_t op;
-    for (;;) {
+    for (unsigned prefixes = 0;; ++prefixes) {
+        if (prefixes == kMaxPrefixes) {
+            // Endless prefix chain: end the step here, with the fetches
+            // charged, so that the caller regains control. The next step
+            // carries on with the bytes that follow (and starts its own
+            // prefix state; start_ip_ then points into the chain, which is
+            // still a prefix byte for a REP rewind).
+            cycles_ += step_cycles_;
+            return step_cycles_;
+        }
         op = fetch8();
         if (op == 0x26 || op == 0x2E || op == 0x36 || op == 0x3E) {
             seg_override_ = (op >> 3) & 3;
