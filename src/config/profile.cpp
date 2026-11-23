@@ -47,6 +47,9 @@ std::string Profile::validate() const {
         if (s.host.find_first_of(" \t\r\n") != std::string::npos) return which + ": the host name contains blanks";
         if (s.port == 0) return which + ": the port must be 1..65535";
         if (s.device_name.size() > 10) return which + ": the device name is longer than 10 characters";
+        if (s.terminal_type.find_first_of(" \t\r\n") != std::string::npos)
+            return which + ": the terminal type contains blanks";
+        if (s.terminal_type.size() > 40) return which + ": the terminal type is longer than 40 characters";
         Sha256Digest d;
         if (!s.cert_sha256.empty() && !parse_sha256_fingerprint(s.cert_sha256, d))
             return which + ": the certificate fingerprint is not a SHA-256 fingerprint";
@@ -71,7 +74,8 @@ bool Profile::operator==(const Profile& o) const {
         return false;
     for (size_t i = 0; i < kSessions; ++i) {
         const ProfileSession &a = sessions[i], &b = o.sessions[i];
-        if (a.host != b.host || a.port != b.port || a.tls != b.tls || a.device_name != b.device_name || a.cert_sha256 != b.cert_sha256)
+        if (a.host != b.host || a.port != b.port || a.tls != b.tls || a.device_name != b.device_name ||
+            a.terminal_type != b.terminal_type || a.cert_sha256 != b.cert_sha256)
             return false;
     }
     return true;
@@ -145,6 +149,7 @@ bool parse_profile(const std::string& text, const std::string& origin, Profile& 
                 s.port = uint16_t(*v);
             }
             if (auto v = (*t)["device_name"].value<std::string>()) s.device_name = *v;
+            if (auto v = (*t)["terminal_type"].value<std::string>()) s.terminal_type = trim(*v);
             if (auto v = (*t)["cert_sha256"].value<std::string>()) s.cert_sha256 = *v;
         }
     }
@@ -163,6 +168,7 @@ std::string profile_to_toml(const Profile& p) {
         if (i > 0 && !s.used()) continue;
         toml::table t{{"host", s.host}, {"port", int64_t(s.port)}, {"tls", s.tls}};
         if (!s.device_name.empty()) t.insert("device_name", s.device_name);
+        if (!s.terminal_type.empty()) t.insert("terminal_type", s.terminal_type);
         if (!s.cert_sha256.empty()) t.insert("cert_sha256", s.cert_sha256);
         sessions.push_back(std::move(t));
     }
@@ -209,12 +215,12 @@ bool profile_connect_config(const Profile& p, const AppConfig& base, TlsVersion 
         tn.tls_max_version = TlsVersion::Any;
     if (!tn.tls) tn.ca_file.clear();
 
-    StationConfig st0{0, StationType::Display, "", ""};
+    StationConfig st0{0, StationType::Display, "", s1.terminal_type};
     if (s1.tls && !s1.cert_sha256.empty()) st0.tls_cert_sha256 = s1.cert_sha256;
     out.twinax.stations.push_back(st0);
     const ProfileSession& s2 = p.sessions[1];
     if (s2.used()) {
-        StationConfig st1{1, StationType::Display, s2.device_name, ""};
+        StationConfig st1{1, StationType::Display, s2.device_name, s2.terminal_type};
         if (s2.host != s1.host) st1.host = s2.host;
         if (s2.port != s1.port) st1.port = s2.port;
         st1.tls = s2.tls ? 1 : 0;
@@ -242,6 +248,24 @@ void profile_trust_certificate(Profile& p, unsigned station, const Sha256Digest&
     p.tls_mode = ProfileTlsMode::Fingerprint;
     p.tls_cert_sha256 = fp;
     p.sessions[0].cert_sha256.clear();
+}
+
+bool terminal_type_is_colour(const std::string& terminal_type) {
+    const std::string t = to_lower(trim(terminal_type));
+    return t == "ibm-3179-2" || t == "ibm-5292-2" || t == "ibm-3477-fc" || t == "ibm-3487-hc";
+}
+
+std::string profile_display_warning(const Profile& p) {
+    if (p.display == DisplaySubtype::Color) return {};
+    for (size_t i = 0; i < Profile::kSessions; ++i) {
+        const ProfileSession& s = p.sessions[i];
+        if (!s.used() || !terminal_type_is_colour(s.terminal_type)) continue;
+        return format("Session %zu announces the colour terminal type %s, but the CRT type is %s. The host will "
+                      "send colour attributes, which a monochrome display shows as blinking, bright or "
+                      "underlined text.",
+                      i + 1, s.terminal_type.c_str(), display_subtype_name(p.display));
+    }
+    return {};
 }
 
 } // namespace em34xx

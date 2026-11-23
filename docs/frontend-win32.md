@@ -199,6 +199,8 @@ host = "pub400.com"
 port = 992
 tls = true                      # each session with or without TLS
 device_name = "QPADEV0001"      # optional DEVNAME
+terminal_type = "IBM-3179-2"    # optional TN5250 terminal type, for a host
+                                # that does not accept the model's own
 
 [[session]]                     # session 2: station 1 (optional)
 host = "other.example"
@@ -217,6 +219,18 @@ overrides, also accepted in `[[twinax.station]]` of the TOML
 configuration; `tls = false` there also drops `[tn5250]`'s pinned
 certificate and CA file for that station). With session 1 plain and
 session 2 on TLS, a fingerprint pin goes to session 2's station.
+
+`terminal_type` goes to the session's station (`StationConfig::profile`);
+without it the type is derived from the model and the CRT type
+(`station_terminal_type()`). A colour type (`IBM-3179-2`, `IBM-5292-2`,
+`IBM-3477-FC`, `IBM-3487-HC`) with a monochrome CRT type makes the host
+send colour attributes that a monochrome display shows as blinking, bright
+or underlined text (observed: IBM-3179-2 on a green 3477 against OS/400
+V4R5, the Main Menu's blue lines blink); `profile_display_warning()` gives
+a profile editor the text to warn with. The key is optional and older
+versions ignore it, so the format number stays 2. The Win32 and Cocoa
+profile editors do not show it yet; they edit the loaded `Profile` in
+place, so a type set by hand survives their saves.
 
 Format 1 (em34xx 0.1) had one `tls.enabled` for both sessions and no
 `[display]`; such files still load (each session takes `tls.enabled`, the

@@ -348,6 +348,37 @@ TEST_CASE("profile: the connect configuration and trusting a certificate") {
 
     CHECK(c.twinax.stations[1].tls == 1);
 
+    // A session's own terminal type goes to its station; without one the
+    // station keeps none (the type is then derived from model and display).
+    CHECK(c.twinax.stations[0].profile.empty());
+    CHECK(c.twinax.stations[1].profile.empty());
+    Profile typed;
+    typed.sessions[0] = {"host.example", 23, "", "", false, "IBM-3179-2"};
+    typed.sessions[1] = {"host.example", 23, "", "", false};
+    REQUIRE(profile_connect_config(typed, base, TlsVersion::Tls1_2, c, err));
+    CHECK(c.twinax.stations[0].profile == "IBM-3179-2");
+    CHECK(c.twinax.stations[1].profile.empty());
+    Profile round;
+    REQUIRE(parse_profile(profile_to_toml(typed), "typed", round, err));
+    CHECK(round == typed);
+    CHECK(round.sessions[0].terminal_type == "IBM-3179-2");
+    Profile other = typed;
+    other.sessions[0].terminal_type.clear();
+    CHECK(other != typed);
+    CHECK(profile_to_toml(other).find("terminal_type") == std::string::npos);
+    other.sessions[0].terminal_type = "IBM 3179";
+    CHECK(other.validate().find("blanks") != std::string::npos);
+
+    // A colour terminal type on a monochrome tube is worth a warning.
+    CHECK(terminal_type_is_colour("ibm-3179-2"));
+    CHECK(terminal_type_is_colour("IBM-3477-FC"));
+    CHECK_FALSE(terminal_type_is_colour("IBM-3477-FG"));
+    CHECK_FALSE(terminal_type_is_colour(""));
+    CHECK(profile_display_warning(typed).find("IBM-3179-2") != std::string::npos);   // green tube
+    typed.display = DisplaySubtype::Color;
+    CHECK(profile_display_warning(typed).empty());
+    CHECK(profile_display_warning(Profile()).empty());
+
     // Mixed: session 1 plain, session 2 with TLS and the profile's pin.
     Profile mixed;
     mixed.tls_mode = ProfileTlsMode::Fingerprint;

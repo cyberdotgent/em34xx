@@ -24,6 +24,10 @@
 //   port = 992
 //   tls = true
 //   device_name = ""               optional DEVNAME
+//   terminal_type = ""             optional TN5250 terminal type (RFC 1205,
+//                                  e.g. "IBM-3179-2") for a host that does
+//                                  not accept the model's own; absent = the
+//                                  type derived from the model and CRT type
 //
 //   [[session]]                    session 2 (station 1); optional
 //   host = ""                      empty = not used
@@ -61,6 +65,10 @@ struct ProfileSession {
     std::string device_name;
     std::string cert_sha256;       // per-session trusted certificate (another host)
     bool tls = false;              // TLS for this session (settings in Profile)
+    // TN5250 terminal type; empty = derived from the model and CRT type
+    // (station_terminal_type). Last, so positional initialisers of the
+    // members above keep their meaning.
+    std::string terminal_type{};
     bool used() const { return !host.empty(); }
 };
 
@@ -102,5 +110,16 @@ bool profile_connect_config(const Profile& p, const AppConfig& base, TlsVersion 
 // profile's fingerprint mode; for a session 2 on another system it is that
 // session's own cert_sha256.
 void profile_trust_certificate(Profile& p, unsigned station, const Sha256Digest& sha256);
+
+// Whether a host that is told `terminal_type` treats the display as a
+// colour one (it then sends colour attributes, which a monochrome tube
+// shows as blink, high intensity and column separators): the 3179, 5292 and
+// 3477-FC / 3487-HC types (documented: RFC 1205 and the 3477/3487 model
+// designations). Unknown types: false.
+bool terminal_type_is_colour(const std::string& terminal_type);
+// What a profile editor should warn about before connecting: a session
+// whose explicit terminal type is a colour one while the CRT type is
+// monochrome. Empty when there is nothing to say.
+std::string profile_display_warning(const Profile& p);
 
 } // namespace em34xx
