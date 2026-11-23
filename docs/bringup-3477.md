@@ -521,6 +521,21 @@ Set Mode, documented); otherwise two frames: status with the station
 address, then byte 2 (register 7 for channel 0, 8 for channel 1) with
 address 7.
 
+Byte 2 goes out only until a poll with ACK (bit 5) that the station answered
+not busy has taken it; after that the response carries 00 at the same level
+until the firmware posts the next byte (control bit 4) [hypothesis]. The
+firmware clears the byte itself, but only some 100 ms after the acknowledging
+poll [observed, 3487 firmware], and IBM's 2661 controller code takes every
+non-zero byte 2 it is handed as a keystroke: polling faster than that, it
+took one key dozens of times [observed]. Loop-back reads the register as it
+is.
+
+Busy after a transfer: received data (a queued command or an Activate Write)
+leaves the station busy until the firmware writes control bit 7. Data sent
+for an Activate Read does not: the firmware writes nothing after a read
+[observed], and a controller that waits for not-busy before its next command
+(the 2661's code) otherwise waits out its limit after every read [observed].
+
 ### Line timing
 
 The line runs at 1 Mbit/s: a message takes about 8 + 16 x frames bit times,
