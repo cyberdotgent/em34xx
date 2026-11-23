@@ -7,6 +7,7 @@
 #include <toml++/toml.hpp>
 
 #include <fstream>
+#include <iterator>
 #include <sstream>
 
 namespace em34xx {
@@ -230,6 +231,28 @@ const BuiltinRule kPcommRules[] = {
     {"f22", "*", "f22", false, ""}, {"f23", "*", "f23", false, ""}, {"f24", "*", "f24", false, ""},
 };
 
+// "mac": the PCOMM map for Mac keyboards, which have no Right Ctrl (PCOMM's
+// Enter). The key Apple labels "enter" (keypad Enter; fn+Return on laptop
+// keyboards) sends Enter instead of Field Exit; Return stays Field Exit.
+// Each rule replaces the PCOMM rule with the same host key, modifiers and
+// keyboard, in place.
+const BuiltinRule kMacOverrides[] = {
+    {"kpenter", "*", "enter", false, ""},
+};
+
+// The rules of a built-in map with rules ("pcomm" or "mac"), in order.
+std::vector<BuiltinRule> builtin_rules(const std::string& normalised) {
+    std::vector<BuiltinRule> rules(std::begin(kPcommRules), std::end(kPcommRules));
+    if (normalised == "mac") {
+        for (BuiltinRule& r : rules)
+            for (const BuiltinRule& o : kMacOverrides)
+                if (std::string(r.host) == o.host && std::string(r.mods) == o.mods &&
+                    std::string(r.keyboard) == o.keyboard)
+                    r = o;
+    }
+    return rules;
+}
+
 bool parse_mod_token(const std::string& tok, KeymapRule& r) {
     const std::string t = normalise(tok);
     if (t.empty()) return true;
@@ -421,19 +444,19 @@ std::vector<std::string> terminal_function_names() {
 
 bool builtin_keymap(const std::string& name, bool shift_fkeys, Keymap& out) {
     const std::string n = normalise(name);
-    if (n != "positional" && n != "pcomm" && n != "none") return false;
+    if (n != "positional" && n != "pcomm" && n != "mac" && n != "none") return false;
     out = Keymap();
     if (n == "none") return true;
     if (shift_fkeys) add_shift_fkey_rules(out);
     if (n == "positional") return true;
-    for (const BuiltinRule& b : kPcommRules) {
+    for (const BuiltinRule& b : builtin_rules(n)) {
         KeymapRule r;
         std::string bad;
         if (!host_key_from_name(b.host, r.hid) || !parse_mods(split_words(b.mods), r, bad) ||
             !parse_keyboard_filter(b.keyboard, r.applies) || !set_target(b.to, r))
             return false;   // table error; caught by the unit tests
         r.tap = b.tap;
-        r.source = "pcomm";
+        r.source = n;
         out.add(r);
     }
     return true;
@@ -462,7 +485,7 @@ bool parse_keymap(const std::string& text, const std::string& origin, bool shift
         }
     }
     if (!builtin_keymap(base, shift_fkeys, out)) {
-        error = origin + ": base must be \"pcomm\", \"positional\" or \"none\"";
+        error = origin + ": base must be \"pcomm\", \"mac\", \"positional\" or \"none\"";
         return false;
     }
     const toml::node* maps = root.get("map");
@@ -562,7 +585,7 @@ bool load_keymap(const std::string& spec, bool shift_fkeys, Keymap& out, std::st
     }
     std::ifstream f(spec, std::ios::binary);
     if (!f) {
-        error = "keymap '" + spec + "' is neither pcomm, positional nor a readable file";
+        error = "keymap '" + spec + "' is neither pcomm, mac, positional nor a readable file";
         return false;
     }
     std::ostringstream ss;
@@ -703,10 +726,11 @@ bool check_keymap_entry(const KeymapEntry& e, std::string& error) {
     return parse_keymap(keymap_file_to_toml(f), "mapping", true, km, error);
 }
 
-KeymapFile pcomm_keymap_file() {
+namespace {
+KeymapFile builtin_keymap_file(const std::string& name) {
     KeymapFile f;
     f.base = "positional";
-    for (const BuiltinRule& b : kPcommRules) {
+    for (const BuiltinRule& b : builtin_rules(name)) {
         KeymapEntry e;
         uint32_t hid = 0;
         e.host = host_key_from_name(b.host, hid) ? host_key_name(hid) : b.host;
@@ -718,6 +742,10 @@ KeymapFile pcomm_keymap_file() {
     }
     return f;
 }
+} // namespace
+
+KeymapFile pcomm_keymap_file() { return builtin_keymap_file("pcomm"); }
+KeymapFile mac_keymap_file() { return builtin_keymap_file("mac"); }
 
 // --- Engine ------------------------------------------------------------------
 

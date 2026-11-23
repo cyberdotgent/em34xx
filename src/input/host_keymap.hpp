@@ -97,7 +97,8 @@ enum HostMod : uint8_t {
 };
 uint8_t host_modifier_bit(uint32_t hid);   // 0 if not a Shift/Ctrl/Alt key
 
-// Built-in keymaps: "positional" and "pcomm". shift_fkeys adds the 122-key
+// Built-in keymaps: "positional", "pcomm" and "mac" (PCOMM for Mac
+// keyboards: keypad Enter, fn+Return on laptops, is Enter, not Field Exit). shift_fkeys adds the 122-key
 // Shift+F1..F12 -> F13..F24 rules (both maps). False if the name is unknown.
 bool builtin_keymap(const std::string& name, bool shift_fkeys, Keymap& out);
 
@@ -138,7 +139,7 @@ struct KeymapEntry {
 };
 
 struct KeymapFile {
-    std::string base = "pcomm";   // "pcomm", "positional" or "none"
+    std::string base = "pcomm";   // "pcomm", "mac", "positional" or "none"
     std::vector<KeymapEntry> entries;
 };
 
@@ -152,6 +153,8 @@ bool check_keymap_entry(const KeymapEntry& e, std::string& error);
 // rules as entries (keymaps/pcomm-like.toml). Building it equals
 // builtin_keymap("pcomm").
 KeymapFile pcomm_keymap_file();
+// The built-in "mac" map as a file, likewise (the macOS front end's default).
+KeymapFile mac_keymap_file();
 // A host key's name as keymap files write it ("Escape", "F1", "a",
 // "KP_Enter"); "0xNN" for keys without a name.
 std::string host_key_name(uint32_t hid);

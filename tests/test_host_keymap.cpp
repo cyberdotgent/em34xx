@@ -456,6 +456,36 @@ TEST_CASE("keymap files: errors name the line") {
     fails("[[map]\n", "k.toml");
 }
 
+TEST_CASE("mac keymap: PCOMM with keypad Enter as Enter") {
+    // The file form builds the built-in map.
+    const KeymapFile mac = mac_keymap_file();
+    Keymap from_text, builtin;
+    std::string error;
+    INFO(error);
+    REQUIRE(parse_keymap(keymap_file_to_toml(mac), "mac.toml", true, from_text, error));
+    REQUIRE(builtin_keymap("mac", true, builtin));
+    check_same_keymap(from_text, builtin);
+
+    // It differs from PCOMM in the keypad Enter rule only, in place.
+    const KeymapFile pc = pcomm_keymap_file();
+    REQUIRE(mac.entries.size() == pc.entries.size());
+    size_t differ = 0;
+    for (size_t i = 0; i < pc.entries.size(); ++i) {
+        if (mac.entries[i] == pc.entries[i]) continue;
+        ++differ;
+        CHECK(pc.entries[i].host == "KP_Enter");
+        CHECK(pc.entries[i].to == "fieldexit");
+        CHECK(mac.entries[i].host == "KP_Enter");
+        CHECK(mac.entries[i].to == "enter");
+    }
+    CHECK(differ == 1);
+
+    // As a base in a keymap file and by name.
+    Keymap km;
+    CHECK(parse_keymap("base = \"mac\"\n", "k.toml", true, km, error));
+    CHECK(load_keymap("mac", true, km, error));
+}
+
 TEST_CASE("keymap files as text: round trip, PCOMM default, names") {
     // The PCOMM map as a file builds the built-in map, also after a round trip.
     const KeymapFile pc = pcomm_keymap_file();

@@ -203,8 +203,9 @@ Unit options (one ROM serves all of these):
       --keyboard-id ID      override the country ID byte (hex)
       --no-shift-fkeys      do not enter F13-F24 as Shift+F1..F12 (122-key)
       --keymap MAP          host keymap: pcomm (default; IBM Personal
-                            Communications 5250 layout), positional, or a
-                            TOML file (see keymaps/ and docs/keyboard.md)
+                            Communications 5250 layout), mac (pcomm with
+                            keypad Enter as Enter), positional, or a TOML
+                            file (see keymaps/ and docs/keyboard.md)
       --straps HEX          override the configuration strap byte (3477:
                             display type and boot mode; see docs/bringup-3477.md)
       --eeprom FILE         I2C EEPROM image (3477: monitor alignment values);
