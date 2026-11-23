@@ -249,8 +249,14 @@ public:
             if (on) irq.raise(Ibm3477Interrupts::Source::Display);
             else irq.lower(Ibm3477Interrupts::Source::Display);
         });
-        Ibm3486AuxPort& aux = m.add_device<Ibm3486AuxPort>();
+        Ibm3486AuxPort& aux = m.add_device<Ibm3486AuxPort>(info_.clock_hz);
         aux.connect(&irq);
+        if (opt.pointing_device == "mouse") {
+            aux.attach_mouse(true);
+            m.set_pointer(&aux);
+        } else if (opt.pointing_device != "none" && !opt.pointing_device.empty()) {
+            throw std::runtime_error("unknown pointing device '" + opt.pointing_device + "' (none, mouse)");
+        }
         disp.set_aux_port(&aux);
         bus.map_mmio("display", Ibm3477Display::kRegBase, 0x100, &disp);
         m.set_display(&disp);

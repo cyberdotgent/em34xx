@@ -9,7 +9,9 @@
 #include "devices/ibm3477/keyboard_if.hpp"
 #include "devices/ibm3477/system.hpp"
 #include "devices/ibm3477/twinax_engine.hpp"
+#include "input/ps2_mouse.hpp"
 #include "models/model.hpp"
+#include "util/strings.hpp"
 
 #include <doctest/doctest.h>
 
@@ -45,11 +47,11 @@ TEST_CASE("3486 second serial port: manual-clock wrap and its interrupt") {
         aux.write(2, 0xFF);
         aux.write(0, byte);
         for (int clock = 0; clock < 11; ++clock) {
-            CHECK((aux.read(1) & 0x40) == 0);
+            CHECK((aux.read(1) & 0x04) == 0);
             aux.write(1, 0x01);
             aux.write(1, 0x03);
         }
-        CHECK((aux.read(1) & 0x40) != 0);   // byte received
+        CHECK((aux.read(1) & 0x04) != 0);   // byte received
         CHECK(aux.read(0) == byte);
         // AB has five ones, 54 three: the odd-parity bit is 0 for both...
         CHECK((aux.read(1) & 0x01) == 0);
@@ -60,7 +62,7 @@ TEST_CASE("3486 second serial port: manual-clock wrap and its interrupt") {
         CHECK(ic.acknowledge() == 0x0E);
         aux.write(2, 0xFF);
         CHECK_FALSE(ic.line(Src::Aux));
-        CHECK((aux.read(1) & 0x40) == 0);
+        CHECK((aux.read(1) & 0x04) == 0);
         sys->mmio_write8(0x07, 0x00);
     }
     // ...and 1 for a byte with an even number of ones.
@@ -69,13 +71,13 @@ TEST_CASE("3486 second serial port: manual-clock wrap and its interrupt") {
         aux.write(1, 0x01);
         aux.write(1, 0x03);
     }
-    CHECK((aux.read(1) & 0x41) == 0x41);
+    CHECK((aux.read(1) & 0x05) == 0x05);
 
     // A byte sent with the line released goes nowhere: no device.
     aux.write(2, 0xFF);
     aux.write(0, 0xFF);
     aux.write(1, 0x02);
-    CHECK((aux.read(1) & 0x40) == 0);
+    CHECK((aux.read(1) & 0x04) == 0);
     CHECK_FALSE(ic.line(Src::Aux));
 }
 
@@ -349,4 +351,94 @@ TEST_CASE("3486 colour unit: the alignment stand-in marks EEPROM byte 30 once th
     install_monitor_alignment_shim(old, [&cycles] { ++cycles; });
     CHECK(old.byte(0x30) == 0xAA);
     CHECK(cycles == 1);             // marked before its power-on: none needed
+}
+
+TEST_CASE("PS/2 mouse: reset, identification and movement packets") {
+    Ps2Mouse m;
+    m.power_on();
+    auto take = [&m]() {
+        std::string s;
+        while (m.has_output()) s += format("%02X ", m.read_output());
+        return s;
+    };
+    CHECK(take() == "AA 00 ");
+    m.host_write(0xFF);
+    CHECK(take() == "FA AA 00 ");
+    m.host_write(0xF2);
+    CHECK(take() == "FA 00 ");
+    m.host_write(0xF3);
+    m.host_write(0x28);
+    m.host_write(0xE8);
+    m.host_write(0x03);
+    CHECK(take() == "FA FA FA FA ");
+    m.host_write(0xE9);
+    CHECK(take() == "FA 00 03 28 ");
+    m.host_write(0x00);              // not a command
+    CHECK(take() == "FE ");
+
+    // Nothing is reported until the host enables it.
+    m.move(5, 5, 0);
+    CHECK_FALSE(m.has_output());
+    m.host_write(0xF4);
+    CHECK(take() == "FA ");
+    m.move(3, -2, 0);                // right and away from the user (up)
+    CHECK(take() == "08 03 02 ");
+    m.move(-3, 2, Ps2Mouse::kLeft);  // left and down, button held
+    CHECK(take() == "39 FD FE ");
+    m.move(0, 0, 0);                 // release
+    CHECK(take() == "08 00 00 ");
+    m.move(0, 0, 0);                 // no change, no packet
+    CHECK_FALSE(m.has_output());
+}
+
+TEST_CASE("3486 second serial port with a mouse: bytes both ways, a held line abandons a byte") {
+    auto sys = make_system();
+    Ibm3477Interrupts& ic = sys->interrupts();
+    ic.set_three_channel_layout();
+    Ibm3486AuxPort aux(kClock);
+    aux.connect(&ic);
+    aux.attach_mouse(true);
+    aux.reset();
+    sys->mmio_write8(0x07, 0x02);
+    auto run = [&aux](unsigned us) { aux.tick(kClock / 1000000 * us); };
+    auto receive = [&]() {
+        for (int i = 0; i < 50 && !(aux.read(1) & 0x04); ++i) run(100);
+        REQUIRE((aux.read(1) & 0x04) != 0);
+        CHECK(ic.acknowledge() == 0x0E);
+        const uint8_t b = aux.read(0);
+        aux.write(1, 0x03);
+        aux.write(2, 0x00);
+        aux.write(1, 0x02);
+        return b;
+    };
+    // Power-on report once the line is released.
+    aux.write(1, 0x02);
+    CHECK(receive() == 0xAA);
+    CHECK(receive() == 0x00);
+
+    // A byte the host starts and then takes back never arrives.
+    aux.write(1, 0x03);
+    aux.write(0, 0x00);
+    aux.write(1, 0x02);
+    CHECK((aux.read(1) & 0x02) != 0);   // busy
+    aux.write(1, 0x03);
+    CHECK((aux.read(1) & 0x02) == 0);
+    run(3000);
+    CHECK_FALSE(aux.mouse().has_output());
+
+    // A command gets through: transmit-complete interrupt, then the answer.
+    aux.write(2, 0x00);
+    aux.write(0, 0xF4);
+    aux.write(1, 0x02);
+    run(1100);
+    CHECK(ic.line(Src::Aux));           // end of transmission
+    CHECK((aux.read(1) & 0x04) == 0);
+    aux.write(1, 0x03);
+    aux.write(2, 0x00);
+    aux.write(1, 0x02);
+    CHECK(receive() == 0xFA);
+    aux.pointer_event(2, 0, 0);
+    CHECK(receive() == 0x08);
+    CHECK(receive() == 0x02);
+    CHECK(receive() == 0x00);
 }

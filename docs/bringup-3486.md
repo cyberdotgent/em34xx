@@ -159,7 +159,9 @@ and `20030-20031` (observed). The new registers (observed accesses,
   - `20144-20146` are a **second keyboard-style serial port** with the same
     protocol as `20012-20014`. `20144` is the data byte. `20145` is
     line control: written `02` released, `03` held. Its read bits are
-    bit 0 parity, bit 1 busy, bit 6 byte received, and bit 7, see below.
+    bit 0 parity, bit 1 busy, bit 2 byte received (as on the keyboard
+    port; observed: the firmware's receive handler tests bit 2), and bit 7,
+    see below.
     `20146` is written `FF` to clear. The firmware runs a keyboard-type
     exchange on it. It takes the pointing device (see below). The model has
     the port (`src/devices/ibm3486/aux_port.*`) with its wrap path and
@@ -502,6 +504,46 @@ Consequences for the emulator:
 - the TN5250 engine currently parses and skips Write Data Structured
   Field; the enhanced interface needs it implemented, and the Query Reply
   must only claim it for a terminal that supports it.
+
+### The mouse in emulation (experimental, `--mouse`)
+
+**Experimental.** The mouse is off unless `--mouse` is given, and no menu or
+configuration file turns it on. What works: the firmware finds the mouse,
+sets it up and moves its pointer. What does not: clicks have no effect yet,
+with or without a host; only the SDL front end forwards the host's mouse,
+and it neither hides nor confines the host pointer. The option is there for
+bring-up work and may change.
+
+A standard two-button PS/2 mouse model (`src/input/ps2_mouse.*`) on the
+second port makes the firmware's pointer work (observed, 3487 mono, on
+line with `--twinax-host wsc`):
+
+- At power-on the firmware reads the mouse's `AA 00`, asks for its ID
+  (`F2`, seven times) and status (`E9`), resets it (`FF`), then sends
+  `E8 00`, `E6` three times and `E9` (a model query), `EA`, `F3 28` (40
+  reports a second), `E8 03` and `F4` (enable). After that it sends `F4`
+  about every tenth of a second (hypothesis: a presence check, like `EE` to
+  the keyboard).
+- The port behaves like the keyboard port: bit 2 of `20145` is "byte
+  received", the end of a transmission interrupts, and the firmware
+  discards that interrupt.
+- The firmware starts its reset by holding the line while an earlier byte
+  (`00`, from a state variable that is still zero) is on its way, and then
+  reads "not busy". The model drops a byte when the line is held during its
+  transmission (hypothesis). Without that the `00` reached the mouse, the
+  mouse answered `FE` and the firmware gave up on the pointer.
+- The first movement only wakes the screen. After that the firmware keeps a
+  position in pixels and cells (starting at the top left, clamped to the
+  screen) and draws the pointer itself in display memory, at the cell under
+  it; no display register is involved. In the emulator it shows as a solid
+  block; what a real tube shows there is not known.
+- A click on the local (`wsc`) screen had no visible effect. What clicks do
+  with a host, and what the terminal reports to the controller, is not
+  explored.
+
+`mouse DX DY [BUTTONS]` in the monitor moves it. The SDL front end forwards
+the host's mouse (relative movement and three buttons) without hiding or
+confining the host pointer; the other front ends do not forward it yet.
 
 ## Checklist for the complete dump
 
