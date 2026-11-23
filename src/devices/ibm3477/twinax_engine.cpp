@@ -66,8 +66,18 @@ TwinaxMessage TwinaxEngine::poll_response(unsigned ch, uint8_t cmd) {
     if (c.new_byte2) {
         c.level = !c.level;
         c.new_byte2 = false;
+        c.ready = true;
     }
     const bool busy = c.busy || pending(ch) != 0;
+    // The second byte goes out only until a poll with ACK (bit 5) has taken
+    // it; after that the station answers 00 at the same level until the
+    // firmware posts the next byte [hypothesis]. The firmware clears the byte
+    // itself, but only some 100 ms later [observed], and the 2661's code takes
+    // every non-zero byte it is handed as a keystroke: polled faster than
+    // that, it took one key dozens of times [observed]. The loop-back test
+    // reads the register as it is.
+    const bool show = c.ready || wrap_;
+    if ((cmd & 0x20) && !busy) c.ready = false;
     const uint8_t status = uint8_t((busy ? 0x80 : 0) | (c.lpe ? 0x40 : 0) | (c.toggle ? 0x20 : 0) |
                                    (reg_[6] & 0x1E) | (c.level ? 0x01 : 0));
     c.toggle = !c.toggle;
@@ -75,7 +85,7 @@ TwinaxMessage TwinaxEngine::poll_response(unsigned ch, uint8_t cmd) {
     TwinaxMessage resp;
     if (reg_[5] & 0x0C) {
         resp.push_back(TwinaxFrame{status, c.address});
-        resp.push_back(TwinaxFrame{reg_[(7 + ch) & 0x0F], 7});
+        resp.push_back(TwinaxFrame{show ? reg_[(7 + ch) & 0x0F] : uint8_t(0), 7});
     } else {
         resp.push_back(TwinaxFrame{status, 7});
     }

@@ -102,12 +102,24 @@ TEST_CASE("twinax engine: poll is answered from the descriptor") {
     r.desc(0, 0x0A, 0x06);
     r.desc(0, 0x0C, 0x00);
     r.desc(0, 0x0D, 0x45);
+    r.eng->write_control(0, 0x10);   // the firmware posts the byte
     resp = r.send(poll(2));
     REQUIRE(resp.size() == 2);
     CHECK(resp[0].address == 2);
     CHECK((resp[0].data & 0x9E) == 0);
     CHECK(resp[1].data == 0x45);
     CHECK(resp[1].address == 7);
+    // That poll carried ACK and took the byte: 00 at the same level from now on.
+    r.req = 0;
+    const TwinaxMessage after = r.send(poll(2));
+    CHECK(after[1].data == 0x00);
+    CHECK(((after[0].data ^ resp[0].data) & 0x01) == 0);
+    // A poll without ACK leaves the next byte in place.
+    r.req = 0;
+    r.eng->write_control(0, 0x10);
+    CHECK(r.send(poll(2, 0x10))[1].data == 0x45);
+    r.req = 0;
+    CHECK(r.send(poll(2, 0x10))[1].data == 0x45);
 
     // Messages for other addresses get no response.
     CHECK(r.send(poll(3)).empty());
@@ -309,6 +321,8 @@ TEST_CASE("twinax engine: the two channels are independent") {
     r.desc(1, 0x0A, 0x0A);
     r.desc(0, 0x0D, 0x11);
     r.desc(1, 0x0D, 0x22);
+    r.eng->write_control(0, 0x10);
+    r.eng->write_control(1, 0x10);
     CHECK(r.send(poll(2))[1].data == 0x11);
     CHECK(r.send(poll(5))[1].data == 0x22);
 

@@ -133,6 +133,7 @@ private:
         bool toggle = false;        // flips on every poll response
         bool level = false;         // response level
         bool new_byte2 = false;     // firmware posted a new keyboard byte
+        bool ready = false;         // that byte has not been acknowledged yet
         uint64_t polls = 0, queued = 0, activates = 0;
     };
 
