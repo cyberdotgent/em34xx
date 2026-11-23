@@ -534,8 +534,9 @@ line with `--twinax-host wsc`):
   with a host, and what the terminal reports to the controller, is not
   explored.
 
-`mouse DX DY [BUTTONS]` in the monitor moves it. No front end forwards the
-host's mouse yet.
+`mouse DX DY [BUTTONS]` in the monitor moves it. The SDL front end forwards
+the host's mouse (relative movement and three buttons) without hiding or
+confining the host pointer; the other front ends do not forward it yet.
 
 ## Checklist for the complete dump
 
