@@ -199,6 +199,8 @@ bool SdlFrontend::run(Application& app, const FrontendOptions& opts, std::string
     // Key-to-screen latency (`--log input=debug`): from a key press to the
     // first frame that shows a change.
     bool latency_pending = false;
+    double mouse_x = 0.0, mouse_y = 0.0;   // fractions of a count not sent yet
+    unsigned mouse_buttons = 0;
     steady::time_point key_time{};
     auto handle = [&](const SDL_Event& e) {
         switch (e.type) {
@@ -226,6 +228,35 @@ bool SdlFrontend::run(Application& app, const FrontendOptions& opts, std::string
                 latency_pending = true;
                 key_time = steady::now();
             }
+            break;
+        }
+        case SDL_EVENT_MOUSE_MOTION:
+        case SDL_EVENT_MOUSE_BUTTON_DOWN:
+        case SDL_EVENT_MOUSE_BUTTON_UP: {
+            // The terminal's own pointing device, when one is plugged in
+            // (--mouse): relative movement and the buttons. The host's
+            // pointer is not hidden or confined, so the two drift apart.
+            int dx = 0, dy = 0;
+            if (e.type == SDL_EVENT_MOUSE_MOTION) {
+                mouse_x += double(e.motion.xrel);
+                mouse_y += double(e.motion.yrel);
+                dx = int(mouse_x);
+                dy = int(mouse_y);
+                mouse_x -= dx;
+                mouse_y -= dy;
+                if (!dx && !dy) break;
+            } else {
+                const unsigned bit = e.button.button == SDL_BUTTON_LEFT ? 1u
+                                     : e.button.button == SDL_BUTTON_RIGHT ? 2u
+                                     : e.button.button == SDL_BUTTON_MIDDLE ? 4u : 0u;
+                if (!bit) break;
+                if (e.type == SDL_EVENT_MOUSE_BUTTON_DOWN) mouse_buttons |= bit;
+                else mouse_buttons &= ~bit;
+            }
+            const unsigned buttons = mouse_buttons;
+            emu.with_machine([&](Machine& m) {
+                if (PointerSink* p = m.pointer()) p->pointer_event(dx, dy, buttons);
+            });
             break;
         }
         case SDL_EVENT_WINDOW_EXPOSED:
