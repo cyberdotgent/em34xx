@@ -131,6 +131,18 @@ set(EM34XX_EXE_WIN32 em34xxw)              # native Win32 GUI (end-user), WIN32 
 set(EM34XX_EXE_COCOA em34xx)               # future Cocoa GUI, bundled as em34xx.app
 find_package(replxx CONFIG REQUIRED)
 find_package(tomlplusplus CONFIG REQUIRED)
+# toml++ through em34xx_tomlplusplus. A universal macOS build (more than one
+# CMAKE_OSX_ARCHITECTURES) uses it header-only: the vcpkg port's compiled
+# library has one architecture (cmake/triplets/universal-osx.cmake).
+add_library(em34xx_tomlplusplus INTERFACE)
+list(LENGTH CMAKE_OSX_ARCHITECTURES _em34xx_osx_arch_count)
+if(APPLE AND _em34xx_osx_arch_count GREATER 1)
+  get_target_property(_em34xx_tomlpp_include tomlplusplus::tomlplusplus INTERFACE_INCLUDE_DIRECTORIES)
+  target_include_directories(em34xx_tomlplusplus SYSTEM INTERFACE ${_em34xx_tomlpp_include})
+  target_compile_definitions(em34xx_tomlplusplus INTERFACE TOML_HEADER_ONLY=1)
+else()
+  target_link_libraries(em34xx_tomlplusplus INTERFACE tomlplusplus::tomlplusplus)
+endif()
 find_package(Threads REQUIRED)
 
 add_library(em34xx_warnings INTERFACE)
@@ -214,7 +226,7 @@ em34xx_library(em34xx_machines
   src/devices/ibm3477/system.cpp
   src/devices/ibm3477/twinax_engine.cpp
 )
-target_link_libraries(em34xx_machines PUBLIC em34xx_emu PRIVATE tomlplusplus::tomlplusplus)
+target_link_libraries(em34xx_machines PUBLIC em34xx_emu PRIVATE em34xx_tomlplusplus)
 
 em34xx_library(em34xx_host
   src/host/host_config.cpp
@@ -297,7 +309,7 @@ em34xx_library(em34xx_runtime
 )
 target_link_libraries(em34xx_runtime PRIVATE em34xx_version_header)
 target_link_libraries(em34xx_runtime
-  PUBLIC em34xx_machines em34xx_host em34xx_bridge em34xx_present tomlplusplus::tomlplusplus)
+  PUBLIC em34xx_machines em34xx_host em34xx_bridge em34xx_present em34xx_tomlplusplus)
 
 # --- Developer tooling: SDL and headless executables only ------------------
 em34xx_library(em34xx_devtools
