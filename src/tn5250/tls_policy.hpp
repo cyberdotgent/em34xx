@@ -3,7 +3,8 @@
 // the server certificate, and the decision Tn5250Config asks for.
 //
 // The backends (tls_openssl.cpp on Linux and the BSDs, tls_schannel.cpp on
-// Windows) never fail the handshake on a certificate problem. They finish
+// Windows, tls_apple.mm on macOS) never fail the handshake on a certificate
+// problem. They finish
 // it, describe the certificate in a PeerCertificate and call
 // tls_accept_peer(), so that every mode logs the same lines, including the
 // SHA-256 fingerprint in the form tls_cert_sha256 / --tn5250-tls-pin take.
@@ -46,8 +47,8 @@ std::string tls_fingerprint_line(const Sha256Digest& digest);
 // Logs the legacy-protocol warning when cfg allows versions before 1.2.
 void tls_note_legacy(const Tn5250Config& cfg, const Transport::LogFn& note);
 
-// The TLS backend compiled in: "openssl", "schannel", or nullptr when this
-// build has no TLS (make_tls_transport then always fails).
+// The TLS backend compiled in: "openssl", "schannel", "Network.framework",
+// or nullptr when this build has no TLS (make_tls_transport then always fails).
 const char* tls_backend_name();
 
 } // namespace tn5250

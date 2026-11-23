@@ -8,6 +8,9 @@
 //     development files the build has no TLS.
 //   - tls_schannel.cpp: Windows SChannel (SSPI) and CryptoAPI, so the
 //     Windows certificate store is honoured. System DLLs only.
+//   - tls_apple.mm: macOS Network.framework (the connection, TLS 1.0-1.3)
+//     and Security.framework (SecTrust), so the keychains' trust settings
+//     are honoured. System frameworks only.
 //   - tls_none.cpp: the stub for builds without TLS.
 // The certificate decision (system store, insecure, pinned SHA-256) is
 // shared: tls_policy.hpp.

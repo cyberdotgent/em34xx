@@ -33,8 +33,8 @@ Settings, ROMs, profiles and the keymap live in `%APPDATA%\em34xx`. More in
 ## Building
 
 You need CMake 3.21 or later, Ninja, a C++17 compiler and
-[vcpkg](https://vcpkg.io). TLS uses the system OpenSSL on Linux and SChannel
-on Windows.
+[vcpkg](https://vcpkg.io). TLS uses the system OpenSSL on Linux, SChannel
+on Windows and Network.framework on macOS.
 
 ```sh
 export VCPKG_ROOT=~/vcpkg

@@ -142,7 +142,7 @@ What it uses:
   (em34xxw pins the fingerprint in the profile). It must answer pending
   requests before it disconnects (the session threads are joined). The
   layers: `tn5250/tls_trust.hpp` (types), `Transport::set_trust_handler()`
-  and `tls_accept_peer()` (both backends), `tn5250::Client`,
+  and `tls_accept_peer()` (every backend), `tn5250::Client`,
   `wsc::BridgeOptions::tls_trust`, `TlsTrustBroker` in `app/host_link.hpp`
   (per-bridge memory of accepted certificates). Without a handler (SDL,
   monitor) the configured behaviour is unchanged. Details in
