@@ -1082,6 +1082,51 @@ static NSToolbarItemIdentifier const kTbTermKeys = @"termkeys";
 // Apply the profile's terminal settings (display subtype, scan lines).
 // `rebuilt`: the change was visible to the firmware or the host, so the
 // machine was rebuilt and is powering on (its sessions closed).
+// The model a profile names, when it can run now: a model of this build
+// with its ROM images (the user is told which are missing and may import
+// them). Null, after an alert, otherwise.
+- (const Model*)profileModel:(const Profile&)p what:(const std::string&)what {
+    const Model* model = nullptr;
+    for (const Model* m : runnable_models())
+        if (m->info().name == p.model) model = m;
+    if (!model) {
+        error_alert(_win, what + " is for the IBM " + p.model + ".", "This version of em34xx cannot emulate it.");
+        return nullptr;
+    }
+    return ensure_model_roms(_win, [self dirs], *model, what) ? model : nullptr;
+}
+
+// Restart the emulator as the profile's model when it is another one:
+// 0 = the same model, 1 = switched, -1 = not possible (after an alert).
+- (int)switchModel:(const Profile&)p {
+    if (p.model == _modelName) return 0;
+    const Model* model = [self profileModel:p what:"This connection"];
+    if (!model) return -1;
+    // The new terminal as the profile describes it, with its own
+    // battery-backed RAM file (its setup); the keyboard stays.
+    TerminalOptions options = _emu->with_machine([](Machine& m) { return m.options(); });
+    options.display = p.display;
+    options.nvram_path = [self dirs].nvram_file(model->info().name);
+    std::string error;
+    bool ok = false;
+    {
+        TrustDrain drain(*_trust);   // the rebuild closes the sessions
+        [self releaseKeys];
+        ok = _app->set_model(*model, options, error);
+    }
+    if (!ok) {
+        error_alert(_win, "Cannot start the IBM " + model->info().name, error);
+        return -1;
+    }
+    _modelName = model->info().name;
+    _crt.invalidate();
+    _dirty = true;
+    [self scheduleRender];
+    _view.needsDisplay = YES;
+    [self updateUi];
+    return 1;
+}
+
 - (bool)applyTerminalSettings:(const Profile&)p rebuilt:(bool&)rebuilt {
     rebuilt = false;
     if (_crtParams.enabled != p.crt) {
@@ -1115,9 +1160,11 @@ static NSToolbarItemIdentifier const kTbTermKeys = @"termkeys";
 // (as switching the terminal on) or, with powerCycle false, by plugging the
 // controller in with the terminal running.
 - (void)connectProfile:(const Profile&)p powerCycle:(bool)powerCycle {
-    if (p.model != _modelName) {
-        error_alert(_win, "This profile is for the IBM " + p.model + ".",
-                    "The emulator runs an IBM " + _modelName + "; other models cannot run in this build yet.");
+    // Another terminal model: the emulator restarts as it. Without its ROM
+    // images nothing connects (the sessions would announce the wrong type).
+    const int switched = [self switchModel:p];
+    if (switched < 0) {
+        [self updateUi];
         return;
     }
     AppConfig cfg;
@@ -1132,6 +1179,7 @@ static NSToolbarItemIdentifier const kTbTermKeys = @"termkeys";
         // threads are joined); the new sessions may ask again.
         TrustDrain drain(*_trust);
         [self applyTerminalSettings:p rebuilt:rebuilt];
+        rebuilt = rebuilt || switched > 0;
         [self releaseKeys];
         std::string ignored;
         _app->host_link().disconnect(ignored);   // "not connected" is fine
@@ -1161,12 +1209,22 @@ static NSToolbarItemIdentifier const kTbTermKeys = @"termkeys";
         }
         [self releaseKeys];
         Profile p = _cur.p;
-        if (!profile_editor_dialog(_win, p, ProfileEditMode::Apply, [self settings],
+        if (!profile_editor_dialog(_win, p, ProfileEditMode::Apply, [self settings], [self dirs],
                                    "Connection Settings: " + [self profileName]))
             return;
         if (p == _cur.p) return;
         const Profile old = _cur.p;
-        if (p.display != [self currentDisplay] && _app->display_change_needs_power_cycle(p.display)) {
+        // Another terminal type: it needs its ROM images and a restart;
+        // refused or not possible, the terminal stays and the other changes
+        // apply.
+        if (p.model != _modelName &&
+            (![self profileModel:p what:"This connection"] ||
+             !ask(_win, "Change the terminal type to IBM " + p.model + "?",
+                  "This restarts the emulator as that terminal and reconnects the sessions.", "Restart",
+                  "Keep the IBM " + _modelName, NSAlertStyleWarning)))
+            p.model = _modelName;
+        if (p.model == _modelName && p.display != [self currentDisplay] &&
+            _app->display_change_needs_power_cycle(p.display)) {
             std::string label = subtype_label(p.display);
             if (!label.empty()) label[0] = char(std::tolower(static_cast<unsigned char>(label[0])));
             if (!ask(_win, "Change the CRT type to " + label + "?",
@@ -1175,12 +1233,16 @@ static NSToolbarItemIdentifier const kTbTermKeys = @"termkeys";
                 p.display = old.display;   // keep the rest of the changes
         }
         Profile same_terminal = old;
+        same_terminal.model = p.model;
         same_terminal.display = p.display;
         same_terminal.crt = p.crt;
         const bool connection_changed = same_terminal != p;
         const bool was_connected = [self connected];
+        const int switched = [self switchModel:p];
+        if (switched < 0) p.model = _modelName;
         bool rebuilt = false;
         if (![self applyTerminalSettings:p rebuilt:rebuilt]) p.display = [self currentDisplay];
+        rebuilt = rebuilt || switched > 0;
         if (p != old) {
             _cur.p = p;
             _cur.modified = true;
@@ -1485,7 +1547,8 @@ void CocoaFrontend::changed() {
     NSMutableArray<EMMainController*>* _terminals;
     std::vector<std::string> _argv;
     std::vector<std::string> _pendingProfiles;   // opened from Finder before the launch finished
-    const Model* _model;
+    const Model* _model;         // the model a new terminal without a profile starts as
+    bool _skipStartupProfile;    // its model's ROM images were not provided at launch
     bool _launched;
     bool _logOpen;
     bool _terminating;
@@ -1497,6 +1560,7 @@ void CocoaFrontend::changed() {
         _argv = std::move(args);
         _terminals = [NSMutableArray array];
         _model = nullptr;
+        _skipStartupProfile = false;
         _launched = false;
         _logOpen = false;
         _terminating = false;
@@ -1693,29 +1757,57 @@ void CocoaFrontend::changed() {
         }
     }
 
-    // The first terminal starts as the first profile describes it, else as
-    // a new profile would: the first runnable model, green, with scan lines.
-    const auto models = runnable_models();
-    if (models.empty()) {
+    // The first terminal starts as the profile that will be opened first
+    // describes it (from Finder or the command line, else the startup
+    // profile), else as a new profile would: the first model whose ROM
+    // images are there, green, with scan lines.
+    if (runnable_models().empty()) {
         [self fail:"No terminal model of this build can run yet." detail:"" code:2];
         return nil;
     }
     Profile start;
-    if (!_pendingProfiles.empty()) {
-        std::string ignored;   // reported when it is opened
-        if (!load_profile(_pendingProfiles.front(), start, ignored)) start = Profile();
+    std::string start_name;   // "" = no profile asks for a model
+    const bool from_pending = !_pendingProfiles.empty();
+    {
+        std::string path = from_pending ? _pendingProfiles.front() : std::string();
+        std::string why, ignored;   // load errors: reported when it is opened
+        if (path.empty() && L.settings.startup_open && !L.settings.startup_profile.empty() &&
+            UserDirs::valid_profile_name(L.settings.startup_profile, why) &&
+            L.dirs->profile_exists(L.settings.startup_profile))
+            path = L.dirs->profile_path(L.settings.startup_profile);
+        if (!path.empty()) {
+            if (load_profile(path, start, ignored)) start_name = stem_of(path);
+            else start = Profile();
+        }
     }
-    _model = models.front();
-    for (const Model* m : models)
-        if (m->info().name == start.model) _model = m;
 
-    // First start (or ROMs gone): the ROM manager.
-    if (!model_roms_ready(*_model, L.dirs->roms()) && !rom_manager_dialog(nil, *L.dirs, _model)) {
-        [self fail:"em34xx cannot start the IBM " + _model->info().name + " without its ROM images."
+    // One complete set of ROM images is enough to start; the other models
+    // stay selectable (greyed) until theirs are imported. A profile for a
+    // model without its images: say which files, offer to import them, and
+    // otherwise start without that profile.
+    const std::string roms = L.dirs->roms();
+    StartModel choice = choose_start_model(start_name.empty() ? std::string() : start.model, roms);
+    bool declined = false;
+    if (choice.wanted_unready) {
+        declined = !ensure_model_roms(nil, *L.dirs, *choice.wanted_unready, "The profile \"" + start_name + "\"");
+        choice = choose_start_model(start.model, roms);
+        if (declined) {
+            if (from_pending) _pendingProfiles.erase(_pendingProfiles.begin());
+            else _skipStartupProfile = true;
+            start = Profile();
+        }
+    }
+    // First start (or ROMs gone): the ROM dialog, until one model can run.
+    if (!choice.model && !declined && rom_manager_dialog(nil, *L.dirs, nullptr, true))
+        choice = choose_start_model(start_name.empty() ? std::string() : start.model, roms);
+    if (!choice.model) {
+        [self fail:"em34xx needs the ROM images of at least one terminal model to start."
             detail:"Import them when you start em34xx again."
               code:1];
         return nil;
     }
+    _model = choice.model;
+    start.model = _model->info().name;
 
     // The global keymap, when there is one and it loads; else the built-in
     // Mac map (docs/keyboard.md).
@@ -1737,10 +1829,15 @@ void CocoaFrontend::changed() {
 // alert) when it cannot start.
 - (EMMainController*)makeTerminal:(const Profile&)start primary:(bool)primary {
     Launch& L = *_launch;
+    // The profile's model when it can run now, else the one the app
+    // started as (the profile's own model is asked for when it connects).
+    const Model* model = _model;
+    for (const Model* m : ready_models(L.dirs->roms()))
+        if (m->info().name == start.model) model = m;
     const char* log_env = std::getenv("EM34XX_LOG");
     std::vector<std::string> args = {"em34xx",
                                      "--model",
-                                     _model->info().name,
+                                     model->info().name,
                                      "--rom-dir",
                                      L.dirs->roms(),
                                      "--display",
@@ -1752,7 +1849,7 @@ void CocoaFrontend::changed() {
                                      // Every terminal of a model shares its battery-backed RAM
                                      // file, as em34xxw instances do (docs/frontend-cocoa.md).
                                      "--nvram",
-                                     L.dirs->nvram_file(_model->info().name),
+                                     L.dirs->nvram_file(model->info().name),
                                      // An end-user build keeps running on an access the model
                                      // does not decode (the default, stop, is for the debugger).
                                      "--unmapped",
@@ -1803,6 +1900,21 @@ void CocoaFrontend::changed() {
 
 // The terminal in front, if any: the frontmost terminal window (a sheet
 // counts as its window), whether or not the app is active yet.
+// The model a profile names, when it can run now (a model of this build
+// with its ROM images; the user is told which are missing and may import
+// them). Null, after an alert, otherwise.
+- (const Model*)profileModel:(const Profile&)p what:(const std::string&)what {
+    const Model* model = nullptr;
+    for (const Model* m : runnable_models())
+        if (m->info().name == p.model) model = m;
+    if (!model) {
+        error_alert([self dialogParent], what + " is for the IBM " + p.model + ".",
+                    "This version of em34xx cannot emulate it.");
+        return nullptr;
+    }
+    return ensure_model_roms([self dialogParent], *_launch->dirs, *model, what) ? model : nullptr;
+}
+
 - (EMMainController*)frontTerminal {
     for (NSWindow* w in NSApp.orderedWindows) {
         NSWindow* top = w;
@@ -1834,7 +1946,7 @@ void CocoaFrontend::changed() {
     const AppSettings& s = _launch->settings;
     // The startup name is a file name in profiles/ and nothing else (it
     // comes from settings.toml): never a path.
-    if (std::string why; s.startup_open && !s.startup_profile.empty() &&
+    if (std::string why; !_skipStartupProfile && s.startup_open && !s.startup_profile.empty() &&
                          UserDirs::valid_profile_name(s.startup_profile, why) &&
                          _launch->dirs->profile_exists(s.startup_profile)) {
         [self openPath:_launch->dirs->profile_path(s.startup_profile) foreign:false];
@@ -1893,6 +2005,9 @@ void CocoaFrontend::changed() {
             !ask([self dialogParent], "This profile is not in your profiles folder. Connect?",
                  foreign_profile_details(path, p), "Connect", "Cancel", NSAlertStyleWarning, true))
             return;
+        // A profile for a terminal whose ROM images are missing: the user
+        // is told which files and may import them; otherwise nothing opens.
+        if (![self profileModel:p what:"The profile \"" + stem_of(path) + "\""]) return;
         [self openProfile:p path:path untitled:false];
     });
 }
@@ -1906,8 +2021,10 @@ void CocoaFrontend::changed() {
         [front releaseKeys];
         Profile p;
         p.model = _model->info().name;
-        if (!profile_editor_dialog(front.window, p, ProfileEditMode::Connect, _launch->settings, "New Connection"))
+        if (!profile_editor_dialog(front.window, p, ProfileEditMode::Connect, _launch->settings, *_launch->dirs,
+                                   "New Connection"))
             return;
+        if (![self profileModel:p what:"This connection"]) return;
         [self openProfile:p path:"" untitled:true];
     });
 }
@@ -2021,7 +2138,9 @@ void CocoaFrontend::changed() {
     (void)sender;
     if (visible || !_launched || !_launch || _terminals.count || NSApp.modalWindow) return YES;
     guarded([&] {
-        EMMainController* t = [self makeTerminal:Profile() primary:true];
+        Profile blank;
+        blank.model = _model->info().name;
+        EMMainController* t = [self makeTerminal:blank primary:true];
         if (!t) return;
         [t showTerminal];
         EMAppDelegate* me = self;

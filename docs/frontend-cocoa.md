@@ -109,11 +109,33 @@ Shared between the terminals of one app:
    non-option arguments of the executable
    (`em34xx.app/Contents/MacOS/em34xx PROFILE.em34xx ...`; options starting
    with `-` are left to AppKit).
-3. The first terminal starts as the first profile describes it (model, CRT
-   type, scan lines), else as a new profile would.
-4. **First start**: ROM images missing or damaged: the ROM dialog opens
-   (app-modal, before any window); closing it without usable ROMs ends the
-   program.
+3. The first terminal starts as the profile that will be opened first
+   describes it (from Finder or the command line, else the startup profile:
+   model, CRT type, scan lines), else as a new profile would: the first
+   model whose ROM images are in the ROM folder (`choose_start_model()`).
+4. **ROM images**: one complete set is enough to start. The images of the
+   other runnable models (IBM 3477, 3486, 3487; the last two share one
+   image) may be missing: those models stay in the terminal type list of
+   the profile editor, disabled (grey) and marked "(ROM images needed)",
+   with **Import ROM Images…** below them.
+   - A profile for a model without its images, at launch or later: an alert
+     names the profile, the model and each missing file and offers
+     **Import…** (the ROM dialog). Declined, the profile is not opened; at
+     launch the app starts as another model that can run.
+   - **First start** (no model can run): the ROM dialog opens (app-modal,
+     before any window) and says that one model's images are needed;
+     closing it with none ends the program.
+   - Each terminal window has its own model: a profile opened in a new
+     window starts that model; opened in an idle window, or with the
+     terminal type changed in Connection Settings (after a confirmation),
+     the emulator in that window restarts as the other model
+     (`Application::set_model()`) with its own `<model>.nvram`.
+   - Not verified on a Mac yet: this behaviour was written against the
+     Win32 front end's (docs/frontend-win32.md, observed under Wine) and
+     has only been compiled for macOS.
+   - A colour 3486/3487 does not go on line here, as in em34xxw: its
+     firmware wants an EEPROM alignment byte only `em34xx`'s monitor can
+     set (docs/bringup-3486.md).
 5. The global keymap (`keymap.toml`) is checked; a broken file is reported
    and the built-in **mac** map is used ([keyboard.md](keyboard.md)).
 6. The first window opens (its last frame, else the zoom size centred).

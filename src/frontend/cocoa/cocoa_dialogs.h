@@ -27,8 +27,17 @@ namespace cocoa {
 // ROM images: what each model needs and its state; import (also by
 // dropping files on the list), remove, re-check. `required`: the model
 // about to run (its rows come first, the summary says whether it is ready).
-// True when `required` is ready at close (always true without one).
-bool rom_manager_dialog(NSWindow* parent, const UserDirs& dirs, const Model* required);
+// `need_any`: no model can run yet and one must (first start). True when
+// `required` is ready at close; without one, when some model is ready
+// (need_any) or always.
+bool rom_manager_dialog(NSWindow* parent, const UserDirs& dirs, const Model* required, bool need_any = false);
+
+// True when `model` has its ROM images. Otherwise a warning that names the
+// files it lacks ("`what` is for the IBM 3487, which needs ROM images that
+// are not in the ROM folder"; what = "": "The IBM 3487 needs ...") and
+// offers to import them in the ROM dialog; true when they are there
+// afterwards.
+bool ensure_model_roms(NSWindow* parent, const UserDirs& dirs, const Model& model, const std::string& what);
 
 // em34xx > Settings: startup profile, speed, default TLS minimum, ROM
 // images, the user folder. Changes apply at once: `settings` is updated and
@@ -47,8 +56,11 @@ enum class ProfileEditMode {
     Apply,     // "OK" (File > Connection Settings)
 };
 
+// The terminal type list shows every model that can be emulated; those
+// whose ROM images are not in the ROM folder are disabled (grey) and say
+// so, and "Import ROM Images…" below them opens the ROM dialog.
 bool profile_editor_dialog(NSWindow* parent, Profile& p, ProfileEditMode mode, const AppSettings& s,
-                           const std::string& title);
+                           const UserDirs& dirs, const std::string& title);
 
 // TLS Settings (from the profile editor): verify mode, fingerprint with a
 // Fetch button that reads the certificate of the first TLS session off the

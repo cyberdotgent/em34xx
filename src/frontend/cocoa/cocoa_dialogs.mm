@@ -167,6 +167,7 @@ std::vector<std::string> tls_version_items(const std::string& first) {
   @public
     const UserDirs* _dirs;
     const Model* _required;
+    bool _needAny;
     std::vector<RomStatusRow> _rows;
     NSPanel* _panel;
     NSTableView* _table;
@@ -180,6 +181,10 @@ std::vector<std::string> tls_version_items(const std::string& first) {
             ? @"The ROM images the terminal needs are missing or damaged. Import them to continue: choose the "
               @"files, or drop them on the list. Images are recognised by their SHA-256 and stored under the "
               @"names the emulator expects."
+        : _needAny && ready_models(_dirs->roms()).empty()
+            ? @"No terminal can run yet. Import the ROM images of at least one terminal model to continue "
+              @"(choose the files, or drop them on the list); the others can follow later. Images are "
+              @"recognised by their SHA-256 and stored under the names the emulator expects."
             : @"The ROM images each terminal model needs, and their state. Import adds images (or drop files "
               @"on the list); they are recognised by their SHA-256.";
     NSTextField* text = wrapping_label(intro, 640);
@@ -354,13 +359,30 @@ std::vector<std::string> tls_version_items(const std::string& first) {
 
 @end
 
-bool em34xx::cocoa::rom_manager_dialog(NSWindow* parent, const UserDirs& dirs, const Model* required) {
+bool em34xx::cocoa::rom_manager_dialog(NSWindow* parent, const UserDirs& dirs, const Model* required,
+                                       bool need_any) {
     EMRomController* c = [EMRomController new];
     c->_dirs = &dirs;
     c->_required = required;
+    c->_needAny = need_any;
     [c build];
     run_sheet(c->_panel, parent);
-    return !required || model_roms_ready(*required, dirs.roms());
+    if (required) return model_roms_ready(*required, dirs.roms());
+    return !need_any || !ready_models(dirs.roms()).empty();
+}
+
+bool em34xx::cocoa::ensure_model_roms(NSWindow* parent, const UserDirs& dirs, const Model& model,
+                                      const std::string& what) {
+    if (model_roms_ready(model, dirs.roms())) return true;
+    const std::string name = "IBM " + model.info().name;
+    const std::string message =
+        (what.empty() ? "The " + name + " needs" : what + " is for the " + name + ", which needs") +
+        " ROM images that are not in the ROM folder.";
+    const std::string detail = unusable_roms_text(model, dirs.roms()) +
+                               "\nThe emulator runs the terminal's own firmware and does not include it. "
+                               "Import the missing images to use this terminal.";
+    if (!ask(parent, message, detail, "Import…", "Not Now", NSAlertStyleWarning)) return false;
+    return rom_manager_dialog(parent, dirs, &model);
 }
 
 // ===========================================================================
@@ -746,7 +768,10 @@ std::string tls_summary(const Profile& p, const AppSettings& s) {
     Profile _p;
     ProfileEditMode _mode;
     const AppSettings* _s;
+    const UserDirs* _dirs;
     std::string _title;
+    std::vector<const Model*> _models;   // the terminal type list, in order
+    NSInteger _modelSel;                 // the selection to go back to
     NSPanel* _panel;
     NSPopUpButton* _model;
     NSPopUpButton* _subtype;
@@ -775,11 +800,58 @@ std::string tls_summary(const Profile& p, const AppSettings& s) {
     return group(i == 0 ? @"Session 1" : @"Session 2", g);
 }
 
+// The terminal type list: every model that can be emulated. One without
+// its ROM images is disabled (grey) and says so; "Import ROM Images…"
+// below them opens the ROM dialog. A profile that is for such a model
+// keeps it selected.
+- (void)fillModels:(const std::string&)select {
+    [_model removeAllItems];
+    _model.autoenablesItems = NO;
+    _models = runnable_models();
+    NSInteger sel = 0;
+    bool lacking = false;
+    for (size_t i = 0; i < _models.size(); ++i) {
+        const bool ready = model_roms_ready(*_models[i], _dirs->roms());
+        NSMenuItem* item =
+            [[NSMenuItem alloc] initWithTitle:ns("IBM " + _models[i]->info().name + (ready ? "" : " (ROM images needed)"))
+                                       action:nil
+                                keyEquivalent:@""];
+        item.enabled = ready;
+        if (!ready) {
+            item.toolTip = ns("Needs " + trim(unusable_roms_text(*_models[i], _dirs->roms())));
+            lacking = true;
+        }
+        [_model.menu addItem:item];
+        if (_models[i]->info().name == select) sel = NSInteger(i);
+    }
+    if (lacking) {
+        [_model.menu addItem:[NSMenuItem separatorItem]];
+        [_model.menu addItem:[[NSMenuItem alloc] initWithTitle:@"Import ROM Images…" action:nil keyEquivalent:@""]];
+    }
+    [_model selectItemAtIndex:sel];
+    _modelSel = sel;
+}
+
+- (void)modelChosen:(id)sender {
+    (void)sender;
+    guarded([&] {
+        const NSInteger sel = _model.indexOfSelectedItem;
+        if (sel >= 0 && size_t(sel) < _models.size()) {
+            _modelSel = sel;
+            return;
+        }
+        // "Import ROM Images…": the ROM dialog, then the list again (an
+        // import can ready several models) with the previous choice.
+        const std::string back =
+            _modelSel >= 0 && size_t(_modelSel) < _models.size() ? _models[size_t(_modelSel)]->info().name : _p.model;
+        rom_manager_dialog(_panel, *_dirs, nullptr);
+        [self fillModels:back];
+    });
+}
+
 - (void)build {
     _panel = make_panel(ns(_title), NSMakeSize(520, 440));
-    std::vector<std::string> models;
-    for (const Model* m : runnable_models()) models.push_back("IBM " + m->info().name);
-    _model = popup(models, nil, nil);
+    _model = popup({}, self, @selector(modelChosen:));
     std::vector<std::string> subtypes;
     for (DisplaySubtype d : kSubtypes) subtypes.push_back(subtype_label(d));
     _subtype = popup(subtypes, nil, nil);
@@ -807,11 +879,7 @@ std::string tls_summary(const Profile& p, const AppSettings& s) {
         [v.widthAnchor constraintEqualToAnchor:content.widthAnchor].active = YES;
     set_content(_panel, content);
 
-    NSInteger i = 0;
-    for (const Model* m : runnable_models()) {
-        if (m->info().name == _p.model || i == 0) [_model selectItemAtIndex:i];
-        ++i;
-    }
+    [self fillModels:_p.model];
     for (size_t k = 0; k < 4; ++k)
         if (kSubtypes[k] == _p.display) [_subtype selectItemAtIndex:NSInteger(k)];
     _crt.state = _p.crt ? NSControlStateValueOn : NSControlStateValueOff;
@@ -834,9 +902,8 @@ std::string tls_summary(const Profile& p, const AppSettings& s) {
 
 // Read the fields into _p; false (with a message) when a port is invalid.
 - (bool)read:(bool)quiet {
-    const std::vector<const Model*> models = runnable_models();
     const NSInteger m = _model.indexOfSelectedItem;
-    if (m >= 0 && size_t(m) < models.size()) _p.model = models[size_t(m)]->info().name;
+    if (m >= 0 && size_t(m) < _models.size()) _p.model = _models[size_t(m)]->info().name;
     const NSInteger st = _subtype.indexOfSelectedItem;
     if (st >= 0 && st < 4) _p.display = kSubtypes[st];
     _p.crt = _crt.state == NSControlStateValueOn;
@@ -907,11 +974,13 @@ std::string tls_summary(const Profile& p, const AppSettings& s) {
 @end
 
 bool em34xx::cocoa::profile_editor_dialog(NSWindow* parent, Profile& p, ProfileEditMode mode, const AppSettings& s,
-                                          const std::string& title) {
+                                          const UserDirs& dirs, const std::string& title) {
     EMProfileController* c = [EMProfileController new];
     c->_p = p;
     c->_mode = mode;
     c->_s = &s;
+    c->_dirs = &dirs;
+    c->_modelSel = 0;
     c->_title = title;
     [c build];
     if (run_sheet(c->_panel, parent) != NSModalResponseOK) return false;
@@ -1065,7 +1134,9 @@ bool em34xx::cocoa::profile_editor_dialog(NSWindow* parent, Profile& p, ProfileE
             return;
         }
         Profile p;
-        if (!profile_editor_dialog(_panel, p, ProfileEditMode::Save, *_s, "New Profile: " + name)) return;
+        // A new profile is for a terminal that can run.
+        if (const Model* m = choose_start_model(p.model, _dirs->roms()).model) p.model = m->info().name;
+        if (!profile_editor_dialog(_panel, p, ProfileEditMode::Save, *_s, *_dirs, "New Profile: " + name)) return;
         std::string error;
         if (!save_profile(_dirs->profile_path(name), p, error)) error_alert(_panel, "Cannot save the profile", error);
         [self fill:name];
@@ -1083,7 +1154,7 @@ bool em34xx::cocoa::profile_editor_dialog(NSWindow* parent, Profile& p, ProfileE
             error_alert(_panel, "Cannot open the profile", error);
             return;
         }
-        if (!profile_editor_dialog(_panel, p, ProfileEditMode::Save, *_s, "Profile: " + sel)) return;
+        if (!profile_editor_dialog(_panel, p, ProfileEditMode::Save, *_s, *_dirs, "Profile: " + sel)) return;
         if (!save_profile(_dirs->profile_path(sel), p, error)) error_alert(_panel, "Cannot save the profile", error);
     });
 }
