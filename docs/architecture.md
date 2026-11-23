@@ -38,6 +38,7 @@ em34xx_runtime    config, app                    Application, HostLink  (-> mach
   ^-- em34xx_devtools   monitor, gdb, devtools   monitor, replxx console, GDB stub, probes
   ^-- em34xx_frontend_sdl  frontend/sdl          SDL3 front end
   ^-- em34xx_frontend_win32 frontend/win32       Win32 front end (WIN32 only)
+  ^-- em34xx_frontend_cocoa frontend/cocoa       Cocoa front end (APPLE only)
 ```
 
 Front ends may include everything the runtime links (models, input, the
@@ -50,7 +51,7 @@ Executables, one per front end (names are CMake variables `EM34XX_EXE_*`):
 | `em34xx` | frontend_sdl, devtools, runtime | only when SDL3 is found (`EM34XX_FRONTEND_SDL`) |
 | `em34xx-headless` | devtools, runtime | always built; no SDL |
 | `em34xxw` | frontend_win32, runtime | WIN32 only, GUI subsystem, end-user build; see [frontend-win32.md](frontend-win32.md) |
-| `em34xx.app` (future) | frontend_cocoa, runtime (devtools optional) | APPLE only, MACOSX_BUNDLE, end-user build |
+| `em34xx.app` | frontend_cocoa, runtime | APPLE only (target `em34xx_app`), MACOSX_BUNDLE, universal arm64 + x86_64 with the macos-* presets, end-user build; see [frontend-cocoa.md](frontend-cocoa.md) |
 
 End-user GUI builds expose only the emulator (display, keyboard, sound,
 settings) and connect/disconnect to a TN5250 host. Their user interface
@@ -152,13 +153,18 @@ What it uses:
   under the machine lock; queue them for the audio thread.
 - **Control.** The Application API above.
 
-To add `em34xx.app` (as `em34xxw` was): a `em34xx_frontend_<name>` library
-linking `em34xx_runtime`, a `main` that constructs the front end and
-`Application(frontend, nullptr)`, and an executable target guarded by
-`if(APPLE)`; `CMakeLists.txt` has a commented stub. End-user data
-(settings, profiles, the user folder, ROM status, keymap files as text) is
-platform independent in `config/` (`profile.hpp`, `settings.hpp`,
-`user_dirs.hpp`) and `input/host_keymap.hpp` for the next GUI to reuse.
+A new front end (as `em34xxw` and `em34xx.app` were added): an
+`em34xx_frontend_<name>` library linking `em34xx_runtime`, a `main` that
+constructs the front end and `Application(frontend, nullptr)`, and an
+executable target guarded by its platform. End-user data (settings,
+profiles, the user folder, ROM status, keymap files as text) is platform
+independent in `config/` (`profile.hpp`, `settings.hpp`, `user_dirs.hpp`)
+and `input/host_keymap.hpp`, shared by both GUIs.
+
+`em34xx.app` runs several `Application`s in one process, one per window
+([frontend-cocoa.md](frontend-cocoa.md)). Nothing in the runtime is a
+per-process singleton except the log (`util/log.hpp`: levels and the log
+file are global, so only the first `start()` passes `--log-file`).
 
 ## Principles
 

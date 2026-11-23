@@ -14,6 +14,8 @@
   (`ModelInfo::notes`, `docs/bringup-*.md`).
 - Commit after every change; push when a remote exists.
 - Build: `VCPKG_ROOT=~/vcpkg cmake --preset debug && cmake --build --preset debug`.
+  On macOS `macos-release` builds universal (arm64 + x86_64), em34xx.app
+  included (docs/frontend-cocoa.md).
 - Tests: `ctest --preset debug -LE slow` (fast); the CPU vectors need
   `tools/fetch-test-vectors.sh` and take about 3 minutes in release.
 - The 3477 is the primary bring-up target; the 3486 waits for a re-dump.
