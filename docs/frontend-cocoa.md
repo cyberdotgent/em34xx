@@ -88,9 +88,10 @@ profiles on the command line, the first opened in the first window
 (pub400.com:992, TLS 1.3, verified) and the second in a new window
 (pub400.com:23); both reached "session connected" and showed their
 sign-on screens. SIGTERM then ended both terminals and the app with exit
-code 0, the NVRAM written. The window bookkeeping that cannot be scripted
-without UI automation (sheets, Show Window / Open Another Session, Close
-Window with an edited profile, tabs) is to be checked by hand.
+code 0, the NVRAM written. Checked by hand the same day: opening a profile
+that is already open offers Show Window / Open Another Session, closing
+with an edited profile asks to save, and Merge All Windows turns the
+terminals into tabs.
 
 Shared between the terminals of one app:
 
