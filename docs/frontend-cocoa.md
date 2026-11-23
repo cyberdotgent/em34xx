@@ -18,7 +18,7 @@ ARC, AppKit, everything built in code: no nib or storyboard):
 | `cocoa_dialogs.*` | ROM images, Settings, profile manager and editor, TLS Settings, the trust prompt, the invalid-certificate prompt, Keymap, About |
 | `cocoa_util.*` | UTF-8/NSString, sheets run to completion, alerts, Auto Layout helpers, the key code -> HID table, folders, the exception guard |
 | `Info.plist.in` | bundle identity `gent.cyber.em34xx`, the `.em34xx` document type, the local-network usage text, minimum macOS |
-| `res/em34xx.png`, `res/profile.png` | 1024 px icon masters drawn by `tools/gen_macos_assets.py` from the em34xxw glyphs (original artwork); the build makes `.icns` files with `sips` and `iconutil` (`make_icns.cmake`) |
+| `res/em34xx.iconset/`, `res/profile.png` | icons drawn by `tools/gen_macos_assets.py` from the em34xxw glyphs (original artwork). The application icon is a ready iconset: 16, 32 and 64 px are em34xxw's own pixel drawings without a plate, 128 px and up its 64 px drawing on the macOS plate. The document icon is a 1024 px master that `sips` scales. `make_icns.cmake` packs both into `.icns` files with `iconutil` |
 | `notices.txt` | third-party notices (toml++ only: the C++ runtime and the frameworks are part of macOS), shown in About |
 | `finish_bundle.cmake` | after linking: checks that the executable has every architecture in `CMAKE_OSX_ARCHITECTURES`, signs the bundle ad hoc |
 

@@ -18,7 +18,7 @@ Sources: `src/main_win32.cpp`, `src/frontend/win32/`:
 | `version.h.in` | generated `em34xxw_version.h`: version (from `project(VERSION)`) and project page (`EM34XX_HOMEPAGE_URL`, empty = "to be announced") for VERSIONINFO and About |
 | `em34xxw.rc`, `resource.h` | menu, accelerators, dialog templates (`DIALOGEX`), string table, icons, toolbar bitmaps, version information, manifest; compiled by windres |
 | `em34xxw.manifest` | Common Controls 6 (visual styles), DPI awareness, `supportedOS`, `asInvoker` |
-| `res/` | icons and toolbar strips, drawn by `tools/gen_win32_assets.py` (original artwork) |
+| `res/` | icons and toolbar strips, drawn by `tools/gen_win32_assets.py` (original artwork); the application icon is a 3477 behind its 122-key keyboard as Windows 9x pixel art (black outline, short palette, no anti-aliasing), drawn per size (16 to 64 px; from 64 px the keyboard is drawn key by key) after photographs of the terminal, with a 256 px entry (the 64 px drawing four times over) for Explorer's large views |
 
 Unicode (W) APIs only (`UNICODE`/`_UNICODE`); nothing newer than Windows 7
 is linked: `GetDpiForWindow`, `AdjustWindowRectExForDpi`,
