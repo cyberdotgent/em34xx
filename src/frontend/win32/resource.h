@@ -166,5 +166,7 @@
 #define IDS_CRT_RESET_CONFIRM   4045
 #define IDS_FILTER_ROMS         4046
 #define IDS_FILE_TYPE_NAME      4047
+#define IDS_ROMS_NONE           4048
+#define IDS_MODEL_RESET_CONFIRM 4049
 
 #endif

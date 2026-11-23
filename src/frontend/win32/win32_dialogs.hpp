@@ -21,9 +21,17 @@ namespace win32 {
 
 // ROM images: what each model needs and its state; import, remove,
 // re-check. `required`: the model about to run (its rows come first, the
-// summary says whether it is ready). True when `required` is ready at close
-// (always true without one).
-bool rom_manager_dialog(HWND owner, const UserDirs& dirs, const Model* required);
+// summary says whether it is ready). `need_any`: no model can run yet and
+// one must (first start). True when `required` is ready at close; without
+// one, when some model is ready (need_any) or always.
+bool rom_manager_dialog(HWND owner, const UserDirs& dirs, const Model* required, bool need_any = false);
+
+// True when `model` has its ROM images. Otherwise a warning that names the
+// files it lacks ("`what` is for the IBM 3487, which needs ROM images that
+// are not in the ROM folder: ..."; what = "": "The IBM 3487 needs ...") and
+// offers to import them in the ROM manager; true when they are there
+// afterwards.
+bool ensure_model_roms(HWND owner, const UserDirs& dirs, const Model& model, const std::string& what);
 
 // Edit > Settings (application-wide: speed, default TLS minimum, files).
 bool settings_dialog(HWND owner, const UserDirs& dirs, AppSettings& s);
@@ -36,8 +44,11 @@ enum class ProfileEditMode {
     Save,      // OK button says "Save"
     Apply,     // OK button says "OK" (Edit > Connection Settings)
 };
+// The terminal type list shows every model that can be emulated; those
+// whose ROM images are not in the ROM folder are greyed and say so, and
+// choosing one offers to import them (ensure_model_roms).
 bool profile_editor_dialog(HWND owner, Profile& p, ProfileEditMode mode, const AppSettings& s,
-                           const std::string& title);
+                           const UserDirs& dirs, const std::string& title);
 
 // TLS Settings (from the profile editor): verify mode, fingerprint with a
 // Fetch button that reads the certificate of the first TLS session off the

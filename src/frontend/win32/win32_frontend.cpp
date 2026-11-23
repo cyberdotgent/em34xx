@@ -282,6 +282,13 @@ private:
     // `rebuilt`: the change was visible to the firmware or the host, so the
     // machine was rebuilt and is powering on (its sessions closed).
     bool apply_terminal_settings(const Profile& p, bool& rebuilt);
+    // The model a profile names, when it can run now: a model of this
+    // build with its ROM images (the user is told which are missing and may
+    // import them). Null, after a message, otherwise.
+    const Model* profile_model(const Profile& p, const std::string& what);
+    enum class ModelSwitch { Same, Switched, Failed };
+    // Restart the emulator as the profile's model when it is another one.
+    ModelSwitch switch_model(const Profile& p);
     DisplaySubtype current_display();
     // Apply the profile's terminal settings, then connect: after a power
     // cycle (as switching the terminal on) or, with power_cycle false, by
@@ -889,6 +896,48 @@ DisplaySubtype Win32Frontend::current_display() {
     return emu_->with_machine([](Machine& m) { return m.options().display; });
 }
 
+const Model* Win32Frontend::profile_model(const Profile& p, const std::string& what) {
+    HWND h = hwnd_.load();
+    const Model* model = nullptr;
+    for (const Model* m : runnable_models())
+        if (m->info().name == p.model) model = m;
+    if (!model) {
+        error_box(h, what + " is for the IBM " + p.model + ", which this version of em34xx cannot emulate.");
+        return nullptr;
+    }
+    return ensure_model_roms(h, dirs(), *model, what) ? model : nullptr;
+}
+
+Win32Frontend::ModelSwitch Win32Frontend::switch_model(const Profile& p) {
+    if (p.model == model_name_) return ModelSwitch::Same;
+    HWND h = hwnd_.load();
+    const Model* model = profile_model(p, "This connection");
+    if (!model) return ModelSwitch::Failed;
+    // The new terminal as the profile describes it, with its own
+    // battery-backed RAM file (its setup); the keyboard stays.
+    TerminalOptions options = emu_->with_machine([](Machine& m) { return m.options(); });
+    options.display = p.display;
+    options.nvram_path = runtime_path(dirs().nvram_file(model->info().name));
+    std::string error;
+    bool ok = false;
+    {
+        TrustDrain drain(*trust_);   // the rebuild closes the sessions
+        release_keys();
+        ok = app_->set_model(*model, options, error);
+    }
+    if (!ok) {
+        error_box(h, "Cannot start the IBM " + model->info().name + ": " + error);
+        return ModelSwitch::Failed;
+    }
+    model_name_ = model->info().name;
+    crt_.invalidate();
+    dirty_ = true;
+    schedule_render();
+    InvalidateRect(h, nullptr, FALSE);
+    update_ui_state();
+    return ModelSwitch::Switched;
+}
+
 bool Win32Frontend::apply_terminal_settings(const Profile& p, bool& rebuilt) {
     HWND h = hwnd_.load();
     rebuilt = false;
@@ -921,9 +970,11 @@ bool Win32Frontend::apply_terminal_settings(const Profile& p, bool& rebuilt) {
 
 void Win32Frontend::connect_profile(const Profile& p, bool power_cycle) {
     HWND h = hwnd_.load();
-    if (p.model != model_name_) {
-        error_box(h, "This profile is for the IBM " + p.model + "; the emulator runs an IBM " + model_name_ +
-                         "; other models cannot run in this build yet.");
+    // Another terminal model: the emulator restarts as it. Without its ROM
+    // images nothing connects (the sessions would announce the wrong type).
+    const ModelSwitch switched = switch_model(p);
+    if (switched == ModelSwitch::Failed) {
+        update_ui_state();
         return;
     }
     AppConfig cfg;
@@ -940,6 +991,7 @@ void Win32Frontend::connect_profile(const Profile& p, bool power_cycle) {
         // new sessions start after it and may ask again.
         TrustDrain drain(*trust_);
         apply_terminal_settings(p, rebuilt);
+        rebuilt = rebuilt || switched == ModelSwitch::Switched;
         release_keys();
         std::string ignored;
         app_->host_link().disconnect(ignored);   // "not connected" is fine
@@ -965,7 +1017,9 @@ void Win32Frontend::new_connection() {
     release_keys();
     Profile p;
     p.model = model_name_;
-    if (!profile_editor_dialog(hwnd_.load(), p, ProfileEditMode::Connect, settings(), "New Connection")) return;
+    if (!profile_editor_dialog(hwnd_.load(), p, ProfileEditMode::Connect, settings(), dirs(), "New Connection"))
+        return;
+    if (!profile_model(p, "This connection")) return;
     if (!confirm_discard()) return;
     cur_ = CurrentProfile();
     cur_.active = true;
@@ -990,22 +1044,33 @@ void Win32Frontend::edit_connection() {
     Profile p = cur_.p;
     const std::string title =
         "Connection Settings: " + (cur_.untitled ? narrow(load_string(IDS_UNTITLED)) : cur_.name);
-    if (!profile_editor_dialog(h, p, ProfileEditMode::Apply, settings(), title)) return;
+    if (!profile_editor_dialog(h, p, ProfileEditMode::Apply, settings(), dirs(), title)) return;
     if (p == cur_.p) return;
     const Profile old = cur_.p;
-    if (p.display != current_display() && app_->display_change_needs_power_cycle(p.display)) {
+    // Another terminal type: it needs its ROM images and a restart; refused
+    // or not possible, the terminal stays and the other changes apply.
+    if (p.model != model_name_ &&
+        (!profile_model(p, "This connection") ||
+         message_box(h, string_with(IDS_MODEL_RESET_CONFIRM, p.model), MB_YESNO | MB_ICONQUESTION) != IDYES))
+        p.model = model_name_;
+    if (p.model == model_name_ && p.display != current_display() &&
+        app_->display_change_needs_power_cycle(p.display)) {
         std::string label = subtype_label(p.display);
         if (!label.empty()) label[0] = char(std::tolower(static_cast<unsigned char>(label[0])));
         if (message_box(h, string_with(IDS_CRT_RESET_CONFIRM, label), MB_YESNO | MB_ICONQUESTION) != IDYES)
             p.display = old.display;   // keep the rest of the changes
     }
     Profile same_terminal = old;
+    same_terminal.model = p.model;
     same_terminal.display = p.display;
     same_terminal.crt = p.crt;
     const bool connection_changed = same_terminal != p;
     const bool was_connected = connected();
+    const ModelSwitch switched = switch_model(p);
+    if (switched == ModelSwitch::Failed) p.model = model_name_;
     bool rebuilt = false;
     if (!apply_terminal_settings(p, rebuilt)) p.display = current_display();
+    rebuilt = rebuilt || switched == ModelSwitch::Switched;
     if (p != old) {
         cur_.p = p;
         cur_.modified = true;
@@ -1089,6 +1154,9 @@ void Win32Frontend::open_profile_file(const std::string& path, bool confirm_fore
         message_box(hwnd_.load(), foreign_profile_question(path, p), MB_YESNO | MB_ICONWARNING | MB_DEFBUTTON2) !=
             IDYES)
         return;
+    // A profile for a terminal whose ROM images are missing: the user is
+    // told which files and may import them; otherwise nothing changes.
+    if (!profile_model(p, "This profile")) return;
     if (!confirm_discard()) return;
     cur_ = CurrentProfile();
     cur_.active = true;
@@ -1348,7 +1416,8 @@ LRESULT Win32Frontend::handle(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
         if (quit_.load()) return 0;
         // The name is a file name in profiles\ and nothing else (it comes
         // from settings.toml): never a path.
-        if (std::string why; settings().startup_open && !settings().startup_profile.empty() &&
+        if (std::string why; !launch_.skip_start_profile && settings().startup_open &&
+                             !settings().startup_profile.empty() &&
                              UserDirs::valid_profile_name(settings().startup_profile, why) &&
                              dirs().profile_exists(settings().startup_profile)) {
             open_profile_file(dirs().profile_path(settings().startup_profile));
@@ -1506,7 +1575,7 @@ bool Win32Frontend::run(Application& app, const FrontendOptions& opts, std::stri
     ShowWindow(h, settings().window.valid && settings().window.maximized ? SW_SHOWMAXIMIZED : launch_.show);
     UpdateWindow(h);
     SetTimer(h, kTimerStatus, 500, nullptr);
-    if (!launch_.profile_path.empty()) open_profile_file(launch_.profile_path, true);
+    if (!launch_.profile_path.empty() && !launch_.skip_start_profile) open_profile_file(launch_.profile_path, true);
     else PostMessageW(h, WM_APP_STARTUP, 0, 0);   // once the window has painted
 
     MSG msg;
@@ -1598,33 +1667,56 @@ bool win32_prepare(Win32Launch& launch) {
     }
     if (argv) LocalFree(argv);
 
-    // The terminal starts as the command-line profile describes it (model,
-    // CRT type, scan lines), else as a new profile would: the first model
-    // that can run, green, with scan lines. Connecting applies a profile's
-    // settings in any case.
-    const auto models = runnable_models();
-    if (models.empty()) {
+    // The terminal starts as the profile that will be opened describes it
+    // (the command-line profile, else the startup profile: model, CRT type,
+    // scan lines), else as a new profile would: the first model whose ROM
+    // images are there, green, with scan lines. Connecting applies a
+    // profile's settings in any case.
+    if (runnable_models().empty()) {
         error_box(nullptr, "No terminal model of this build can run yet.");
         launch.exit_code = 2;
         return false;
     }
     Profile start;
-    if (!launch.profile_path.empty()) {
-        std::string ignored;   // reported when the window opens it
-        if (!load_profile(launch.profile_path, start, ignored)) start = Profile();
+    std::string start_name;   // "" = no profile asks for a model
+    {
+        std::string path = launch.profile_path, why, ignored;   // load errors: reported when it is opened
+        if (path.empty() && launch.settings.startup_open && !launch.settings.startup_profile.empty() &&
+            UserDirs::valid_profile_name(launch.settings.startup_profile, why) &&
+            launch.dirs->profile_exists(launch.settings.startup_profile))
+            path = launch.dirs->profile_path(launch.settings.startup_profile);
+        if (!path.empty()) {
+            if (load_profile(path, start, ignored)) start_name = narrow(std::filesystem::u8path(path).stem().wstring());
+            else start = Profile();
+        }
     }
-    const Model* model = models.front();
-    for (const Model* m : models)
-        if (m->info().name == start.model) model = m;
 
-    // First start (or ROMs gone): the ROM manager.
-    if (!model_roms_ready(*model, launch.dirs->roms()) &&
-        !win32::rom_manager_dialog(nullptr, *launch.dirs, model)) {
-        error_box(nullptr, "em34xxw cannot start the IBM " + model->info().name +
-                               " without its ROM images. Import them when you start em34xxw again.");
+    // One complete set of ROM images is enough to start; the other models
+    // stay selectable (greyed) until theirs are imported. A profile for a
+    // model without its images: say which files, offer to import them, and
+    // otherwise start without the profile.
+    const std::string roms = launch.dirs->roms();
+    StartModel choice = choose_start_model(start_name.empty() ? std::string() : start.model, roms);
+    bool declined = false;
+    if (choice.wanted_unready) {
+        declined = !win32::ensure_model_roms(nullptr, *launch.dirs, *choice.wanted_unready,
+                                             "The profile \"" + start_name + "\"");
+        choice = choose_start_model(start.model, roms);
+        if (declined) {
+            launch.skip_start_profile = true;
+            start = Profile();
+        }
+    }
+    // First start (or ROMs gone): the ROM manager, until one model can run.
+    if (!choice.model && !declined && win32::rom_manager_dialog(nullptr, *launch.dirs, nullptr, true))
+        choice = choose_start_model(start_name.empty() ? std::string() : start.model, roms);
+    if (!choice.model) {
+        error_box(nullptr, "em34xxw needs the ROM images of at least one terminal model to start. Import them "
+                           "when you start em34xxw again.");
         launch.exit_code = 1;
         return false;
     }
+    const Model* model = choice.model;
 
     // The global keymap, when there is one and it loads.
     launch.keymap_path.clear();

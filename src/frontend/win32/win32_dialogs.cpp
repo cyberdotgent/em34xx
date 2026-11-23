@@ -142,6 +142,7 @@ namespace {
 struct RomDlg {
     const UserDirs* dirs;
     const Model* required;
+    bool need_any;
     std::vector<RomStatusRow> rows;
 };
 
@@ -187,8 +188,10 @@ INT_PTR CALLBACK rom_proc(HWND dlg, UINT msg, WPARAM wp, LPARAM lp) {
         set_text(dlg, IDC_ROM_FOLDER, d->dirs->roms());
         if (d->required && !model_roms_ready(*d->required, d->dirs->roms()))
             SetDlgItemTextW(dlg, IDC_STATIC_TEXT, load_string(IDS_ROMS_MISSING).c_str());
+        else if (d->need_any && ready_models(d->dirs->roms()).empty())
+            SetDlgItemTextW(dlg, IDC_STATIC_TEXT, load_string(IDS_ROMS_NONE).c_str());
         rom_fill(dlg, *d);
-        SetFocus(GetDlgItem(dlg, d->required ? IDC_ROM_IMPORT : IDC_ROM_LIST));
+        SetFocus(GetDlgItem(dlg, d->required || d->need_any ? IDC_ROM_IMPORT : IDC_ROM_LIST));
         return FALSE;   // focus set
     }
     case WM_COMMAND: {
@@ -235,11 +238,24 @@ INT_PTR CALLBACK rom_proc(HWND dlg, UINT msg, WPARAM wp, LPARAM lp) {
 
 } // namespace
 
-bool rom_manager_dialog(HWND owner, const UserDirs& dirs, const Model* required) {
-    RomDlg d{&dirs, required, {}};
+bool rom_manager_dialog(HWND owner, const UserDirs& dirs, const Model* required, bool need_any) {
+    RomDlg d{&dirs, required, need_any, {}};
     DialogBoxParamW(instance(), MAKEINTRESOURCEW(IDD_ROMS), owner, guarded_dialog<rom_proc>,
                     reinterpret_cast<LPARAM>(&d));
-    return !required || model_roms_ready(*required, dirs.roms());
+    if (required) return model_roms_ready(*required, dirs.roms());
+    return !need_any || !ready_models(dirs.roms()).empty();
+}
+
+bool ensure_model_roms(HWND owner, const UserDirs& dirs, const Model& model, const std::string& what) {
+    if (model_roms_ready(model, dirs.roms())) return true;
+    const std::string name = "IBM " + model.info().name;
+    const std::string text = (what.empty() ? "The " + name + " needs" : what + " is for the " + name + ", which needs") +
+                             " ROM images that are not in the ROM folder:\n\n" +
+                             unusable_roms_text(model, dirs.roms()) +
+                             "\nThe emulator runs the terminal's own firmware and does not include it. "
+                             "Import the missing images now?";
+    if (message_box(owner, text, MB_YESNO | MB_ICONWARNING) != IDYES) return false;
+    return rom_manager_dialog(owner, dirs, &model);
 }
 
 // ---------------------------------------------------------------------------
@@ -565,8 +581,52 @@ struct ProfileDlg {
     Profile p;
     ProfileEditMode mode;
     const AppSettings* s;
+    const UserDirs* dirs;
     std::string title;
+    std::vector<const Model*> models;   // the terminal type list, in order
+    std::vector<bool> ready;            // whether each has its ROM images
+    int model_sel = 0;                  // the selection to fall back to
 };
+
+// The terminal type list: every model that can be emulated. One without
+// its ROM images says so (and is drawn grey, profile_draw_model).
+void profile_fill_models(HWND dlg, ProfileDlg& d, const std::string& select) {
+    SendDlgItemMessageW(dlg, IDC_PE_MODEL, CB_RESETCONTENT, 0, 0);
+    d.models = runnable_models();
+    d.ready.assign(d.models.size(), false);
+    int sel = 0;
+    for (size_t i = 0; i < d.models.size(); ++i) {
+        d.ready[i] = model_roms_ready(*d.models[i], d.dirs->roms());
+        combo_add(dlg, IDC_PE_MODEL,
+                  "IBM " + d.models[i]->info().name + (d.ready[i] ? "" : " (ROM images needed)"));
+        if (d.models[i]->info().name == select) sel = int(i);
+    }
+    combo_set_sel(dlg, IDC_PE_MODEL, sel);
+    d.model_sel = sel;
+}
+
+void profile_draw_model(const ProfileDlg& d, const DRAWITEMSTRUCT& di) {
+    const bool selected = (di.itemState & ODS_SELECTED) != 0;
+    const bool ready = di.itemID == UINT(-1) || di.itemID >= d.ready.size() || d.ready[di.itemID];
+    const bool disabled = (di.itemState & ODS_DISABLED) != 0;
+    FillRect(di.hDC, &di.rcItem, GetSysColorBrush(selected ? COLOR_HIGHLIGHT : COLOR_WINDOW));
+    if (di.itemID != UINT(-1)) {
+        wchar_t text[128] = L"";
+        if (SendMessageW(di.hwndItem, CB_GETLBTEXTLEN, di.itemID, 0) < 127)
+            SendMessageW(di.hwndItem, CB_GETLBTEXT, di.itemID, reinterpret_cast<LPARAM>(text));
+        // Grey for a model that cannot run yet; on the selection bar the
+        // highlight colours keep it readable, and its text still says why.
+        const int colour = selected ? COLOR_HIGHLIGHTTEXT : (!ready || disabled) ? COLOR_GRAYTEXT : COLOR_WINDOWTEXT;
+        const COLORREF old = SetTextColor(di.hDC, GetSysColor(colour));
+        const int mode = SetBkMode(di.hDC, TRANSPARENT);
+        RECT r = di.rcItem;
+        r.left += 3;
+        DrawTextW(di.hDC, text, -1, &r, DT_SINGLELINE | DT_VCENTER | DT_NOPREFIX | DT_END_ELLIPSIS);
+        SetBkMode(di.hDC, mode);
+        SetTextColor(di.hDC, old);
+    }
+    if ((di.itemState & ODS_FOCUS) && !(di.itemState & ODS_NOFOCUSRECT)) DrawFocusRect(di.hDC, &di.rcItem);
+}
 
 std::string tls_summary(const Profile& p, const AppSettings& s) {
     std::string m;
@@ -589,9 +649,8 @@ bool checked(HWND dlg, int id) { return IsDlgButtonChecked(dlg, id) == BST_CHECK
 
 // Read the fields into d.p; false (with a message) when a port is invalid.
 bool profile_read(HWND dlg, ProfileDlg& d, bool quiet) {
-    std::vector<const Model*> models = runnable_models();
     const int m = combo_sel(dlg, IDC_PE_MODEL);
-    if (m >= 0 && size_t(m) < models.size()) d.p.model = models[size_t(m)]->info().name;
+    if (m >= 0 && size_t(m) < d.models.size()) d.p.model = d.models[size_t(m)]->info().name;
     const int st = combo_sel(dlg, IDC_PE_SUBTYPE);
     if (st >= 0 && st < 4) d.p.display = kSubtypes[st];
     d.p.crt = checked(dlg, IDC_PE_CRT);
@@ -631,12 +690,12 @@ INT_PTR CALLBACK profile_proc(HWND dlg, UINT msg, WPARAM wp, LPARAM lp) {
                         d->mode == ProfileEditMode::Connect ? L"Connect"
                         : d->mode == ProfileEditMode::Save  ? L"Save"
                                                             : L"OK");
-        int i = 0;
-        for (const Model* m : runnable_models()) {
-            combo_add(dlg, IDC_PE_MODEL, "IBM " + m->info().name);
-            if (m->info().name == d->p.model || i == 0) combo_set_sel(dlg, IDC_PE_MODEL, i);
-            ++i;
+        // The owner-drawn list takes the row heights of its plain neighbour.
+        for (int part : {-1, 0}) {
+            const LRESULT height = SendDlgItemMessageW(dlg, IDC_PE_SUBTYPE, CB_GETITEMHEIGHT, WPARAM(part), 0);
+            if (height != CB_ERR) SendDlgItemMessageW(dlg, IDC_PE_MODEL, CB_SETITEMHEIGHT, WPARAM(part), height);
         }
+        profile_fill_models(dlg, *d, d->p.model);
         for (size_t k = 0; k < 4; ++k) {
             combo_add(dlg, IDC_PE_SUBTYPE, subtype_label(kSubtypes[k]));
             if (kSubtypes[k] == d->p.display) combo_set_sel(dlg, IDC_PE_SUBTYPE, int(k));
@@ -654,9 +713,33 @@ INT_PTR CALLBACK profile_proc(HWND dlg, UINT msg, WPARAM wp, LPARAM lp) {
         profile_update_tls(dlg, *d);
         return TRUE;
     }
+    case WM_DRAWITEM: {
+        const DRAWITEMSTRUCT* di = reinterpret_cast<const DRAWITEMSTRUCT*>(lp);
+        ProfileDlg* d = dialog_data<ProfileDlg>(dlg);
+        if (!d || !di || di->CtlID != IDC_PE_MODEL) break;
+        profile_draw_model(*d, *di);
+        return TRUE;
+    }
     case WM_COMMAND: {
         ProfileDlg* d = dialog_data<ProfileDlg>(dlg);
         switch (LOWORD(wp)) {
+        case IDC_PE_MODEL: {
+            if (HIWORD(wp) != CBN_SELCHANGE) break;
+            // A model without its ROM images: say which files, offer to
+            // import them, and go back to the previous choice when they are
+            // still not there.
+            const int sel = combo_sel(dlg, IDC_PE_MODEL);
+            if (sel < 0 || size_t(sel) >= d->models.size()) return TRUE;
+            const Model* m = d->models[size_t(sel)];
+            if (d->ready[size_t(sel)]) {
+                d->model_sel = sel;
+                return TRUE;
+            }
+            const std::string back = d->models[size_t(d->model_sel)]->info().name;
+            const bool ok = ensure_model_roms(dlg, *d->dirs, *m, "");
+            profile_fill_models(dlg, *d, ok ? m->info().name : back);   // an import can ready several models
+            return TRUE;
+        }
         case IDC_PE_TLS1:
         case IDC_PE_TLS2: {
             // Switch the session's conventional port along with TLS.
@@ -694,8 +777,8 @@ INT_PTR CALLBACK profile_proc(HWND dlg, UINT msg, WPARAM wp, LPARAM lp) {
 } // namespace
 
 bool profile_editor_dialog(HWND owner, Profile& p, ProfileEditMode mode, const AppSettings& s,
-                           const std::string& title) {
-    ProfileDlg d{p, mode, &s, title};
+                           const UserDirs& dirs, const std::string& title) {
+    ProfileDlg d{p, mode, &s, &dirs, title, {}, {}, 0};
     if (DialogBoxParamW(instance(), MAKEINTRESOURCEW(IDD_PROFILE), owner, guarded_dialog<profile_proc>,
                         reinterpret_cast<LPARAM>(&d)) != IDOK)
         return false;
@@ -765,7 +848,9 @@ INT_PTR CALLBACK manager_proc(HWND dlg, UINT msg, WPARAM wp, LPARAM lp) {
                 return TRUE;
             }
             Profile p;
-            if (!profile_editor_dialog(dlg, p, ProfileEditMode::Save, *d->s, "New Profile: " + name)) return TRUE;
+            // A new profile is for a terminal that can run.
+            if (const Model* m = choose_start_model(p.model, d->dirs->roms()).model) p.model = m->info().name;
+            if (!profile_editor_dialog(dlg, p, ProfileEditMode::Save, *d->s, *d->dirs, "New Profile: " + name)) return TRUE;
             if (!save_profile(d->dirs->profile_path(name), p, error)) error_box(dlg, error);
             manager_fill(dlg, *d, name);
             return TRUE;
@@ -777,7 +862,7 @@ INT_PTR CALLBACK manager_proc(HWND dlg, UINT msg, WPARAM wp, LPARAM lp) {
                 error_box(dlg, error);
                 return TRUE;
             }
-            if (!profile_editor_dialog(dlg, p, ProfileEditMode::Save, *d->s, "Profile: " + sel)) return TRUE;
+            if (!profile_editor_dialog(dlg, p, ProfileEditMode::Save, *d->s, *d->dirs, "Profile: " + sel)) return TRUE;
             if (!save_profile(d->dirs->profile_path(sel), p, error)) error_box(dlg, error);
             return TRUE;
         }

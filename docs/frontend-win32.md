@@ -42,13 +42,23 @@ keeps running (from `WinMain`: exit code 3).
    start it; a file outside the user's `profiles\` folder is confirmed
    first ("Profiles from outside", below). Anything else is reported in a
    message box.
-3. The terminal starts as the command-line profile describes it (its
-   model when runnable, its CRT type and scan lines); without one, as a new
-   profile would: the first runnable model (`runnable_models()`: buildable,
-   a complete ROM dump known; today the IBM 3477), green, with scan lines.
-4. **First start**: when the model's ROM images are missing or damaged, the
-   ROM dialog opens before the main window; closing it without usable ROMs
-   ends the program.
+3. The terminal starts as the profile that will be opened describes it
+   (the command-line profile, else the startup profile: its model, CRT type
+   and scan lines); without one, as a new profile would: the first model
+   whose ROM images are in the ROM folder (`choose_start_model()`), green,
+   with scan lines. The runnable models (`runnable_models()`: buildable, a
+   complete ROM dump known) are the IBM 3477, 3486 and 3487; the last two
+   share one image.
+4. **ROM images**: one complete set is enough to start. The images of the
+   other models may be missing; those models stay in the terminal type
+   list, greyed, until their images are imported.
+   - A profile for a model without its images: a warning names the profile,
+     the model and each missing file (`54g0010.bin - system ROM ...:
+     missing`) and offers to import them (the ROM dialog). Declined, the
+     program starts as another model that can run, without the profile.
+   - **First start** (no model can run): the ROM dialog opens before the
+     main window and says that one model's images are needed; closing it
+     with none ends the program.
 5. The global keymap (`keymap.toml`) is checked; a broken file is reported
    and the built-in PCOMM map is used.
 6. The `Application` starts with a command line built from all this
@@ -168,7 +178,7 @@ to a temporary name and renamed over the old one.
 | CRT type to or from colour | in Edit > Connection Settings, asks "Changing the CRT type to colour restarts the terminal and reconnects the sessions. Continue?"; Yes: the sessions close, the machine is rebuilt with the new subtype and powered on (POST), and the profile reconnects (the host now sees `IBM-3477-FC`); No keeps the old CRT type and applies the rest. Opening a profile needs no question: it power-cycles anyway |
 | CRT type to or from paper-white (3477) | the same: paper-white sets the display-type straps to 0E (type 5, FW0) instead of 0C (hypothesis, `ibm3477_default_straps`), which the firmware reads at power-on |
 | scan lines | at once |
-| model | only the 3477 is runnable. A profile for another model is refused with a message; when a second model becomes runnable, switching it needs the same rebuild (and new ROMs, sessions limits and title) |
+| model | the emulator restarts as the other model (`Application::set_model()`): its ROM images are read, it gets its own battery-backed RAM file (`<model>.nvram`), the sessions close and new ones announce its terminal type, and the title changes. Opening a profile does it without asking; Connection Settings asks first. Without the model's ROM images the user is told which files are missing and may import them; otherwise nothing changes |
 
 Which subtype changes need the rebuild is the model's decision
 (`Model::display_change_needs_power_cycle()`): by default monochrome <->
@@ -286,7 +296,10 @@ Accelerators use Ctrl+Shift only; every other key belongs to the terminal.
 ## The profile editor and TLS Settings
 
 The editor has the terminal type (a combo box filled from
-`runnable_models()`; only "IBM 3477" today), two sessions (host, port,
+`runnable_models()`; a model whose ROM images are not in the ROM folder is
+drawn grey and reads "IBM 3477 (ROM images needed)", and choosing it names
+the missing files and offers to import them, going back to the previous
+choice when they are still missing), two sessions (host, port,
 optional device name, **Use TLS** for each session (it also swaps that
 session's conventional port, 23 and 992); session 2 may stay empty), the
 CRT type and scan lines, and **TLS Settings...** for the sessions that use
@@ -434,6 +447,13 @@ decorations. In that virtual desktop wine stacks popups below the main
 window in X, so screenshots capture each em34xxw window (`xwd -id`) and
 composite them. Observed (November 2026, wine 9.0, x86 and x64 builds):
 
+- Models and ROMs (November 2026, wine 9.0, x86): with only `54g0010.bin`
+  the program starts as an IBM 3486 and the editor greys "IBM 3477 (ROM
+  images needed)"; choosing it names both 3477 files and, declined, goes
+  back; with no ROMs the ROM dialog asks for one model's images; a 3487
+  profile on the command line without its image is named with the file;
+  connecting a 3487 profile from a running 3477 restarts as the 3487
+  (terminal type `IBM-5251-11`).
 - First start without ROMs: the ROM dialog; importing renamed dumps stores
   them under the expected names (recognised by SHA-256); the 3477 then
   boots (Offline Setup with a blank NVRAM, the on-line screen with a
@@ -470,8 +490,9 @@ non-ASCII user folder.
 ## Known gaps
 
 - Sound: no `AudioSink` yet (the alarm is silent).
-- The model cannot be switched (one runnable model); a profile for another
-  model is refused.
+- A colour 3486/3487 does not go on line: its firmware wants a monitor
+  alignment byte in the EEPROM that only the monitor of `em34xx` can set
+  (docs/bringup-3486.md), and em34xxw keeps no EEPROM file.
 - Printer sessions are not offered (the bridge has only a placeholder).
 - No per-profile keymap (by design: one global keymap).
 

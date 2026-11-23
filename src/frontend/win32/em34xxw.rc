@@ -153,7 +153,7 @@ FONT 8, "MS Shell Dlg", 400, 0, 1
 BEGIN
     GROUPBOX        "Terminal", -1, 7, 7, 276, 46
     LTEXT           "&Terminal type:", -1, 15, 21, 52, 8
-    COMBOBOX        IDC_PE_MODEL, 72, 19, 120, 80, CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
+    COMBOBOX        IDC_PE_MODEL, 72, 19, 160, 80, CBS_DROPDOWNLIST | CBS_OWNERDRAWFIXED | CBS_HASSTRINGS | WS_VSCROLL | WS_TABSTOP
     LTEXT           "C&RT type:", -1, 15, 37, 52, 8
     COMBOBOX        IDC_PE_SUBTYPE, 72, 35, 120, 80, CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
     AUTOCHECKBOX    "Scan &lines", IDC_PE_CRT, 200, 36, 76, 10
@@ -312,6 +312,8 @@ BEGIN
     IDS_CRT_RESET_CONFIRM "Changing the CRT type to %s restarts the terminal and reconnects the sessions. Continue?"
     IDS_FILTER_ROMS      "ROM images (*.bin;*.rom)|*.bin;*.rom|All files (*.*)|*.*|"
     IDS_FILE_TYPE_NAME   "em34xx connection profile"
+    IDS_ROMS_NONE        "No terminal can run yet. Import the ROM images of at least one terminal model to continue; the others can follow later."
+    IDS_MODEL_RESET_CONFIRM "Changing the terminal type to IBM %s restarts the emulator as that terminal and reconnects the sessions. Continue?"
 END
 
 // --- Version ------------------------------------------------------------------

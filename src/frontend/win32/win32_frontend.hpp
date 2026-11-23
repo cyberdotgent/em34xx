@@ -32,6 +32,9 @@ struct Win32Launch {
     AppSettings settings;
     std::string keymap_path;            // the global keymap file, or "" for the built-in PCOMM map
     std::string profile_path;           // a .em34xx file from the command line
+    // The profile start-up would open (command line or startup profile) was
+    // for a model whose ROM images the user did not provide: open none.
+    bool skip_start_profile = false;
     std::vector<std::string> args;      // the Application's command line
     int exit_code = 0;
 };
