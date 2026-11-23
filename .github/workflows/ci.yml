@@ -39,7 +39,8 @@ jobs:
             libxi-dev libxss-dev libxtst-dev libxkbcommon-dev libdrm-dev libgbm-dev \
             libwayland-dev wayland-protocols libdecor-0-dev \
             libegl1-mesa-dev libgl1-mesa-dev libgles2-mesa-dev \
-            libdbus-1-dev libibus-1.0-dev libudev-dev
+            libdbus-1-dev libibus-1.0-dev libudev-dev \
+            qt6-base-dev
 
       - name: Set up vcpkg at the manifest baseline
         run: |

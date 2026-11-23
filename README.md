@@ -56,6 +56,11 @@ no Right Ctrl (PCOMM's Enter), so Return is the 5250 Enter and fn+Return
 (keypad Enter) is Field Exit. More in
 [docs/frontend-cocoa.md](docs/frontend-cocoa.md).
 
+On Linux and FreeBSD, em34xx-qt is the Qt 6 GUI. It is at an early stage:
+the screen, the keyboard, a menu bar and a status bar, driven by the same
+command line as `em34xx`; profiles and the dialogs are still to come. More
+in [docs/frontend-qt.md](docs/frontend-qt.md).
+
 ## Building
 
 You need CMake 3.21 or later, Ninja, a C++17 compiler and
@@ -66,6 +71,10 @@ On Linux SDL is built against the system X11 and Wayland development
 packages, and needs libdecor's (`libdecor-devel` on Fedora, `libdecor-0-dev`
 on Debian and Ubuntu) to give the window a title bar and border on GNOME
 Wayland; CI's package list in `.github/workflows/ci.yml` is the full set.
+
+On Linux and FreeBSD, em34xx-qt is built when the system's Qt 6 development
+package is present (`qt6-qtbase-devel` on Fedora, `qt6-base-dev` on Debian
+and Ubuntu).
 
 ```sh
 export VCPKG_ROOT=~/vcpkg

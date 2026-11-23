@@ -43,6 +43,7 @@ em34xx_runtime    config, app                    Application, HostLink  (-> mach
   ^-- em34xx_frontend_sdl  frontend/sdl          SDL3 front end
   ^-- em34xx_frontend_win32 frontend/win32       Win32 front end (WIN32 only)
   ^-- em34xx_frontend_cocoa frontend/cocoa       Cocoa front end (APPLE only)
+  ^-- em34xx_frontend_qt   frontend/qt           Qt 6 front end (Linux, BSD)
 ```
 
 Front ends may include everything the runtime links (models, input, the
@@ -56,6 +57,7 @@ Executables, one per front end (names are CMake variables `EM34XX_EXE_*`):
 | `em34xx-headless` | devtools, runtime | always built; no SDL |
 | `em34xxw` | frontend_win32, runtime | WIN32 only, GUI subsystem, end-user build; see [frontend-win32.md](frontend-win32.md) |
 | `em34xx.app` | frontend_cocoa, runtime | APPLE only (target `em34xx_app`), MACOSX_BUNDLE, universal arm64 + x86_64 with the macos-* presets, end-user build; see [frontend-cocoa.md](frontend-cocoa.md) |
+| `em34xx-qt` | frontend_qt, runtime | Linux and the BSDs, when the system's Qt 6 is found (`EM34XX_FRONTEND_QT`), end-user build; see [frontend-qt.md](frontend-qt.md) |
 
 End-user GUI builds expose only the emulator (display, keyboard, sound,
 settings) and connect/disconnect to a TN5250 host. Their user interface
@@ -131,7 +133,8 @@ What it uses:
   0x1E -> 0x04 `A`, 0x1C -> 0x28 Enter, E0 1C -> 0x58 keypad Enter);
   Cocoa from `NSEvent.keyCode` (kVK_* virtual key codes, e.g. kVK_ANSI_A
   0x00 -> 0x04, kVK_Return 0x24 -> 0x28), with modifier keys from
-  `flagsChanged:`. Positions, not characters: the host keymap
+  `flagsChanged:`; Qt from `QKeyEvent::nativeScanCode()` (an XKB keycode:
+  the kernel's input event code plus 8, e.g. 38 -> 0x04 `A`). Positions, not characters: the host keymap
   (`src/input/host_keymap.hpp`) maps HID usages to the terminal's keys.
 - **Terminal keys.** `Machine::terminal_key("attn", pressed)` presses the
   terminal's own key for a function (set-3 position plus the terminal
