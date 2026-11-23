@@ -104,8 +104,8 @@ endif()
 # Front ends: each is its own executable, configured only where it applies.
 #   EM34XX_FRONTEND_SDL  AUTO (default): build `em34xx` when SDL3 is found
 #                        ON: fail configuration without SDL3;  OFF: skip it
-# The Win32 `em34xxw` is built on WIN32 only; a Cocoa `em34xx.app` (APPLE)
-# is still a stub at the end of this file (docs/architecture.md).
+# The Win32 `em34xxw` is built on WIN32 only; the Cocoa `em34xx.app`
+# (EM34XX_FRONTEND_COCOA) on APPLE only.
 set(EM34XX_FRONTEND_SDL AUTO CACHE STRING "SDL3 front end (em34xx): AUTO, ON or OFF")
 set_property(CACHE EM34XX_FRONTEND_SDL PROPERTY STRINGS AUTO ON OFF)
 string(TOUPPER "${EM34XX_FRONTEND_SDL}" _em34xx_sdl)
@@ -124,11 +124,27 @@ elseif(_em34xx_sdl STREQUAL "AUTO")
 endif()
 message(STATUS "SDL3 front end (em34xx): ${EM34XX_HAVE_SDL}")
 
+# EM34XX_FRONTEND_COCOA  AUTO (default) / ON: build em34xx.app on macOS;
+#                        OFF: skip it. Never built elsewhere.
+set(EM34XX_FRONTEND_COCOA AUTO CACHE STRING "Cocoa front end (em34xx.app, macOS only): AUTO, ON or OFF")
+set_property(CACHE EM34XX_FRONTEND_COCOA PROPERTY STRINGS AUTO ON OFF)
+string(TOUPPER "${EM34XX_FRONTEND_COCOA}" _em34xx_cocoa)
+if(NOT _em34xx_cocoa MATCHES "^(AUTO|ON|OFF)$")
+  message(FATAL_ERROR "EM34XX_FRONTEND_COCOA must be AUTO, ON or OFF (got '${EM34XX_FRONTEND_COCOA}')")
+endif()
+set(EM34XX_HAVE_COCOA OFF)
+if(APPLE AND NOT _em34xx_cocoa STREQUAL "OFF")
+  set(EM34XX_HAVE_COCOA ON)
+elseif(_em34xx_cocoa STREQUAL "ON")
+  message(FATAL_ERROR "EM34XX_FRONTEND_COCOA=ON, but em34xx.app builds on macOS only")
+endif()
+message(STATUS "Cocoa front end (em34xx.app): ${EM34XX_HAVE_COCOA}")
+
 # Executable names, one variable per target so they can change in one place.
 set(EM34XX_EXE_SDL em34xx)                 # SDL3 window + developer tooling
 set(EM34XX_EXE_HEADLESS em34xx-headless)   # no window, monitor on stdin/stdout
 set(EM34XX_EXE_WIN32 em34xxw)              # native Win32 GUI (end-user), WIN32 only
-set(EM34XX_EXE_COCOA em34xx)               # future Cocoa GUI, bundled as em34xx.app
+set(EM34XX_EXE_COCOA em34xx)               # Cocoa GUI, bundled as em34xx.app (target em34xx_app), APPLE only
 find_package(replxx CONFIG REQUIRED)
 find_package(tomlplusplus CONFIG REQUIRED)
 # toml++ through em34xx_tomlplusplus. A universal macOS build (more than one
@@ -169,6 +185,7 @@ endif()
 #   em34xx_devtools  monitor, console (replxx), GDB stub, probes -> runtime, net
 #   em34xx_frontend_sdl  SDL3 front end                        -> runtime
 #   em34xx_frontend_win32  Win32 front end (WIN32 only)        -> runtime
+#   em34xx_frontend_cocoa  Cocoa front end (APPLE only)        -> runtime
 #
 # End-user GUI executables link em34xx_runtime plus their front end only;
 # em34xx (SDL) and em34xx-headless also link em34xx_devtools.
@@ -370,15 +387,49 @@ if(WIN32)
     ${PROJECT_SOURCE_DIR}/src/frontend/win32/res/toolbar32.bmp)
 endif()
 
-# Not written yet: a Cocoa em34xx.app, which will look like this:
-#
-# if(APPLE)
-#   enable_language(OBJCXX)
-#   em34xx_library(em34xx_frontend_cocoa src/frontend/cocoa/cocoa_frontend.mm)
-#   target_link_libraries(em34xx_frontend_cocoa PUBLIC em34xx_runtime PRIVATE "-framework Cocoa")
-#   add_executable(${EM34XX_EXE_COCOA} MACOSX_BUNDLE src/main_cocoa.mm)
-#   target_link_libraries(${EM34XX_EXE_COCOA} PRIVATE em34xx_frontend_cocoa)
-# endif()
+# em34xx.app: the Cocoa GUI (APPLE only; docs/frontend-cocoa.md). Built as a
+# universal binary with the macos-* presets (CMAKE_OSX_ARCHITECTURES).
+if(EM34XX_HAVE_COCOA)
+  enable_language(OBJCXX)
+  em34xx_library(em34xx_frontend_cocoa
+    src/frontend/cocoa/cocoa_frontend.mm
+    src/frontend/cocoa/cocoa_dialogs.mm
+    src/frontend/cocoa/cocoa_util.mm
+  )
+  target_compile_options(em34xx_frontend_cocoa PRIVATE -fobjc-arc)
+  target_link_libraries(em34xx_frontend_cocoa PUBLIC em34xx_runtime
+    PRIVATE em34xx_version_header "-framework AppKit" "-framework Carbon" "-framework Foundation")
+
+  # Icons from the PNG masters (tools/gen_macos_assets.py).
+  set(_em34xx_icons)
+  foreach(_icon IN ITEMS em34xx profile)
+    set(_icns ${PROJECT_BINARY_DIR}/cocoa/${_icon}.icns)
+    add_custom_command(OUTPUT ${_icns}
+      COMMAND ${CMAKE_COMMAND} -DSOURCE=${PROJECT_SOURCE_DIR}/src/frontend/cocoa/res/${_icon}.png
+        -DICONSET=${PROJECT_BINARY_DIR}/cocoa/${_icon}.iconset -DOUTPUT=${_icns}
+        -P ${PROJECT_SOURCE_DIR}/src/frontend/cocoa/make_icns.cmake
+      DEPENDS ${PROJECT_SOURCE_DIR}/src/frontend/cocoa/res/${_icon}.png
+        ${PROJECT_SOURCE_DIR}/src/frontend/cocoa/make_icns.cmake
+      COMMENT "Icon ${_icon}.icns"
+      VERBATIM)
+    list(APPEND _em34xx_icons ${_icns})
+  endforeach()
+  set(_em34xx_bundle_resources ${_em34xx_icons} ${PROJECT_SOURCE_DIR}/src/frontend/cocoa/notices.txt)
+  set_source_files_properties(${_em34xx_bundle_resources} PROPERTIES MACOSX_PACKAGE_LOCATION Resources)
+
+  add_executable(em34xx_app MACOSX_BUNDLE src/main_cocoa.mm ${_em34xx_bundle_resources})
+  target_compile_options(em34xx_app PRIVATE -fobjc-arc)
+  target_link_libraries(em34xx_app PRIVATE em34xx_frontend_cocoa em34xx_warnings)
+  set_target_properties(em34xx_app PROPERTIES
+    OUTPUT_NAME ${EM34XX_EXE_COCOA}
+    MACOSX_BUNDLE_INFO_PLIST ${PROJECT_SOURCE_DIR}/src/frontend/cocoa/Info.plist.in)
+  string(REPLACE ";" "," _em34xx_archs "${CMAKE_OSX_ARCHITECTURES}")
+  add_custom_command(TARGET em34xx_app POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -DAPP=$<TARGET_BUNDLE_DIR:em34xx_app> -DEXE=$<TARGET_FILE:em34xx_app>
+      -DARCHS=${_em34xx_archs} -P ${PROJECT_SOURCE_DIR}/src/frontend/cocoa/finish_bundle.cmake
+    COMMENT "Checking the architectures of em34xx.app and signing it ad hoc"
+    VERBATIM)
+endif()
 
 if(EM34XX_BUILD_TESTS)
   enable_testing()

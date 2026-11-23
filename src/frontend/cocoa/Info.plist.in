@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- SPDX-License-Identifier: GPL-3.0-or-later -->
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict>
+  <key>CFBundleDevelopmentRegion</key><string>en</string>
+  <key>CFBundleExecutable</key><string>em34xx</string>
+  <key>CFBundleIdentifier</key><string>gent.cyber.em34xx</string>
+  <key>CFBundleInfoDictionaryVersion</key><string>6.0</string>
+  <key>CFBundleName</key><string>em34xx</string>
+  <key>CFBundleDisplayName</key><string>em34xx</string>
+  <key>CFBundleIconFile</key><string>em34xx.icns</string>
+  <key>CFBundlePackageType</key><string>APPL</string>
+  <key>CFBundleShortVersionString</key><string>${PROJECT_VERSION}</string>
+  <key>CFBundleVersion</key><string>${PROJECT_VERSION}</string>
+  <key>LSMinimumSystemVersion</key><string>${CMAKE_OSX_DEPLOYMENT_TARGET}</string>
+  <key>LSApplicationCategoryType</key><string>public.app-category.utilities</string>
+  <key>NSHumanReadableCopyright</key><string>em34xx contributors. GNU GPL, version 3 or later.</string>
+  <key>NSHighResolutionCapable</key><true/>
+  <key>NSSupportsAutomaticTermination</key><false/>
+  <key>NSSupportsSuddenTermination</key><false/>
+  <!-- macOS 15 and later ask before an app reaches the local network: an
+       IBM i on the LAN is the common case. -->
+  <key>NSLocalNetworkUsageDescription</key>
+  <string>em34xx connects its terminal sessions to IBM i systems over TN5250, which may be on your local network.</string>
+  <key>CFBundleDocumentTypes</key><array><dict>
+    <key>CFBundleTypeName</key><string>em34xx connection profile</string>
+    <key>CFBundleTypeIconFile</key><string>profile.icns</string>
+    <key>CFBundleTypeRole</key><string>Viewer</string>
+    <key>LSHandlerRank</key><string>Owner</string>
+    <key>LSItemContentTypes</key><array><string>gent.cyber.em34xx.profile</string></array>
+  </dict></array>
+  <key>UTExportedTypeDeclarations</key><array><dict>
+    <key>UTTypeIdentifier</key><string>gent.cyber.em34xx.profile</string>
+    <key>UTTypeDescription</key><string>em34xx connection profile</string>
+    <key>UTTypeIconFile</key><string>profile.icns</string>
+    <key>UTTypeConformsTo</key><array><string>public.utf8-plain-text</string></array>
+    <key>UTTypeTagSpecification</key><dict>
+      <key>public.filename-extension</key><array><string>em34xx</string></array>
+    </dict>
+  </dict></array>
+</dict></plist>
