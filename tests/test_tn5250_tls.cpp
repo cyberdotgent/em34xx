@@ -776,11 +776,15 @@ struct TestCert {
         X509_gmtime_adj(X509_getm_notBefore(cert), from_s);
         X509_gmtime_adj(X509_getm_notAfter(cert), until_s);
         X509_set_pubkey(cert, key);
-        X509_NAME* name = X509_get_subject_name(cert);
+        // Built apart and copied in: OpenSSL 4 returns the certificate's own
+        // names as const.
+        X509_NAME* name = X509_NAME_new();
         X509_NAME_add_entry_by_txt(name, "CN", MBSTRING_ASC,
                                    reinterpret_cast<const unsigned char*>(san ? "em34xx test" : "em34xx test CA"),
                                    -1, -1, 0);
+        X509_set_subject_name(cert, name);
         X509_set_issuer_name(cert, ca ? X509_get_subject_name(ca->cert) : name);
+        X509_NAME_free(name);
         X509V3_CTX ctx;
         X509V3_set_ctx_nodb(&ctx);
         X509V3_set_ctx(&ctx, ca ? ca->cert : cert, cert, nullptr, nullptr, 0);
