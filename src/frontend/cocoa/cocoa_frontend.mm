@@ -169,9 +169,7 @@ struct Launch {
     std::unique_ptr<UserDirs> dirs;
     AppSettings settings;
     std::string keymap_path;    // the global keymap file, or "" for the built-in Mac map
-    std::string profile_path;   // a .em34xx file from Finder or the command line
-    bool profile_foreign_check = true;
-    std::vector<std::string> args;
+    std::string log_file;       // the process's log
 };
 
 // Text from a profile file, for an alert: no control characters (a host
@@ -315,13 +313,32 @@ private:
 // ===========================================================================
 // The main window's controller
 
-@interface EMMainController : NSObject <NSWindowDelegate, NSToolbarDelegate, NSMenuItemValidation,
-                                        NSToolbarItemValidation>
-- (instancetype)initWithApp:(Application*)app launch:(Launch*)launch frontend:(CocoaFrontend*)fe;
-- (void)showAndStart;
-- (void)openProfileFile:(const std::string&)path foreign:(bool)foreign;
+// The app delegate, told when a terminal window has closed.
+@protocol EMTerminalHost
+- (void)terminalClosed:(EMMainController*)terminal;
+@end
+
+// One terminal window: its own emulated terminal (an Application with its
+// machine, emulation thread and TN5250 sessions) and the profile it runs.
+// A window controller, so it is in its window's responder chain: menu and
+// toolbar commands with no target reach the terminal in front.
+@interface EMMainController : NSWindowController <NSWindowDelegate, NSToolbarDelegate, NSMenuItemValidation,
+                                                  NSToolbarItemValidation>
+- (instancetype)initWithApp:(std::unique_ptr<Application>)app
+                     launch:(Launch*)launch
+                   frontend:(CocoaFrontend*)fe
+                    primary:(bool)primary;
+- (void)showTerminal;
+// No profile opened yet: a profile opened from elsewhere may use this window.
+- (bool)idle;
+- (std::string)profilePath;
+// Take this profile and connect it (after a power cycle).
+- (void)adoptProfile:(const Profile&)p path:(const std::string&)path untitled:(bool)untitled;
 - (bool)confirmDiscard;
-- (void)shutdown;
+// Close the sessions, stop the terminal and write its battery-backed RAM.
+- (void)shutdownTerminal;
+- (void)setKeymapSpec:(const std::string&)spec;
+- (void)setSpeed:(unsigned)pct;
 - (void)displayChanged;
 - (void)titleChanged;
 - (void)quitRequested;
@@ -332,7 +349,6 @@ private:
 - (void)releaseKeys;
 - (void)viewResized;
 - (void)drawPicture:(NSRect)dirty inView:(NSView*)view;
-@property(readonly) NSWindow* window;
 @property bool quitting;
 @end
 
@@ -384,12 +400,14 @@ static NSToolbarItemIdentifier const kTbKeymap = @"keymap";
 static NSToolbarItemIdentifier const kTbTermKeys = @"termkeys";
 
 @implementation EMMainController {
+    std::unique_ptr<Application> _appOwner;
     Application* _app;
+    bool _primary;
     Emulator* _emu;
     Launch* _launch;
     CocoaFrontend* _fe;
     std::string _modelName;
-    NSWindow* _window;
+    NSWindow* _win;
     EMTerminalView* _view;
     NSTextField* _statusText;
     EMSessionIndicator* _indicators[Profile::kSessions];
@@ -419,16 +437,19 @@ static NSToolbarItemIdentifier const kTbTermKeys = @"termkeys";
     bool _toolbarOnline;
 }
 
-@synthesize window = _window;
-
-- (instancetype)initWithApp:(Application*)app launch:(Launch*)launch frontend:(CocoaFrontend*)fe {
-    if ((self = [super init])) {
-        _app = app;
-        _emu = &app->emulator();
+- (instancetype)initWithApp:(std::unique_ptr<Application>)app
+                     launch:(Launch*)launch
+                   frontend:(CocoaFrontend*)fe
+                    primary:(bool)primary {
+    if ((self = [super initWithWindow:nil])) {
+        _appOwner = std::move(app);
+        _app = _appOwner.get();
+        _primary = primary;
+        _emu = &_app->emulator();
         _launch = launch;
         _fe = fe;
-        _modelName = app->model().info().name;
-        _crtParams = app->frontend_options().crt;
+        _modelName = _app->model().info().name;
+        _crtParams = _app->frontend_options().crt;
         _imgW = _imgH = 0;
         _imgRect = NSZeroRect;
         _dirty = true;
@@ -442,6 +463,7 @@ static NSToolbarItemIdentifier const kTbTermKeys = @"termkeys";
         _baseW = std::max(1, _fb.presented_width());
         _baseH = std::max(1, _fb.presented_height());
         [self buildWindow];
+        self.window = _win;
     }
     return self;
 }
@@ -456,25 +478,28 @@ static NSToolbarItemIdentifier const kTbTermKeys = @"termkeys";
 // --- window ----------------------------------------------------------------------
 
 - (void)buildWindow {
-    _window = [[NSWindow alloc] initWithContentRect:NSMakeRect(0, 0, 800, 600)
+    _win = [[NSWindow alloc] initWithContentRect:NSMakeRect(0, 0, 800, 600)
                                           styleMask:NSWindowStyleMaskTitled | NSWindowStyleMaskClosable |
                                                     NSWindowStyleMaskMiniaturizable | NSWindowStyleMaskResizable
                                             backing:NSBackingStoreBuffered
                                               defer:NO];
-    _window.releasedWhenClosed = NO;
-    _window.delegate = self;
-    _window.title = @"em34xx";
-    _window.tabbingMode = NSWindowTabbingModeDisallowed;
-    _window.collectionBehavior = NSWindowCollectionBehaviorFullScreenPrimary;
-    _window.contentMinSize = NSMakeSize(320, 240);
-    if (@available(macOS 11.0, *)) _window.toolbarStyle = NSWindowToolbarStyleUnified;
+    _win.releasedWhenClosed = NO;
+    _win.delegate = self;
+    _win.title = @"em34xx";
+    // Several terminals may share one window as tabs (Window > Merge All
+    // Windows, or "Prefer tabs" in System Settings).
+    _win.tabbingIdentifier = @"em34xx.terminal";
+    _win.restorable = NO;   // terminals come back from their profiles, not from saved state
+    _win.collectionBehavior = NSWindowCollectionBehaviorFullScreenPrimary;
+    _win.contentMinSize = NSMakeSize(320, 240);
+    if (@available(macOS 11.0, *)) _win.toolbarStyle = NSWindowToolbarStyleUnified;
 
     NSToolbar* tb = [[NSToolbar alloc] initWithIdentifier:@"em34xx.terminal"];
     tb.delegate = self;
     tb.allowsUserCustomization = YES;
     tb.autosavesConfiguration = YES;
     tb.displayMode = NSToolbarDisplayModeIconOnly;
-    _window.toolbar = tb;
+    _win.toolbar = tb;
 
     NSView* root = [NSView new];
     _view = [EMTerminalView new];
@@ -526,41 +551,53 @@ static NSToolbarItemIdentifier const kTbTermKeys = @"termkeys";
         [indStack.trailingAnchor constraintEqualToAnchor:bar.trailingAnchor constant:-12],
         [indStack.centerYAnchor constraintEqualToAnchor:bar.centerYAnchor],
     ]];
-    _window.contentView = root;
-    _window.initialFirstResponder = _view;
+    _win.contentView = root;
+    _win.initialFirstResponder = _view;
 }
 
 // Content size: the presented frame times the zoom (in points: a Retina
 // screen shows it with twice the pixels), plus the status bar; shrunk to
 // the screen when it does not fit. The top-left corner stays put.
 - (void)sizeForZoom {
-    if (_window.styleMask & NSWindowStyleMaskFullScreen) return;
-    NSScreen* screen = _window.screen ? _window.screen : NSScreen.mainScreen;
+    if (_win.styleMask & NSWindowStyleMaskFullScreen) return;
+    NSScreen* screen = _win.screen ? _win.screen : NSScreen.mainScreen;
     const NSRect visible = screen.visibleFrame;
     double scale = [self settings].zoom;
     NSRect frame = NSZeroRect;
     for (int attempt = 0; attempt < 2; ++attempt) {
         const NSSize content = NSMakeSize(std::round(_baseW * scale), std::round(_baseH * scale) + kStatusBarHeight);
-        frame = [_window frameRectForContentRect:NSMakeRect(0, 0, content.width, content.height)];
+        frame = [_win frameRectForContentRect:NSMakeRect(0, 0, content.width, content.height)];
         const double fit = std::min(visible.size.width / frame.size.width, visible.size.height / frame.size.height);
         if (fit >= 1.0) break;
         scale *= fit * 0.98;
     }
-    const NSRect old = _window.frame;
+    const NSRect old = _win.frame;
     frame.origin.x = old.origin.x;
     frame.origin.y = NSMaxY(old) - frame.size.height;
     frame.origin.x = std::min(std::max(frame.origin.x, visible.origin.x), NSMaxX(visible) - frame.size.width);
     frame.origin.y = std::min(std::max(frame.origin.y, visible.origin.y), NSMaxY(visible) - frame.size.height);
-    [_window setFrame:frame display:YES animate:_window.visible];
+    [_win setFrame:frame display:YES animate:_win.visible];
 }
 
-- (void)showAndStart {
-    // The last frame (NSUserDefaults), or the zoom size centred.
-    if (![_window setFrameUsingName:@"em34xx.terminal"]) {
+- (void)showTerminal {
+    // The first window: the last frame (NSUserDefaults), or the zoom size
+    // centred. Others: the zoom size, cascaded from the window in front.
+    if (_primary) {
+        if (![_win setFrameUsingName:@"em34xx.terminal"]) {
+            [self sizeForZoom];
+            [_win center];
+        }
+        _win.frameAutosaveName = @"em34xx.terminal";
+    } else {
         [self sizeForZoom];
-        [_window center];
+        NSWindow* front = NSApp.mainWindow ? NSApp.mainWindow : NSApp.keyWindow;
+        if (front && front != _win) {
+            const NSRect f = front.frame;
+            [_win cascadeTopLeftFromPoint:[_win cascadeTopLeftFromPoint:NSMakePoint(f.origin.x, NSMaxY(f))]];
+        } else {
+            [_win center];
+        }
     }
-    _window.frameAutosaveName = @"em34xx.terminal";
 
     {
         std::weak_ptr<std::atomic<bool>> pending = _displayPending;
@@ -581,7 +618,7 @@ static NSToolbarItemIdentifier const kTbTermKeys = @"termkeys";
         _app->host_link().set_tls_trust_handler([q](const tn5250::TlsTrustRequest& r) { return q->ask(r); });
     }
     [self updateUi];
-    [_window makeKeyAndOrderFront:nil];
+    [_win makeKeyAndOrderFront:nil];
     __weak EMMainController* weak = self;
     _statusTimer = [NSTimer timerWithTimeInterval:0.5
                                           repeats:YES
@@ -589,35 +626,19 @@ static NSToolbarItemIdentifier const kTbTermKeys = @"termkeys";
                                               [weak statusTick];
                                             }];
     [NSRunLoop.mainRunLoop addTimer:_statusTimer forMode:NSRunLoopCommonModes];
-
-    // Once the window is on screen: the profile Finder or the command line
-    // named, else the startup profile, else the profile manager.
-    dispatch_async(dispatch_get_main_queue(), ^{
-      EMMainController* c = weak;
-      if (c) guarded([&] { [c startup]; });
-    });
 }
 
-- (void)startup {
-    if (_quitting) return;
-    if (!_launch->profile_path.empty()) {
-        [self openProfileFile:_launch->profile_path foreign:_launch->profile_foreign_check];
-        return;
-    }
-    // The startup name is a file name in profiles/ and nothing else (it
-    // comes from settings.toml): never a path.
-    const AppSettings& s = [self settings];
-    if (std::string why; s.startup_open && !s.startup_profile.empty() &&
-                         UserDirs::valid_profile_name(s.startup_profile, why) &&
-                         [self dirs].profile_exists(s.startup_profile)) {
-        [self openProfileFile:[self dirs].profile_path(s.startup_profile) foreign:false];
-    } else {
-        [self connectToProfile:nil];
-    }
+- (bool)idle {
+    return !_cur.active && !_quitting;
+}
+
+- (std::string)profilePath {
+    return _cur.active && !_cur.untitled ? _cur.path : std::string();
 }
 
 - (void)statusTick {
     guarded([&] {
+        if (!_app) return;
         if (_emu->quit_requested()) {
             [self quitRequested];
             return;
@@ -627,23 +648,37 @@ static NSToolbarItemIdentifier const kTbTermKeys = @"termkeys";
     });
 }
 
-- (void)shutdown {
+- (void)shutdownTerminal {
+    if (!_appOwner) return;
     [_statusTimer invalidate];
     _statusTimer = nil;
     [_rasterTimer invalidate];
     _rasterTimer = nil;
+    [self releaseKeys];
     _trust->close();
     _emu->set_display_callback(nullptr);
     _app->host_link().set_tls_trust_handler(nullptr);
     std::string error;
     save_settings([self dirs].settings_file(), [self settings], error);
+    // As at a clean exit: the sessions and the emulation thread wind down
+    // and the battery-backed RAM is written (Application::finish()).
+    guarded([&] {
+        _app->request_quit(0);
+        _app->finish();
+    });
+    _fe->controller = nil;
+    _appOwner.reset();
+    _app = nullptr;
+    _emu = nullptr;
 }
 
+// The terminal asked to end (or the program is ending without questions):
+// this window closes.
 - (void)quitRequested {
     if (_quitting) return;
     _quitting = true;
-    _cur.modified = false;   // asked to end: no questions
-    [NSApp terminate:nil];
+    _cur.modified = false;
+    [_win performClose:nil];
 }
 
 // --- picture ------------------------------------------------------------------------
@@ -660,7 +695,7 @@ static NSToolbarItemIdentifier const kTbTermKeys = @"termkeys";
 }
 
 - (void)scheduleRender {
-    if (!_dirty || !_window) return;
+    if (!_dirty || !_win || !_app) return;
     const auto now = steady::now();
     const auto due = _lastRaster + kMinRasterInterval;
     if (now >= due) {
@@ -749,6 +784,7 @@ static NSToolbarItemIdentifier const kTbTermKeys = @"termkeys";
 }
 
 - (void)keyEvent:(NSEvent*)e down:(bool)down {
+    if (!_emu) return;
     guarded([&] {
         // Command shortcuts belong to the Mac (menus); the terminal does its
         // own typematic, so the Mac's auto-repeats are dropped.
@@ -759,6 +795,7 @@ static NSToolbarItemIdentifier const kTbTermKeys = @"termkeys";
 }
 
 - (void)flagsEvent:(NSEvent*)e {
+    if (!_emu) return;
     guarded([&] {
         const uint32_t hid = hid_from_keycode(e.keyCode);
         if (!hid) return;
@@ -779,7 +816,7 @@ static NSToolbarItemIdentifier const kTbTermKeys = @"termkeys";
 }
 
 - (void)releaseKeys {
-    if (_held.empty()) return;
+    if (_held.empty() || !_emu) return;
     const std::set<uint32_t> held = _held;
     _held.clear();
     _emu->with_machine([&](Machine& m) {
@@ -800,7 +837,7 @@ static NSToolbarItemIdentifier const kTbTermKeys = @"termkeys";
         return true;
     });
     if (!ok) LOG_WARN("input", "this keyboard has no %s key", function);
-    [_window makeFirstResponder:_view];
+    [_win makeFirstResponder:_view];
 }
 
 - (void)windowDidResignKey:(NSNotification*)n {
@@ -810,7 +847,7 @@ static NSToolbarItemIdentifier const kTbTermKeys = @"termkeys";
 
 - (void)windowDidBecomeKey:(NSNotification*)n {
     (void)n;
-    if (!_window.attachedSheet) [_window makeFirstResponder:_view];
+    if (!_win.attachedSheet) [_win makeFirstResponder:_view];
 }
 
 // --- title and status ---------------------------------------------------------------
@@ -820,13 +857,14 @@ static NSToolbarItemIdentifier const kTbTermKeys = @"termkeys";
 }
 
 - (void)titleChanged {
+    if (!_app) return;
     const std::string override_title = _fe->title(), note = _fe->status();
-    _window.title = _cur.active ? ns([self profileName]) : @"em34xx";
+    _win.title = _cur.active ? ns([self profileName]) : @"em34xx";
     std::string sub = override_title.empty() ? "IBM " + _modelName : override_title;
     if (!note.empty()) sub += " — " + note;
-    if (@available(macOS 11.0, *)) _window.subtitle = ns(sub);
-    _window.documentEdited = _cur.active && _cur.modified;
-    _window.representedURL =
+    if (@available(macOS 11.0, *)) _win.subtitle = ns(sub);
+    _win.documentEdited = _cur.active && _cur.modified;
+    _win.representedURL =
         _cur.active && !_cur.untitled && !_cur.path.empty() ? [NSURL fileURLWithPath:ns(_cur.path)] : nil;
 }
 
@@ -909,7 +947,7 @@ static NSToolbarItemIdentifier const kTbTermKeys = @"termkeys";
         _toolbarOnline = online;
         [self updateConnectionItem];
     }
-    [_window.toolbar validateVisibleItems];
+    [_win.toolbar validateVisibleItems];
 }
 
 - (void)updateUi {
@@ -930,7 +968,7 @@ static NSToolbarItemIdentifier const kTbTermKeys = @"termkeys";
     it.paletteLabel = label;
     it.toolTip = tip;
     it.image = [NSImage imageWithSystemSymbolName:symbol accessibilityDescription:label];
-    it.target = self;
+    it.target = nil;   // the responder chain: this terminal, or the app delegate
     it.action = action;
     if (@available(macOS 11.0, *)) it.bordered = YES;
     return it;
@@ -986,7 +1024,7 @@ static NSToolbarItemIdentifier const kTbTermKeys = @"termkeys";
                                                  titles:titles
                                           selectionMode:NSToolbarItemGroupSelectionModeMomentary
                                                  labels:titles
-                                                 target:self
+                                                 target:nil
                                                  action:@selector(terminalKeyGroup:)];
         g.label = @"Terminal Keys";
         g.paletteLabel = @"Terminal Keys";
@@ -1013,6 +1051,7 @@ static NSToolbarItemIdentifier const kTbTermKeys = @"termkeys";
 }
 
 - (BOOL)enabled:(SEL)action {
+    if (!_app) return NO;
     if (action == @selector(saveProfile:) || action == @selector(saveProfileAs:)) return _cur.active;
     if (action == @selector(toggleConnection:)) return [self connected] || _cur.active;
     return YES;
@@ -1062,7 +1101,7 @@ static NSToolbarItemIdentifier const kTbTermKeys = @"termkeys";
         drain.reset();
         if (!ok) {
             rebuilt = false;
-            error_alert(_window, "Cannot change the CRT type", error);
+            error_alert(_win, "Cannot change the CRT type", error);
             return false;
         }
     }
@@ -1077,14 +1116,14 @@ static NSToolbarItemIdentifier const kTbTermKeys = @"termkeys";
 // controller in with the terminal running.
 - (void)connectProfile:(const Profile&)p powerCycle:(bool)powerCycle {
     if (p.model != _modelName) {
-        error_alert(_window, "This profile is for the IBM " + p.model + ".",
+        error_alert(_win, "This profile is for the IBM " + p.model + ".",
                     "The emulator runs an IBM " + _modelName + "; other models cannot run in this build yet.");
         return;
     }
     AppConfig cfg;
     std::string error, message;
     if (!profile_connect_config(p, _app->host_link().base(), [self settings].tls_min_version, cfg, error)) {
-        error_alert(_window, "Cannot connect", error);
+        error_alert(_win, "Cannot connect", error);
         return;
     }
     bool rebuilt = false;
@@ -1102,29 +1141,12 @@ static NSToolbarItemIdentifier const kTbTermKeys = @"termkeys";
     const bool ok = powerCycle && !rebuilt ? _app->connect_after_power_cycle(cfg, message, error)
                                            : _app->host_link().connect(cfg, message, error);
     if (!ok) {
-        error_alert(_window, "Cannot connect", error);
+        error_alert(_win, "Cannot connect", error);
         [self updateUi];
         return;
     }
     LOG_INFO("tn5250", "%s", trim(message).c_str());
     [self updateUi];
-}
-
-- (void)newConnection:(id)sender {
-    (void)sender;
-    guarded([&] {
-        [self releaseKeys];
-        Profile p;
-        p.model = _modelName;
-        if (!profile_editor_dialog(_window, p, ProfileEditMode::Connect, [self settings], "New Connection")) return;
-        if (![self confirmDiscard]) return;
-        _cur = CurrentProfile();
-        _cur.active = true;
-        _cur.p = p;
-        _cur.untitled = true;
-        _cur.modified = true;   // never saved
-        [self connectProfile:_cur.p powerCycle:true];
-    });
 }
 
 // File > Connection Settings: the running profile in the editor. Changes
@@ -1134,12 +1156,12 @@ static NSToolbarItemIdentifier const kTbTermKeys = @"termkeys";
 - (void)editConnection:(id)sender {
     guarded([&] {
         if (!_cur.active) {
-            [self newConnection:sender];
+            [NSApp sendAction:@selector(newConnection:) to:nil from:sender];
             return;
         }
         [self releaseKeys];
         Profile p = _cur.p;
-        if (!profile_editor_dialog(_window, p, ProfileEditMode::Apply, [self settings],
+        if (!profile_editor_dialog(_win, p, ProfileEditMode::Apply, [self settings],
                                    "Connection Settings: " + [self profileName]))
             return;
         if (p == _cur.p) return;
@@ -1147,7 +1169,7 @@ static NSToolbarItemIdentifier const kTbTermKeys = @"termkeys";
         if (p.display != [self currentDisplay] && _app->display_change_needs_power_cycle(p.display)) {
             std::string label = subtype_label(p.display);
             if (!label.empty()) label[0] = char(std::tolower(static_cast<unsigned char>(label[0])));
-            if (!ask(_window, "Change the CRT type to " + label + "?",
+            if (!ask(_win, "Change the CRT type to " + label + "?",
                      "This restarts the terminal and reconnects the sessions.", "Restart", "Keep the CRT Type",
                      NSAlertStyleWarning))
                 p.display = old.display;   // keep the rest of the changes
@@ -1183,7 +1205,7 @@ static NSToolbarItemIdentifier const kTbTermKeys = @"termkeys";
     guarded([&] {
         if ([self connected]) [self disconnect];
         else if (_cur.active) [self connectProfile:_cur.p powerCycle:false];
-        [_window makeFirstResponder:_view];
+        [_win makeFirstResponder:_view];
     });
 }
 
@@ -1192,41 +1214,36 @@ static NSToolbarItemIdentifier const kTbTermKeys = @"termkeys";
     guarded([&] {
         [self releaseKeys];
         _app->power_on();
-        [_window makeFirstResponder:_view];
+        [_win makeFirstResponder:_view];
     });
 }
 
-- (void)openProfileFile:(const std::string&)path foreign:(bool)foreign {
+- (void)adoptProfile:(const Profile&)p path:(const std::string&)path untitled:(bool)untitled {
+    LOG_DEBUG("ui", "window %p takes the profile %s", (__bridge void*)self, path.c_str());
     guarded([&] {
-        Profile p;
-        std::string error;
-        if (!load_profile(path, p, error)) {
-            error_alert(_window, "Cannot open the profile", error);
-            return;
-        }
-        if (foreign && !file_in_folder(path, [self dirs].profiles()) &&
-            !ask(_window, "This profile is not in your profiles folder. Connect?", foreign_profile_details(path, p),
-                 "Connect", "Cancel", NSAlertStyleWarning, true))
-            return;
-        if (![self confirmDiscard]) return;
         _cur = CurrentProfile();
         _cur.active = true;
         _cur.p = p;
-        _cur.name = stem_of(path);
-        _cur.path = path;
+        _cur.untitled = untitled;
+        _cur.modified = untitled;   // never saved
+        if (!untitled) {
+            _cur.name = stem_of(path);
+            _cur.path = path;
+        }
         [self connectProfile:_cur.p powerCycle:true];
-        [_window makeFirstResponder:_view];
+        [_win makeFirstResponder:_view];
     });
 }
 
-- (void)connectToProfile:(id)sender {
-    (void)sender;
-    guarded([&] {
-        [self releaseKeys];
-        const std::string name = profile_manager_dialog(_window, [self dirs], [self settings]);
-        if (!name.empty()) [self openProfileFile:[self dirs].profile_path(name) foreign:false];
-        [_window makeFirstResponder:_view];
-    });
+- (void)setKeymapSpec:(const std::string&)spec {
+    if (!_emu) return;
+    std::string error;
+    if (!_emu->with_machine([&](Machine& m) { return m.set_keymap(spec, error); }))
+        error_alert(_win, "The keymap was saved but could not be applied", error);
+}
+
+- (void)setSpeed:(unsigned)pct {
+    if (_app) _app->set_speed_percent(pct);
 }
 
 // Save (or Save As) the current profile. False when cancelled or failed.
@@ -1235,14 +1252,14 @@ static NSToolbarItemIdentifier const kTbTermKeys = @"termkeys";
     const UserDirs& dirs = [self dirs];
     if (_cur.untitled || saveAs) {
         std::string name = _cur.untitled ? dirs.unique_profile_name(_cur.p.sessions[0].host) : _cur.name;
-        if (!name_dialog(_window, "Save Profile As", "Name of the profile:", "Save", name)) return false;
+        if (!name_dialog(_win, "Save Profile As", "Name of the profile:", "Save", name)) return false;
         if (dirs.profile_exists(name) && (_cur.untitled || name != _cur.name) &&
-            !ask(_window, "A profile named \"" + name + "\" already exists. Replace it?",
+            !ask(_win, "A profile named \"" + name + "\" already exists. Replace it?",
                  "Replacing it overwrites its settings.", "Replace", "Cancel", NSAlertStyleWarning, true))
             return false;
         std::string error;
         if (!save_profile(dirs.profile_path(name), _cur.p, error)) {
-            error_alert(_window, "Cannot save the profile", error);
+            error_alert(_win, "Cannot save the profile", error);
             return false;
         }
         _cur.name = name;
@@ -1252,7 +1269,7 @@ static NSToolbarItemIdentifier const kTbTermKeys = @"termkeys";
     } else {
         std::string error;
         if (!save_profile(_cur.path, _cur.p, error)) {
-            error_alert(_window, "Cannot save the profile", error);
+            error_alert(_win, "Cannot save the profile", error);
             return false;
         }
     }
@@ -1290,7 +1307,7 @@ static NSToolbarItemIdentifier const kTbTermKeys = @"termkeys";
     NSButton* dont = [a addButtonWithTitle:@"Don't Save"];
     dont.keyEquivalent = @"d";
     dont.keyEquivalentModifierMask = NSEventModifierFlagCommand;
-    const NSModalResponse r = run_alert(a, _window);
+    const NSModalResponse r = run_alert(a, _win);
     if (r == NSAlertSecondButtonReturn) return false;
     if (r == NSAlertFirstButtonReturn) return [self saveCurrent:false];
     return true;
@@ -1302,7 +1319,7 @@ static NSToolbarItemIdentifier const kTbTermKeys = @"termkeys";
         // Another sheet, alert or modal window is up: the prompt waits until
         // it has closed, so it never changes the profile under an open
         // editor. The status timer comes back here.
-        if (_trust->empty() || modal_ui_active(_window)) return;
+        if (_trust->empty() || modal_ui_active(_win)) return;
         _showingTrust = true;
         [self releaseKeys];
         while (auto p = _trust->take()) {
@@ -1314,12 +1331,12 @@ static NSToolbarItemIdentifier const kTbTermKeys = @"termkeys";
             // to remember the answer.
             tn5250::TlsTrustDecision d;
             if (_trustInvalid) {
-                d = certificate_invalid_dialog(_window, p->req) ? tn5250::TlsTrustDecision::AcceptOnce
+                d = certificate_invalid_dialog(_win, p->req) ? tn5250::TlsTrustDecision::AcceptOnce
                                                                 : tn5250::TlsTrustDecision::Reject;
                 if (p->req.station < Profile::kSessions)
                     _cur.overridden[p->req.station] = d == tn5250::TlsTrustDecision::AcceptOnce;
             } else {
-                d = trust_dialog(_window, p->req, name);
+                d = trust_dialog(_win, p->req, name);
                 if (p->req.station < Profile::kSessions && d != tn5250::TlsTrustDecision::Reject)
                     _cur.overridden[p->req.station] = false;
             }
@@ -1332,7 +1349,7 @@ static NSToolbarItemIdentifier const kTbTermKeys = @"termkeys";
                     _cur.modified = false;
                 } else {
                     _cur.modified = true;
-                    if (!error.empty()) error_alert(_window, "Cannot save the profile", error);
+                    if (!error.empty()) error_alert(_win, "Cannot save the profile", error);
                 }
             } else if (d == tn5250::TlsTrustDecision::AcceptOnce) {
                 _cur.accepted_once = true;
@@ -1356,60 +1373,11 @@ static NSToolbarItemIdentifier const kTbTermKeys = @"termkeys";
             [self updateUi];
         }
         _showingTrust = false;
-        [_window makeFirstResponder:_view];
+        [_win makeFirstResponder:_view];
     });
 }
 
 // --- keymap, settings, view, terminal ---------------------------------------------
-
-- (void)editKeymap:(id)sender {
-    (void)sender;
-    guarded([&] {
-        [self releaseKeys];
-        const UserDirs& dirs = [self dirs];
-        KeymapFile file = mac_keymap_file();
-        std::string text, error;
-        std::error_code ec;
-        if (std::filesystem::exists(std::filesystem::u8path(dirs.keymap_file()), ec)) {
-            if (!read_text_file(dirs.keymap_file(), text, error) ||
-                !parse_keymap_file(text, dirs.keymap_file(), file, error)) {
-                error_alert(_window, "The keymap file cannot be read",
-                            error + "\n\nThe keymap editor starts from the default keymap.");
-                file = mac_keymap_file();
-            }
-        }
-        if (!keymap_dialog(_window, file, mac_keymap_file())) return;
-        if (!write_text_file(dirs.keymap_file(),
-                             keymap_file_to_toml(file, "em34xx host keymap (written by em34xx.app; "
-                                                       "docs/keyboard.md).\nApplies to every profile."),
-                             error)) {
-            error_alert(_window, "Cannot save the keymap", error);
-            return;
-        }
-        _launch->keymap_path = dirs.keymap_file();
-        const std::string spec = _launch->keymap_path;
-        if (!_emu->with_machine([&](Machine& m) { return m.set_keymap(spec, error); }))
-            error_alert(_window, "The keymap was saved but could not be applied", error);
-        [_window makeFirstResponder:_view];
-    });
-}
-
-- (void)showSettings:(id)sender {
-    (void)sender;
-    guarded([&] {
-        [self releaseKeys];
-        __weak EMMainController* weak = self;
-        show_settings_window([self dirs], [self settings], [weak](const AppSettings& before) {
-            EMMainController* c = weak;
-            if (!c) return;
-            const AppSettings& now = [c settings];
-            if (now.speed_percent != before.speed_percent) c->_app->set_speed_percent(now.speed_percent);
-            std::string error;
-            if (!save_settings([c dirs].settings_file(), now, error))
-                error_alert(nil, "Cannot save the settings", error);
-        });
-    });
-}
 
 - (void)setZoom:(double)z {
     [self settings].zoom = snap_zoom(z);
@@ -1468,12 +1436,20 @@ static NSToolbarItemIdentifier const kTbTermKeys = @"termkeys";
 
 // --- window events ------------------------------------------------------------------
 
-// Closing the window ends the program (a single-window app): the questions
-// are asked by applicationShouldTerminate:.
+// Closing a window ends its terminal only (after the question about an
+// edited profile); the program keeps running, as Mac apps do.
 - (BOOL)windowShouldClose:(NSWindow*)w {
     (void)w;
-    [NSApp terminate:nil];
-    return NO;
+    if (!_quitting && ![self confirmDiscard]) return NO;
+    _quitting = true;
+    [self shutdownTerminal];
+    return YES;
+}
+
+- (void)windowWillClose:(NSNotification*)n {
+    (void)n;
+    [self shutdownTerminal];
+    [(id<EMTerminalHost>)NSApp.delegate terminalClosed:self];
 }
 
 - (void)windowDidChangeScreen:(NSNotification*)n {
@@ -1500,23 +1476,30 @@ void CocoaFrontend::changed() {
 // ===========================================================================
 // Application delegate: menus, launch, Finder's open requests, termination
 
-@interface EMAppDelegate : NSObject <NSApplicationDelegate>
+@interface EMAppDelegate : NSObject <NSApplicationDelegate, NSMenuItemValidation, NSToolbarItemValidation,
+                                     EMTerminalHost>
 @end
 
 @implementation EMAppDelegate {
     std::unique_ptr<Launch> _launch;
-    std::unique_ptr<Application> _app;
-    EMMainController* _controller;
+    NSMutableArray<EMMainController*>* _terminals;
     std::vector<std::string> _argv;
-    std::string _pendingProfile;   // opened from Finder before the window was up
+    std::vector<std::string> _pendingProfiles;   // opened from Finder before the launch finished
+    const Model* _model;
     bool _launched;
+    bool _logOpen;
+    bool _terminating;
     int _exitCode;
 }
 
 - (instancetype)initWithArgs:(std::vector<std::string>)args {
     if ((self = [super init])) {
         _argv = std::move(args);
+        _terminals = [NSMutableArray array];
+        _model = nullptr;
         _launched = false;
+        _logOpen = false;
+        _terminating = false;
         _exitCode = 0;
     }
     return self;
@@ -1527,8 +1510,8 @@ void CocoaFrontend::changed() {
 }
 
 - (void)quitWithoutQuestions {
-    if (_controller) [_controller quitRequested];
-    else [NSApp terminate:nil];
+    for (EMMainController* t in _terminals) t.quitting = true;
+    [NSApp terminate:nil];
 }
 
 - (NSMenu*)menu:(NSString*)title in:(NSMenu*)bar {
@@ -1632,32 +1615,35 @@ void CocoaFrontend::changed() {
     [NSProcessInfo.processInfo disableAutomaticTermination:@"the terminal is running"];
 }
 
-// A .em34xx file double-clicked or dropped on the Dock icon: before the
-// launch it becomes the startup profile; afterwards it is opened (with the
-// question for files from outside the profiles folder).
+// .em34xx files double-clicked or dropped on the Dock icon: each opens in a
+// window of its own (with the question for files from outside the profiles
+// folder). Before the launch has finished they are kept for it.
 - (void)application:(NSApplication*)sender openURLs:(NSArray<NSURL*>*)urls {
     (void)sender;
-    NSURL* first = urls.firstObject;
-    if (!first.fileURL) return;
-    const std::string path = str(first.path);
-    if (!_launched) {
-        _pendingProfile = path;
-        return;
+    for (NSURL* u in urls) {
+        if (!u.fileURL) continue;
+        const std::string path = str(u.path);
+        if (!_launched) _pendingProfiles.push_back(path);
+        else if (_launch) [self openPath:path foreign:true];
     }
-    if (_controller) [_controller openProfileFile:path foreign:true];
 }
 
 - (void)applicationDidFinishLaunching:(NSNotification*)n {
     (void)n;
     guarded([&] {
-        if (![self launch]) {
-            _launched = true;
+        EMMainController* first = [self launch];
+        _launched = true;
+        if (!first) {
             [NSApp terminate:nil];
             return;
         }
-        _launched = true;
-        [_controller showAndStart];
+        [first showTerminal];
         [NSApp activateIgnoringOtherApps:YES];
+        // A block inside a [&] lambda does not capture self reliably: name it.
+        EMAppDelegate* me = self;
+        dispatch_async(dispatch_get_main_queue(), ^{
+          guarded([me] { [me startup]; });
+        });
     });
 }
 
@@ -1666,9 +1652,9 @@ void CocoaFrontend::changed() {
     _exitCode = code;
 }
 
-// The user folder, settings, the profile to open, the first-start ROM
-// check, the keymap, then the Application and the window. False: end.
-- (bool)launch {
+// The user folder, settings, the first-start ROM check and the keymap,
+// then the first terminal. Nil: end.
+- (EMMainController*)launch {
     _launch = std::make_unique<Launch>();
     Launch& L = *_launch;
     std::string root;
@@ -1678,7 +1664,7 @@ void CocoaFrontend::changed() {
         const std::string support = application_support_folder();
         if (support.empty()) {
             [self fail:"Cannot find the Application Support folder." detail:"" code:2];
-            return false;
+            return nil;
         }
         root = user_dirs_root(support);
     }
@@ -1686,51 +1672,49 @@ void CocoaFrontend::changed() {
     std::string error;
     if (!L.dirs->ensure(error)) {
         [self fail:"Cannot create the user folder." detail:error code:2];
-        return false;
+        return nil;
     }
     if (!load_settings(L.dirs->settings_file(), L.settings, error)) {
         error_alert(nil, "The settings cannot be read; default settings are used.", error);
         L.settings = AppSettings();
     }
 
-    // The profile: from Finder, else the command line (em34xx.app/Contents/
-    // MacOS/em34xx PROFILE.em34xx). Arguments starting with '-' are left to
-    // AppKit (-NSDocumentRevisionsDebugMode and the like).
-    if (!_pendingProfile.empty()) {
-        L.profile_path = _pendingProfile;
-    } else {
+    // Profiles from Finder, else from the command line (em34xx.app/Contents/
+    // MacOS/em34xx PROFILE.em34xx ...). Arguments starting with '-' are left
+    // to AppKit (-NSDocumentRevisionsDebugMode and the like).
+    if (_pendingProfiles.empty()) {
         for (size_t i = 1; i < _argv.size(); ++i) {
             const std::string& a = _argv[i];
             if (a.empty() || a[0] == '-') {
                 if (i + 1 < _argv.size() && a.rfind("-NS", 0) == 0) ++i;   // its value
                 continue;
             }
-            if (L.profile_path.empty()) L.profile_path = a;
+            _pendingProfiles.push_back(a);
         }
     }
 
-    // The terminal starts as the profile describes it, else as a new
-    // profile would: the first runnable model, green, with scan lines.
+    // The first terminal starts as the first profile describes it, else as
+    // a new profile would: the first runnable model, green, with scan lines.
     const auto models = runnable_models();
     if (models.empty()) {
         [self fail:"No terminal model of this build can run yet." detail:"" code:2];
-        return false;
+        return nil;
     }
     Profile start;
-    if (!L.profile_path.empty()) {
-        std::string ignored;   // reported when the window opens it
-        if (!load_profile(L.profile_path, start, ignored)) start = Profile();
+    if (!_pendingProfiles.empty()) {
+        std::string ignored;   // reported when it is opened
+        if (!load_profile(_pendingProfiles.front(), start, ignored)) start = Profile();
     }
-    const Model* model = models.front();
+    _model = models.front();
     for (const Model* m : models)
-        if (m->info().name == start.model) model = m;
+        if (m->info().name == start.model) _model = m;
 
     // First start (or ROMs gone): the ROM manager.
-    if (!model_roms_ready(*model, L.dirs->roms()) && !rom_manager_dialog(nil, *L.dirs, model)) {
-        [self fail:"em34xx cannot start the IBM " + model->info().name + " without its ROM images."
+    if (!model_roms_ready(*_model, L.dirs->roms()) && !rom_manager_dialog(nil, *L.dirs, _model)) {
+        [self fail:"em34xx cannot start the IBM " + _model->info().name + " without its ROM images."
             detail:"Import them when you start em34xx again."
               code:1];
-        return false;
+        return nil;
     }
 
     // The global keymap, when there is one and it loads; else the built-in
@@ -1745,113 +1729,246 @@ void CocoaFrontend::changed() {
         else
             error_alert(nil, "The keymap file cannot be read; the default keymap is used.", error);
     }
+    return [self makeTerminal:start primary:true];
+}
 
-    // The log: ~/Library/Logs/em34xx.log (Console shows it), or in the
-    // user folder when EM34XX_USER_DIR names one.
-    std::string log_file = root + "/em34xx.log";
-    if (!std::getenv("EM34XX_USER_DIR")) {
-        const std::string logs = logs_folder();
-        if (!logs.empty()) log_file = logs + "/em34xx.log";
-    }
+// A terminal (its own Application: machine, emulation thread, sessions)
+// built as `start` describes it, in a window not yet shown. Nil (with an
+// alert) when it cannot start.
+- (EMMainController*)makeTerminal:(const Profile&)start primary:(bool)primary {
+    Launch& L = *_launch;
     const char* log_env = std::getenv("EM34XX_LOG");
-    L.args = {"em34xx",
-              "--model",
-              model->info().name,
-              "--rom-dir",
-              L.dirs->roms(),
-              "--display",
-              display_subtype_name(start.display),
-              "--speed",
-              std::to_string(L.settings.speed_percent),
-              "--keymap",
-              L.keymap_path.empty() ? std::string("mac") : L.keymap_path,
-              "--nvram",
-              L.dirs->nvram_file(model->info().name),
-              // An end-user build keeps running on an access the model does
-              // not decode (the default, stop, is for the debugger).
-              "--unmapped",
-              "log",
-              "--log",
-              log_env && *log_env ? std::string(log_env) : std::string("info"),
-              "--log-file",
-              log_file};
-    if (!start.crt) L.args.push_back("--no-crt");
+    std::vector<std::string> args = {"em34xx",
+                                     "--model",
+                                     _model->info().name,
+                                     "--rom-dir",
+                                     L.dirs->roms(),
+                                     "--display",
+                                     display_subtype_name(start.display),
+                                     "--speed",
+                                     std::to_string(L.settings.speed_percent),
+                                     "--keymap",
+                                     L.keymap_path.empty() ? std::string("mac") : L.keymap_path,
+                                     // Every terminal of a model shares its battery-backed RAM
+                                     // file, as em34xxw instances do (docs/frontend-cocoa.md).
+                                     "--nvram",
+                                     L.dirs->nvram_file(_model->info().name),
+                                     // An end-user build keeps running on an access the model
+                                     // does not decode (the default, stop, is for the debugger).
+                                     "--unmapped",
+                                     "log",
+                                     "--log",
+                                     log_env && *log_env ? std::string(log_env) : std::string("info")};
+    // The log is one per process: ~/Library/Logs/em34xx.log (Console shows
+    // it), or in the user folder when EM34XX_USER_DIR names one. Opened by
+    // the first terminal; the others write to it too.
+    if (!_logOpen) {
+        std::string log_file = L.dirs->root() + "/em34xx.log";
+        if (!std::getenv("EM34XX_USER_DIR")) {
+            const std::string logs = logs_folder();
+            if (!logs.empty()) log_file = logs + "/em34xx.log";
+        }
+        L.log_file = log_file;
+        args.push_back("--log-file");
+        args.push_back(log_file);
+    }
+    if (!start.crt) args.push_back("--no-crt");
 
     auto fe = std::make_unique<CocoaFrontend>();
     CocoaFrontend* fe_ptr = fe.get();
-    _app = std::make_unique<Application>(std::move(fe), nullptr);
+    auto app = std::make_unique<Application>(std::move(fe), nullptr);
     std::vector<char*> argv;
-    for (std::string& a : L.args) argv.push_back(&a[0]);
+    for (std::string& a : args) argv.push_back(&a[0]);
     argv.push_back(nullptr);
-    if (!_app->start(int(L.args.size()), argv.data())) {
-        const int code = _app->exit_code();
-        const std::string why = _app->last_error();
-        _app->finish();
-        _app.reset();
+    if (!app->start(int(args.size()), argv.data())) {
+        const int code = app->exit_code();
+        const std::string why = app->last_error();
+        app->finish();
         [self fail:"The terminal cannot start." detail:why code:code ? code : 2];
-        return false;
+        return nil;
     }
-    _controller = [[EMMainController alloc] initWithApp:_app.get() launch:_launch.get() frontend:fe_ptr];
-    fe_ptr->controller = _controller;
-    return true;
+    _logOpen = true;
+    EMMainController* t = [[EMMainController alloc] initWithApp:std::move(app)
+                                                         launch:&L
+                                                       frontend:fe_ptr
+                                                        primary:primary];
+    fe_ptr->controller = t;
+    [_terminals addObject:t];
+    return t;
 }
 
-- (NSApplicationTerminateReply)applicationShouldTerminate:(NSApplication*)sender {
-    (void)sender;
-    if (!_controller) return NSTerminateNow;
-    if (!_controller.quitting && ![_controller confirmDiscard]) return NSTerminateCancel;
-    // As at a clean exit: settings, then the sessions and the emulation
-    // thread wind down and the battery-backed RAM is written (finish()).
-    // Also at log-out and shutdown, which come through here.
-    _controller.quitting = true;
+- (void)terminalClosed:(EMMainController*)terminal {
+    [_terminals removeObject:terminal];
+}
+
+// The terminal in front, if any: the frontmost terminal window (a sheet
+// counts as its window), whether or not the app is active yet.
+- (EMMainController*)frontTerminal {
+    for (NSWindow* w in NSApp.orderedWindows) {
+        NSWindow* top = w;
+        while (top.sheetParent) top = top.sheetParent;
+        if (!top.visible && !top.miniaturized) continue;
+        if ([top.windowController isKindOfClass:EMMainController.class] &&
+            [_terminals containsObject:top.windowController])
+            return top.windowController;
+    }
+    return nil;
+}
+
+- (NSWindow*)dialogParent {
+    return [self frontTerminal].window;
+}
+
+// After the launch: the profiles Finder or the command line named, else the
+// startup profile (Settings), else the profile manager over the first
+// window. Cancel there leaves the terminal idle and not connected.
+- (void)startup {
+    LOG_DEBUG("ui", "startup: %zu profile(s) given", _pendingProfiles.size());
+    if (_terminating || !_launch) return;
+    if (!_pendingProfiles.empty()) {
+        const std::vector<std::string> paths = std::move(_pendingProfiles);
+        _pendingProfiles.clear();
+        for (const std::string& p : paths) [self openPath:p foreign:true];
+        return;
+    }
+    const AppSettings& s = _launch->settings;
+    // The startup name is a file name in profiles/ and nothing else (it
+    // comes from settings.toml): never a path.
+    if (std::string why; s.startup_open && !s.startup_profile.empty() &&
+                         UserDirs::valid_profile_name(s.startup_profile, why) &&
+                         _launch->dirs->profile_exists(s.startup_profile)) {
+        [self openPath:_launch->dirs->profile_path(s.startup_profile) foreign:false];
+    } else {
+        [self connectToProfile:nil];
+    }
+}
+
+// Where a profile opens: the terminal in front when it has none yet (the
+// first window at start), else a new window. A profile already open in a
+// window is shown there unless another session is asked for.
+- (void)openProfile:(const Profile&)p path:(const std::string&)path untitled:(bool)untitled {
+    LOG_DEBUG("ui", "open profile %s", untitled ? "(untitled)" : path.c_str());
+    if (!untitled) {
+        for (EMMainController* t in _terminals) {
+            const std::string other = t.profilePath;
+            std::error_code ec;
+            if (other.empty() || !std::filesystem::equivalent(std::filesystem::u8path(other),
+                                                              std::filesystem::u8path(path), ec))
+                continue;
+            NSAlert* a = [NSAlert new];
+            a.messageText = ns("The profile \"" + stem_of(path) + "\" is already open.");
+            a.informativeText = @"Show its window, or open another terminal with another session to the same "
+                                @"systems.";
+            [a addButtonWithTitle:@"Show Window"];
+            [a addButtonWithTitle:@"Open Another Session"];
+            [a addButtonWithTitle:@"Cancel"].keyEquivalent = @"\x1b";
+            const NSModalResponse r = run_alert(a, [self dialogParent]);
+            if (r == NSAlertFirstButtonReturn) {
+                [t.window makeKeyAndOrderFront:nil];
+                return;
+            }
+            if (r != NSAlertSecondButtonReturn) return;
+            break;
+        }
+    }
+    EMMainController* target = [self frontTerminal];
+    if (!target || !target.idle) {
+        LOG_DEBUG("ui", "the terminal in front is %s: a new window", target ? "in use" : "missing");
+        target = [self makeTerminal:p primary:_terminals.count == 0];
+        if (!target) return;
+        [target showTerminal];
+    }
+    [target adoptProfile:p path:path untitled:untitled];
+}
+
+- (void)openPath:(const std::string&)path foreign:(bool)foreign {
     guarded([&] {
-        [_controller shutdown];
-        _app->request_quit(0);
-        _exitCode = _app->finish();
-        [_controller.window orderOut:nil];
-        _app.reset();
+        Profile p;
+        std::string error;
+        if (!load_profile(path, p, error)) {
+            error_alert([self dialogParent], "Cannot open the profile", error);
+            return;
+        }
+        if (foreign && !file_in_folder(path, _launch->dirs->profiles()) &&
+            !ask([self dialogParent], "This profile is not in your profiles folder. Connect?",
+                 foreign_profile_details(path, p), "Connect", "Cancel", NSAlertStyleWarning, true))
+            return;
+        [self openProfile:p path:path untitled:false];
     });
-    _controller = nil;
-    return NSTerminateNow;
 }
 
-- (BOOL)applicationShouldTerminateAfterLastWindowClosed:(NSApplication*)sender {
+// --- app-wide commands (the end of every window's responder chain) -----------------
+
+- (void)newConnection:(id)sender {
     (void)sender;
-    return YES;
+    guarded([&] {
+        EMMainController* front = [self frontTerminal];
+        [front releaseKeys];
+        Profile p;
+        p.model = _model->info().name;
+        if (!profile_editor_dialog(front.window, p, ProfileEditMode::Connect, _launch->settings, "New Connection"))
+            return;
+        [self openProfile:p path:"" untitled:true];
+    });
 }
 
-- (BOOL)applicationSupportsSecureRestorableState:(NSApplication*)app {
-    (void)app;
-    return YES;
+- (void)connectToProfile:(id)sender {
+    (void)sender;
+    guarded([&] {
+        EMMainController* front = [self frontTerminal];
+        [front releaseKeys];
+        const std::string name = profile_manager_dialog(front.window, *_launch->dirs, _launch->settings);
+        if (!name.empty()) [self openPath:_launch->dirs->profile_path(name) foreign:false];
+    });
 }
 
-- (void)applicationWillResignActive:(NSNotification*)n {
-    (void)n;
-    [_controller releaseKeys];
+- (void)showSettings:(id)sender {
+    (void)sender;
+    guarded([&] {
+        [[self frontTerminal] releaseKeys];
+        __weak EMAppDelegate* weak = self;
+        show_settings_window(*_launch->dirs, _launch->settings, [weak](const AppSettings& before) {
+            EMAppDelegate* d = weak;
+            if (!d) return;
+            const AppSettings& now = d->_launch->settings;
+            if (now.speed_percent != before.speed_percent)
+                for (EMMainController* t in d->_terminals) [t setSpeed:now.speed_percent];
+            std::string error;
+            if (!save_settings(d->_launch->dirs->settings_file(), now, error))
+                error_alert(nil, "Cannot save the settings", error);
+        });
+    });
 }
 
-// --- actions the delegate answers itself (the main controller is not in
-// the responder chain: it is forwarded to) ---------------------------------------
-
-- (id)forwardingTargetForSelector:(SEL)sel {
-    if (_controller && [_controller respondsToSelector:sel]) return _controller;
-    return [super forwardingTargetForSelector:sel];
-}
-
-- (BOOL)respondsToSelector:(SEL)sel {
-    if ([super respondsToSelector:sel]) return YES;
-    return _controller && [_controller respondsToSelector:sel] &&
-           ![NSStringFromSelector(sel) hasPrefix:@"application"] && ![NSStringFromSelector(sel) hasPrefix:@"window"];
-}
-
-- (BOOL)validateMenuItem:(NSMenuItem*)item {
-    if (item.action == @selector(about:) || item.action == @selector(projectPage:) ||
-        item.action == @selector(showLog:))
-        return YES;
-    if (!_controller) return NO;
-    // No terminal commands while a sheet or modal dialog is up.
-    if (modal_ui_active(_controller.window) && item.action != @selector(showSettings:)) return NO;
-    return [_controller validateMenuItem:item];
+// The keymap is global: saved, it applies to every terminal at once.
+- (void)editKeymap:(id)sender {
+    (void)sender;
+    guarded([&] {
+        EMMainController* front = [self frontTerminal];
+        [front releaseKeys];
+        const UserDirs& dirs = *_launch->dirs;
+        KeymapFile file = mac_keymap_file();
+        std::string text, error;
+        std::error_code ec;
+        if (std::filesystem::exists(std::filesystem::u8path(dirs.keymap_file()), ec)) {
+            if (!read_text_file(dirs.keymap_file(), text, error) ||
+                !parse_keymap_file(text, dirs.keymap_file(), file, error)) {
+                error_alert(front.window, "The keymap file cannot be read",
+                            error + "\n\nThe keymap editor starts from the default keymap.");
+                file = mac_keymap_file();
+            }
+        }
+        if (!keymap_dialog(front.window, file, mac_keymap_file())) return;
+        if (!write_text_file(dirs.keymap_file(),
+                             keymap_file_to_toml(file, "em34xx host keymap (written by em34xx.app; "
+                                                       "docs/keyboard.md).\nApplies to every profile."),
+                             error)) {
+            error_alert(front.window, "Cannot save the keymap", error);
+            return;
+        }
+        _launch->keymap_path = dirs.keymap_file();
+        for (EMMainController* t in _terminals) [t setKeymapSpec:_launch->keymap_path];
+    });
 }
 
 - (void)about:(id)sender {
@@ -1866,12 +1983,92 @@ void CocoaFrontend::changed() {
 
 - (void)showLog:(id)sender {
     (void)sender;
-    std::string log;
-    if (_launch) {
-        for (size_t i = 0; i + 1 < _launch->args.size(); ++i)
-            if (_launch->args[i] == "--log-file") log = _launch->args[i + 1];
+    if (_launch && !_launch->log_file.empty()) reveal_in_finder(_launch->log_file);
+}
+
+- (BOOL)validateMenuItem:(NSMenuItem*)item {
+    return [self validAction:item.action];
+}
+
+- (BOOL)validateToolbarItem:(NSToolbarItem*)item {
+    return [self validAction:item.action];
+}
+
+- (BOOL)validAction:(SEL)action {
+    if (action == @selector(about:) || action == @selector(projectPage:)) return YES;
+    if (!_launch || !_model || _terminating) return NO;
+    if (action == @selector(showLog:)) return !_launch->log_file.empty();
+    // Not while a sheet or a modal dialog is up.
+    if (NSApp.modalWindow) return NO;
+    EMMainController* front = [self frontTerminal];
+    if (front && front.window.attachedSheet) return NO;
+    return YES;
+}
+
+// --- the Dock -----------------------------------------------------------------------
+
+- (NSMenu*)applicationDockMenu:(NSApplication*)sender {
+    (void)sender;
+    NSMenu* m = [NSMenu new];
+    [m addItemWithTitle:@"New Connection…" action:@selector(newConnection:) keyEquivalent:@""].target = self;
+    [m addItemWithTitle:@"Connect to Profile…" action:@selector(connectToProfile:) keyEquivalent:@""].target = self;
+    return m;
+}
+
+// The Dock icon clicked with no window open: a new terminal and the profile
+// manager, as at start.
+- (BOOL)applicationShouldHandleReopen:(NSApplication*)sender hasVisibleWindows:(BOOL)visible {
+    (void)sender;
+    if (visible || !_launched || !_launch || _terminals.count || NSApp.modalWindow) return YES;
+    guarded([&] {
+        EMMainController* t = [self makeTerminal:Profile() primary:true];
+        if (!t) return;
+        [t showTerminal];
+        EMAppDelegate* me = self;
+        dispatch_async(dispatch_get_main_queue(), ^{
+          guarded([me] { [me connectToProfile:nil]; });
+        });
+    });
+    return NO;
+}
+
+// --- quitting -------------------------------------------------------------------------
+
+// Quit, log-out and shutdown: every edited profile is asked about (its
+// window in front); then every terminal winds down as at a clean exit
+// (sessions closed, battery-backed RAM written).
+- (NSApplicationTerminateReply)applicationShouldTerminate:(NSApplication*)sender {
+    (void)sender;
+    for (EMMainController* t in [_terminals copy]) {
+        if (t.quitting) continue;
+        [t.window makeKeyAndOrderFront:nil];
+        if (![t confirmDiscard]) return NSTerminateCancel;
     }
-    if (!log.empty()) reveal_in_finder(log);
+    _terminating = true;
+    for (EMMainController* t in [_terminals copy]) {
+        t.quitting = true;
+        [t shutdownTerminal];
+        [t.window orderOut:nil];
+    }
+    [_terminals removeAllObjects];
+    return NSTerminateNow;
+}
+
+// The program keeps running with no window, as Mac apps do: File > New
+// Connection, Connect to Profile and the Dock icon open a terminal again.
+- (BOOL)applicationShouldTerminateAfterLastWindowClosed:(NSApplication*)sender {
+    (void)sender;
+    return NO;
+}
+
+- (BOOL)applicationSupportsSecureRestorableState:(NSApplication*)app {
+    (void)app;
+    return YES;
+}
+
+- (void)applicationWillResignActive:(NSNotification*)n {
+    (void)n;
+    for (EMMainController* t in _terminals) [t releaseKeys];
 }
 
 @end
@@ -1883,7 +2080,6 @@ int em34xx::cocoa_main(int argc, char** argv) {
         std::vector<std::string> args(argv, argv + argc);
         NSApplication* app = NSApplication.sharedApplication;
         app.activationPolicy = NSApplicationActivationPolicyRegular;
-        NSWindow.allowsAutomaticWindowTabbing = NO;
         EMAppDelegate* delegate = [[EMAppDelegate alloc] initWithArgs:args];
         app.delegate = delegate;
         // SIGTERM (kill, launchctl) ends the program as a quit without
