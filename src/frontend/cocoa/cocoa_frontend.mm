@@ -1107,6 +1107,7 @@ static NSToolbarItemIdentifier const kTbTermKeys = @"termkeys";
     TerminalOptions options = _emu->with_machine([](Machine& m) { return m.options(); });
     options.display = p.display;
     options.nvram_path = [self dirs].nvram_file(model->info().name);
+    options.eeprom_path = [self dirs].eeprom_file(model->info().name);
     std::string error;
     bool ok = false;
     {
@@ -1850,6 +1851,9 @@ void CocoaFrontend::changed() {
                                      // file, as em34xxw instances do (docs/frontend-cocoa.md).
                                      "--nvram",
                                      L.dirs->nvram_file(model->info().name),
+                                     // The setup EEPROM (monitor alignment values), likewise.
+                                     "--eeprom",
+                                     L.dirs->eeprom_file(model->info().name),
                                      // An end-user build keeps running on an access the model
                                      // does not decode (the default, stop, is for the debugger).
                                      "--unmapped",

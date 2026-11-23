@@ -64,6 +64,10 @@ struct TerminalOptions {
     // 3477: TEMPORARY stand-in for the unmodelled video signature of the
     // power-on display test (see Ibm3477Display, docs/bringup-3477.md).
     bool vdo_shim = true;
+    // 3486 family, colour units: TEMPORARY stand-in for the monitor
+    // alignment procedure (devices/ibm3486/alignment_shim.hpp,
+    // docs/bringup-3486.md).
+    bool alignment_shim = true;
 };
 
 struct Breakpoint {
@@ -93,6 +97,10 @@ public:
     Device* find_device(const std::string& name) const;
 
     void reset();
+    // Switch the unit off and on at the next instruction boundary of run():
+    // for a device that must restart the firmware from inside an access
+    // (reset() there would pull the CPU from under the running instruction).
+    void request_power_cycle() { power_cycle_pending_ = true; }
     // How many times reset() ran (the build's own reset included).
     uint64_t reset_count() const { return reset_count_; }
     // Device::flush_nonvolatile on every device (battery RAM, EEPROM).
@@ -176,6 +184,7 @@ private:
     std::unique_ptr<TwinaxHost> twinax_;
     bool display_dirty_ = true;
     uint64_t reset_count_ = 0;
+    bool power_cycle_pending_ = false;
     uint64_t seen_display_writes_ = 0;
     uint64_t seen_animation_phase_ = 0;
     struct AudioForwarder : AudioSink {

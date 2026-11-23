@@ -14,6 +14,7 @@
 #include "machine/peripherals.hpp"
 
 #include <cstdint>
+#include <functional>
 #include <string>
 #include <vector>
 
@@ -44,6 +45,10 @@ public:
     size_t size() const { return data_.size(); }
     uint8_t byte(size_t addr) const { return data_[addr % data_.size()]; }
     void set_byte(size_t addr, uint8_t v) { data_[addr % data_.size()] = v; dirty_ = true; }
+    // Called after each data byte the bus master writes, with its address.
+    void set_write_observer(std::function<void(size_t address, uint8_t value)> observer) {
+        write_observer_ = std::move(observer);
+    }
 
     // Save pending changes to the backing file (no-op when ephemeral).
     bool flush(std::string& error);
@@ -69,6 +74,7 @@ private:
     uint8_t base_addr7_ = 0x50;
     std::string path_;
     bool dirty_ = false;
+    std::function<void(size_t, uint8_t)> write_observer_;
 
     size_t pointer_ = 0;       // current word address
     bool expect_address_ = false;

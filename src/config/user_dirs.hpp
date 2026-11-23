@@ -33,6 +33,8 @@ public:
     std::string settings_file() const;
     std::string keymap_file() const;
     std::string nvram_file(const std::string& model) const;
+    // <root>/<model>.eeprom: the model's setup EEPROM (monitor alignment).
+    std::string eeprom_file(const std::string& model) const;
 
     // Create the root, roms/ and profiles/ when missing.
     bool ensure(std::string& error) const;

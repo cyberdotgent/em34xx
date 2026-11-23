@@ -31,6 +31,7 @@
 #include "models/model.hpp"
 
 #include "devices/battery_ram.hpp"
+#include "devices/ibm3486/alignment_shim.hpp"
 #include "devices/ibm3486/aux_port.hpp"
 #include "devices/i2c.hpp"
 #include "devices/ibm3477/display.hpp"
@@ -140,7 +141,9 @@ public:
             "firmware installs; hypothesis: which value bit 7 has on the board)",
             "POST completes; Offline Setup works from the keyboard, and with a saved setup the terminal goes "
             "on line and shows a TN5250 host's screen (observed, straps 4A and 4C; 42 and 48 reach setup); "
-            "colour also needs EEPROM byte 30 = AA, which the firmware's own defaults leave at 55 (observed)",
+            "colour also needs EEPROM byte 30 = AA, which the firmware's own defaults leave at 55 (observed); the "
+            "model marks it for a colour unit and power-cycles a new one once (temporary alignment stand-in, "
+            "--no-alignment-shim)",
             "44 (3488, type 7) does not start: the firmware's own start-up has no case for type 7 (observed); "
             "signing on, 27x132, second and printer sessions are untested",
             "picture on = 20128 bit 6 (hypothesis); bits 4-3 are per-tube constants (observed), so the 3477's "
@@ -222,6 +225,18 @@ public:
         if (!eeprom.open(opt.eeprom_path, error)) throw std::runtime_error(error);
         eeprom.attach(i2c.bus(), 0xA0);
         m.set_nvram(&eeprom);
+        // A colour unit (display type 6) only goes on line with its monitor
+        // alignment marked done; part of setting such a unit up, since there
+        // is no tube to align [temporary; alignment_shim.hpp]. A new unit
+        // is switched off and on once when the firmware has initialised its
+        // EEPROM.
+        if ((straps & 0x0E) == 0x0C && opt.alignment_shim) {
+            Machine* machine = &m;
+            install_monitor_alignment_shim(eeprom, [machine] {
+                LOG_INFO("machine", "colour unit: power cycle after the alignment was marked done");
+                machine->request_power_cycle();
+            });
+        }
 
         Ibm3477Display& disp = m.add_device<Ibm3477Display>(bus, opt);
         disp.set_clock_hz(info_.clock_hz);

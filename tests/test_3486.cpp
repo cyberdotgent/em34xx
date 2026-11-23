@@ -2,7 +2,9 @@
 // Hardware the 3486 family adds to the 3477 design: the second serial port,
 // the third Twinax station channel and the display's sync polarity bit.
 #include "bus/bus.hpp"
+#include "devices/ibm3486/alignment_shim.hpp"
 #include "devices/ibm3486/aux_port.hpp"
+#include "devices/ibm3477/i2c.hpp"
 #include "devices/ibm3477/display.hpp"
 #include "devices/ibm3477/keyboard_if.hpp"
 #include "devices/ibm3477/system.hpp"
@@ -294,4 +296,57 @@ TEST_CASE("interrupt controller state shown per board") {
     CHECK(t.find("third channel: request 08 mask 7F") != std::string::npos);
     CHECK(t.find("0D=") != std::string::npos);
     CHECK(t.find("0F=") != std::string::npos);
+}
+
+namespace {
+// One byte written the way the firmware does: device address, word
+// address, data, stop.
+void eeprom_write(I2cEeprom& e, uint8_t address, uint8_t value) {
+    REQUIRE(e.i2c_select(0x50, false));
+    e.i2c_write(address);
+    e.i2c_write(value);
+    e.i2c_stop();
+}
+} // namespace
+
+TEST_CASE("3486 colour unit: the alignment stand-in marks EEPROM byte 30 once the firmware initialises it") {
+    std::string err;
+    // Without the stand-in the firmware's own values stay as written.
+    {
+        I2cEeprom plain("eeprom");
+        REQUIRE(plain.open("", err));
+        eeprom_write(plain, 0x30, 0x55);
+        eeprom_write(plain, 0x00, 0xAA);
+        CHECK(plain.byte(0x30) == 0x55);
+    }
+    // A blank EEPROM: nothing until the "initialised" mark is written, then
+    // byte 30 follows; the other bytes are left alone.
+    I2cEeprom e("eeprom");
+    REQUIRE(e.open("", err));
+    int cycles = 0;
+    install_monitor_alignment_shim(e, [&cycles] { ++cycles; });
+    CHECK(e.byte(0x30) != 0xAA);
+    eeprom_write(e, 0x2F, 0x12);
+    eeprom_write(e, 0x30, 0x55);
+    eeprom_write(e, 0x31, 0x34);
+    CHECK(e.byte(0x30) == 0x55);
+    eeprom_write(e, 0x00, 0x00);    // not the mark
+    CHECK(e.byte(0x30) == 0x55);
+    CHECK(cycles == 0);
+    eeprom_write(e, 0x00, 0xAA);
+    CHECK(e.byte(0x30) == 0xAA);
+    CHECK(cycles == 1);             // the firmware reads it at the next power-on
+    eeprom_write(e, 0x00, 0xAA);    // already marked: no further power cycle
+    CHECK(cycles == 1);
+    CHECK(e.byte(0x2F) == 0x12);
+    CHECK(e.byte(0x31) == 0x34);
+    // An image initialised earlier (by a run without the stand-in) is
+    // marked when the stand-in is installed.
+    I2cEeprom old("eeprom");
+    REQUIRE(old.open("", err));
+    eeprom_write(old, 0x30, 0x55);
+    eeprom_write(old, 0x00, 0xAA);
+    install_monitor_alignment_shim(old, [&cycles] { ++cycles; });
+    CHECK(old.byte(0x30) == 0xAA);
+    CHECK(cycles == 1);             // marked before its power-on: none needed
 }

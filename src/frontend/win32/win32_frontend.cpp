@@ -918,6 +918,7 @@ Win32Frontend::ModelSwitch Win32Frontend::switch_model(const Profile& p) {
     TerminalOptions options = emu_->with_machine([](Machine& m) { return m.options(); });
     options.display = p.display;
     options.nvram_path = runtime_path(dirs().nvram_file(model->info().name));
+    options.eeprom_path = runtime_path(dirs().eeprom_file(model->info().name));
     std::string error;
     bool ok = false;
     {
@@ -1744,6 +1745,9 @@ bool win32_prepare(Win32Launch& launch) {
                    launch.keymap_path.empty() ? std::string("pcomm") : runtime_path(launch.keymap_path),
                    "--nvram",
                    runtime_path(launch.dirs->nvram_file(model->info().name)),
+                   // The setup EEPROM (monitor alignment values) is kept too.
+                   "--eeprom",
+                   runtime_path(launch.dirs->eeprom_file(model->info().name)),
                    // An end-user build keeps running on an access the model does
                    // not decode (the default, stop, is for the debugger).
                    "--unmapped",

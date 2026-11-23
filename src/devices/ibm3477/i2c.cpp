@@ -127,8 +127,10 @@ bool I2cEeprom::i2c_write(uint8_t b) {
     if (data_[pointer_] != b) dirty_ = true;
     data_[pointer_] = b;
     wrote_ = true;
+    const size_t written = pointer_;
     const size_t page = pointer_ - pointer_ % page_size_;
     pointer_ = page + (pointer_ + 1) % page_size_;
+    if (write_observer_) write_observer_(written, b);
     return true;
 }
 

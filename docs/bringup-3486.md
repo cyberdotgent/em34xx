@@ -271,10 +271,31 @@ mono types made no EEPROM access in the same boots):
 - With byte `30` changed to `AA` by hand the same unit starts normally and
   goes on line (observed).
 
-So a colour unit needs `--eeprom FILE`, one start so that the firmware
-writes its defaults, and then `eeprom set 30 aa` in the monitor (or the
-alignment procedure, once understood). The emulator does not ship a
-pre-filled EEPROM: the values are the firmware's.
+More about when the firmware looks (observed):
+
+- It reads the EEPROM once per power-on. In the start in which it wrote
+  its defaults it shows the pattern even when byte `30` is `AA` by the time
+  it reads it back (the same 16 reads with the same values as in a start
+  that goes on line); with `30` = `AA` it goes on line from the next
+  power-on.
+- Marking a blank EEPROM beforehand does not help: with `00` = `AA`, `30` =
+  `AA` and the other bytes blank (`FF` or `00`) the firmware reads `00` and
+  `01` and writes its defaults again.
+
+**The alignment stand-in (temporary).** A colour unit (display type 6) is
+set up with its alignment marked done, since there is no tube to align and
+the procedure is not known (`src/devices/ibm3486/alignment_shim.hpp`):
+whenever the EEPROM holds the firmware's "initialised" mark (`00` = `AA`),
+the model makes byte `30` `AA`; when that happens while the firmware runs
+(a new unit's first power-on) it switches the unit off and on once, so the
+first start runs the self test twice and then goes on line (observed:
+`--model 3487 --display color` with a saved setup and no EEPROM file goes
+on line under `--twinax-host wsc`). The alignment values stay the
+firmware's own; the emulator ships none. `--no-alignment-shim`
+(`[emulator] alignment_shim = false`) switches it off; the unit then shows
+the pattern as above, and `eeprom set 30 aa` in the monitor followed by a
+restart does by hand what the stand-in does. To be replaced by the real
+procedure once it is understood.
 
 ## Video enable and the tube bits of `20128`
 

@@ -74,6 +74,7 @@ bool load_config_file(const std::string& path, AppConfig& cfg, std::string& erro
         get(*t, "eeprom", cfg.terminal.eeprom_path);
         get(*t, "nvram", cfg.terminal.nvram_path);
         get(*t, "vdo_shim", cfg.terminal.vdo_shim);
+        get(*t, "alignment_shim", cfg.terminal.alignment_shim);
     }
     if (auto* t = root["display"].as_table()) {
         get(*t, "crt", cfg.crt);
@@ -219,6 +220,10 @@ Unit options (one ROM serves all of these):
       --no-vdo-shim         do not stand in for the unmodelled video
                             signature of the power-on display test (POST then
                             stops at VDO); see docs/bringup-3477.md
+      --no-alignment-shim   3486/3487 colour: do not mark the monitor
+                            alignment done in the EEPROM (the unit then shows
+                            its alignment pattern and stays off line); see
+                            docs/bringup-3486.md
       --list-keyboards      list keyboard layouts and their IDs
 
 Front end and monitor:
@@ -352,6 +357,7 @@ bool parse_command_line(int argc, char** argv, AppConfig& cfg, std::string& erro
         } else if (a == "--eeprom") { if (!need(cfg.terminal.eeprom_path)) return false; }
         else if (a == "--nvram") { if (!need(cfg.terminal.nvram_path)) return false; }
         else if (a == "--no-vdo-shim") cfg.terminal.vdo_shim = false;
+        else if (a == "--no-alignment-shim") cfg.terminal.alignment_shim = false;
         else if (a == "--headless") cfg.headless = true;
         else if (a == "--scale") {
             if (!need(v)) return false;
@@ -443,6 +449,7 @@ std::string config_to_toml(const AppConfig& cfg) {
             {"eeprom", cfg.terminal.eeprom_path},
             {"nvram", cfg.terminal.nvram_path},
             {"vdo_shim", cfg.terminal.vdo_shim},
+            {"alignment_shim", cfg.terminal.alignment_shim},
         }},
         {"display", toml::table{{"subtype", display_subtype_name(cfg.terminal.display)},
                                 {"crt", cfg.crt},

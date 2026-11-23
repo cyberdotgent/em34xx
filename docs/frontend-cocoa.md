@@ -133,9 +133,10 @@ Shared between the terminals of one app:
    - Not verified on a Mac yet: this behaviour was written against the
      Win32 front end's (docs/frontend-win32.md, observed under Wine) and
      has only been compiled for macOS.
-   - A colour 3486/3487 does not go on line here, as in em34xxw: its
-     firmware wants an EEPROM alignment byte only `em34xx`'s monitor can
-     set (docs/bringup-3486.md).
+   - A colour 3486/3487 has its monitor alignment marked done by the model
+     (a temporary stand-in, docs/bringup-3486.md); a new unit runs its self
+     test twice at the first start. The setup EEPROM is kept per model
+     (`<model>.eeprom` next to `<model>.nvram`).
 5. The global keymap (`keymap.toml`) is checked; a broken file is reported
    and the built-in **mac** map is used ([keyboard.md](keyboard.md)).
 6. The first window opens (its last frame, else the zoom size centred).

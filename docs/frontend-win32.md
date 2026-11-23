@@ -490,9 +490,10 @@ non-ASCII user folder.
 ## Known gaps
 
 - Sound: no `AudioSink` yet (the alarm is silent).
-- A colour 3486/3487 does not go on line: its firmware wants a monitor
-  alignment byte in the EEPROM that only the monitor of `em34xx` can set
-  (docs/bringup-3486.md), and em34xxw keeps no EEPROM file.
+- A colour 3486/3487 has its monitor alignment marked done by the model
+  (a temporary stand-in, docs/bringup-3486.md); a new unit runs its self
+  test twice at the first start. The setup EEPROM is kept per model
+  (`<model>.eeprom` next to `<model>.nvram`).
 - Printer sessions are not offered (the bridge has only a placeholder).
 - No per-profile keymap (by design: one global keymap).
 

@@ -42,6 +42,7 @@ void Machine::reset() {
     bus_.clear_stop();
     for (auto& d : devices_) d->reset();
     cpu_->reset();
+    power_cycle_pending_ = false;
     display_dirty_ = true;
     ++reset_count_;
 }
@@ -106,6 +107,10 @@ StopEvent Machine::run(uint64_t max_instructions, const std::atomic<bool>& user_
         const uint32_t cycles = cpu_->step();
         if (have_devices)
             for (auto& d : devices_) d->tick(cycles);
+        if (power_cycle_pending_) {
+            power_cycle_pending_ = false;
+            reset();
+        }
 
         if (bus_.stop_pending()) {
             const BusStop s = bus_.stop_info();
