@@ -427,7 +427,8 @@ endif()
 # library only, never em34xx_devtools (docs/architecture.md).
 #
 # em34xx-qt: the Qt 6 Widgets GUI for Linux and the BSDs (docs/frontend-qt.md).
-# No moc, uic or rcc: the front end declares no signals or slots.
+# No moc or uic: the front end declares no signals or slots. rcc embeds the
+# window icon only (PNGs from tools/gen_linux_assets.py).
 if(EM34XX_HAVE_QT)
   em34xx_library(em34xx_frontend_qt
     src/frontend/qt/qt_frontend.cpp
@@ -438,6 +439,22 @@ if(EM34XX_HAVE_QT)
   target_compile_definitions(em34xx_frontend_qt PRIVATE QT_NO_KEYWORDS QT_NO_CAST_FROM_ASCII)
   add_executable(${EM34XX_EXE_QT} src/main_qt.cpp)
   target_link_libraries(${EM34XX_EXE_QT} PRIVATE em34xx_frontend_qt em34xx_warnings)
+
+  # The icon: embedded for the window (":/icons/<n>x<n>/apps/em34xx.png"), and
+  # installed into the hicolor theme with the desktop entry that names it.
+  set(_em34xx_qt_res ${PROJECT_SOURCE_DIR}/src/frontend/qt/res)
+  set(_em34xx_qt_icons)
+  foreach(_size IN ITEMS 16 24 32 48 64 96 128 192 256)
+    list(APPEND _em34xx_qt_icons ${_em34xx_qt_res}/hicolor/${_size}x${_size}/apps/em34xx.png)
+  endforeach()
+  qt_add_resources(${EM34XX_EXE_QT} em34xx_qt_icons PREFIX /icons BASE ${_em34xx_qt_res}/hicolor
+    FILES ${_em34xx_qt_icons})
+
+  include(GNUInstallDirs)
+  install(TARGETS ${EM34XX_EXE_QT} RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
+  install(FILES ${_em34xx_qt_res}/em34xx.desktop DESTINATION ${CMAKE_INSTALL_DATADIR}/applications)
+  install(DIRECTORY ${_em34xx_qt_res}/hicolor DESTINATION ${CMAKE_INSTALL_DATADIR}/icons
+    FILES_MATCHING PATTERN "*.png")
 endif()
 
 # em34xxw: the Win32 GUI (GUI subsystem, resources from em34xxw.rc built by

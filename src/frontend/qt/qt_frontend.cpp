@@ -15,6 +15,7 @@
 #include <QByteArray>
 #include <QCloseEvent>
 #include <QGuiApplication>
+#include <QIcon>
 #include <QImage>
 #include <QKeyEvent>
 #include <QLabel>
@@ -410,6 +411,13 @@ bool QtFrontend::run(Application& app, const FrontendOptions& opts, std::string&
     QApplication::setDesktopFileName(QStringLiteral("em34xx"));
     QApplication qapp(g_qt_argc, g_qt_argv);
     SignalScope signals;
+    // The window icon is built in, so it shows without an installed icon
+    // theme: em34xxw's pixel art, each size its own drawing or a whole-number
+    // enlargement (tools/gen_linux_assets.py).
+    QIcon icon;
+    for (int size : {16, 24, 32, 48, 64, 96, 128, 192, 256})
+        icon.addFile(QStringLiteral(":/icons/%1x%1/apps/em34xx.png").arg(size), QSize(size, size));
+    QApplication::setWindowIcon(icon);
     LOG_INFO("video", "Qt %s, platform %s, style %s", qVersion(), qPrintable(QGuiApplication::platformName()),
              qPrintable(QApplication::style()->objectName()));
 

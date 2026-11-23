@@ -12,8 +12,16 @@ First slice: the picture, the keyboard, the menus below and the status bar.
 It takes the same command line as `em34xx` (model, ROM directory, display,
 keymap, `--connect`...) without the tooling options. Not yet there:
 connection profiles, the ROM manager, Settings, the keymap editor, the TLS
-trust prompts, the toolbar, saved window settings, a `.desktop` file and
-icon.
+trust prompts, the toolbar and saved window settings.
+
+The icon is em34xxw's pixel art (`tools/gen_linux_assets.py` writes the PNGs
+into `src/frontend/qt/res/hicolor/`): 16, 24, 32, 48 and 64 px are their own
+drawings, and 96 to 512 px are whole-number enlargements, so no size is
+smoothed. The sizes up to 256 px are built into the executable as the window
+icon. `cmake --install` puts `em34xx-qt` in `bin`, `em34xx.desktop` in
+`share/applications` and the PNGs in `share/icons/hicolor`; the desktop
+entry is what a Wayland desktop takes the icon from. The desktop entry does
+not yet register `.em34xx` profiles (the front end cannot open them).
 
 | Menu | Item | What |
 |------|------|------|
