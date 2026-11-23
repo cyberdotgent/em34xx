@@ -205,8 +205,10 @@ Unit options (one ROM serves all of these):
       --keymap MAP          host keymap: pcomm (default; IBM Personal
                             Communications 5250 layout), mac (pcomm with
                             Return as Enter and keypad Enter as Field
-                            Exit), positional, or a TOML file (see keymaps/
-                            and docs/keyboard.md)
+                            Exit), tn5250 (Return as Enter, functions on
+                            Ctrl and Alt chords: no Right Ctrl or keypad
+                            needed), positional, or a TOML file (see
+                            keymaps/ and docs/keyboard.md)
       --straps HEX          override the configuration strap byte (display
                             type and boot mode; see docs/bringup-3477.md and
                             docs/bringup-3486.md)

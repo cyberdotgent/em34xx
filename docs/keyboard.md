@@ -198,10 +198,15 @@ Select it with `--keymap MAP` or `[keyboard] keymap = "MAP"`:
   (keypad Enter; fn+Return on laptop keyboards), as in PCOMM. Return and
   Field Exit are swapped against `pcomm`; Shift+Return stays New Line.
   The default of the macOS app (docs/frontend-cocoa.md);
+- `tn5250`: the key bindings of the tn5250 terminal emulator, for
+  keyboards without a Right Ctrl or a keypad (laptops): **Return is Enter**
+  and the 5250 functions are Ctrl and Alt chords (Ctrl+K Field Exit, Ctrl+R
+  Reset, ...). The table is under "`tn5250` assignments" below;
 - `positional`: physical positions only (plus Shift+F1..F12 → F13..F24 on the
   122-key keyboard);
 - a TOML file (below). `keymaps/pcomm-like.toml` is the `pcomm` map written
-  out, `keymaps/positional.toml` the `positional` one; a unit test keeps
+  out, `keymaps/tn5250.toml` the `tn5250` one, `keymaps/positional.toml` the
+  `positional` one; a unit test keeps
   them equal to the built-ins.
 
 Engine behaviour:
@@ -337,10 +342,66 @@ own macro record/play/pause (Ctrl+F5/F6/F7; the terminal's Record and Play
 keys are available as `record`/`play`), edit cut/copy/paste, and the Num
 Lock-off keypad functions (the terminal keypad is numeric).
 
+### `tn5250` assignments
+
+The key bindings of the tn5250 terminal emulator (documented: tn5250(1),
+"Keyboard Mapping"; its `C-x` is Ctrl+X here and its `M-x` Alt+X),
+reimplemented as rules that press the terminal's own keys. It is a
+behavioural reference only. The terminal keys are those of the `pcomm`
+table above.
+
+| PC key | Function |
+| --- | --- |
+| Return, keypad Enter, Ctrl+J, Ctrl+M | Enter |
+| Ctrl+K, Alt+X | Field Exit |
+| Ctrl+X | Field Plus |
+| Alt+M | Field Minus |
+| Ctrl+Alt+J | New Line |
+| Tab, Shift+Tab | next field (positional), Backtab |
+| Ctrl+R, Alt+R | Reset |
+| Ctrl+A, Alt+A | Attention |
+| Ctrl+C, Alt+S | System Request |
+| Alt+H | Help |
+| Alt+C | Clear |
+| Ctrl+P, Alt+P | Print |
+| Ctrl+T | Test Request |
+| Ctrl+E | Erase Input |
+| Alt+D | Dup |
+| Page Down, Ctrl+D, Ctrl+F | Roll Up (next page) |
+| Page Up, Ctrl+B, Ctrl+U | Roll Down (previous page) |
+| Home, Ctrl+O | Home |
+| Insert, Alt+I, Alt+Delete | Insert |
+| Delete | Delete |
+| Alt+- , Alt+= | F11, F12 |
+| Alt+Shift+1 … Alt+Shift+= (`M-!` to `M-+`) | F13–F24 |
+| F1–F12, Shift+F1–F12, host F13–F24 | F1–F12, F13–F24 (as in `pcomm`) |
+
+The Ctrl keys only select rules: alone they send nothing (in `pcomm` they
+are Reset and Enter when tapped), and Ctrl with a key that has no rule
+presses that key. The PC's Alt still presses the terminal's Alt, which the
+rules release around their key, as `pcomm`'s Alt+F1 does.
+
+Differences from tn5250:
+
+- **Inferred:** Alt+1 … Alt+0 for F1–F10. The manual's row for F1–F10
+  gives no key; the pattern follows its Alt+- for F11.
+- **Hypothesis:** tn5250's "Erase" (Ctrl+E) is taken to be Erase Input.
+- **Ours:** Esc (Attention), Shift+Esc (System Request), keypad + and −
+  (Field Plus, Field Minus) and Shift+Return (New Line) are kept from
+  `pcomm`. tn5250 uses Esc as a prefix for its `M-` keys, which the keymap
+  engine cannot express.
+- **Not carried over:** Toggle, Refresh and Quit, which are functions of
+  that program and not terminal keys; End (end of field), which no terminal
+  key does (swallowed on the 122-key keyboard, positional on the Enhanced);
+  and + / − as Field Plus / Field Minus inside signed numeric fields, since
+  only the terminal's firmware knows the field (use Ctrl+X and Alt+M).
+
+`keymaps/tn5250.toml` is the map written out.
+
 ### Keymap files
 
 ```toml
-base = "pcomm"          # rules to start from: pcomm (default), mac, positional, none
+base = "pcomm"          # rules to start from: pcomm (default), mac, tn5250, positional, none
 
 [[map]]
 host = "Escape"         # PC key: name or HID usage number

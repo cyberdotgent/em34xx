@@ -242,8 +242,85 @@ const BuiltinRule kMacOverrides[] = {
     {"enter", "", "enter", false, ""},
 };
 
-// The rules of a built-in map with rules ("pcomm" or "mac"), in order.
+// "tn5250": the key bindings of the tn5250 terminal emulator (documented:
+// tn5250(1), "Keyboard Mapping"), for keyboards without a Right Ctrl or a
+// keypad: Return is Enter and the 5250 functions are Ctrl and Alt chords
+// (the manual's C- and M- keys). Not carried over: Esc as a Meta prefix,
+// Toggle, Refresh and Quit (functions of that program, not terminal keys)
+// and + / - as Field Plus / Field Minus inside signed numeric fields (the
+// terminal's firmware, not the keymap, knows the field). Ours, marked below:
+// Esc and the keypad as in "pcomm", Shift+Return, and Alt+1..0 for F1-F10
+// (the manual's row for them is blank; inferred from its Alt+- = F11).
+const BuiltinRule kTn5250Rules[] = {
+    // Ctrl only selects rules here. Without these the Ctrl keys would press
+    // the terminal keys at their positions (Reset and Enter on the 122-key
+    // keyboard) at the start of every chord.
+    {"lctrl", "*", "none", false, ""},
+    {"rctrl", "*", "none", false, ""},
+    {"enter", "", "enter", false, ""},
+    {"kpenter", "*", "enter", false, ""},
+    {"j", "ctrl", "enter", false, ""},
+    {"m", "ctrl", "enter", false, ""},
+    {"j", "ctrl alt", "newline", false, ""},
+    {"enter", "shift", "newline", false, ""},     // ours
+    {"tab", "shift", "backtab", false, ""},
+    {"pagedown", "*", "rollup", false, ""},
+    {"d", "ctrl", "rollup", false, ""},
+    {"f", "ctrl", "rollup", false, ""},
+    {"pageup", "*", "rolldown", false, ""},
+    {"b", "ctrl", "rolldown", false, ""},
+    {"u", "ctrl", "rolldown", false, ""},
+    {"home", "*", "home", false, ""},
+    {"o", "ctrl", "home", false, ""},
+    {"end", "*", "none", false, "122"},           // End of field: no such terminal key
+    {"end", "*", "positional", false, "enhanced"},
+    {"insert", "*", "insert", false, ""},
+    {"i", "alt", "insert", false, ""},
+    {"delete", "alt", "insert", false, ""},
+    {"delete", "", "delete", false, ""},
+    {"r", "ctrl", "reset", false, ""},
+    {"r", "alt", "reset", false, ""},
+    {"p", "ctrl", "print", false, ""},
+    {"p", "alt", "print", false, ""},
+    {"h", "alt", "help", false, ""},
+    {"c", "ctrl", "sysrq", false, ""},
+    {"s", "alt", "sysrq", false, ""},
+    {"c", "alt", "clear", false, ""},
+    {"k", "ctrl", "fieldexit", false, ""},
+    {"x", "alt", "fieldexit", false, ""},
+    {"t", "ctrl", "test", false, ""},
+    {"e", "ctrl", "erinp", false, ""},
+    {"a", "ctrl", "attn", false, ""},
+    {"a", "alt", "attn", false, ""},
+    {"d", "alt", "dup", false, ""},
+    {"x", "ctrl", "field+", false, ""},
+    {"m", "alt", "field-", false, ""},
+    {"escape", "", "attn", false, ""},            // ours (pcomm)
+    {"escape", "shift", "sysrq", false, ""},      // ours (pcomm)
+    {"kpplus", "*", "field+", false, ""},         // ours (pcomm)
+    {"kpminus", "*", "field-", false, ""},        // ours (pcomm)
+    {"1", "alt", "f1", false, ""}, {"2", "alt", "f2", false, ""}, {"3", "alt", "f3", false, ""},   // inferred
+    {"4", "alt", "f4", false, ""}, {"5", "alt", "f5", false, ""}, {"6", "alt", "f6", false, ""},
+    {"7", "alt", "f7", false, ""}, {"8", "alt", "f8", false, ""}, {"9", "alt", "f9", false, ""},
+    {"0", "alt", "f10", false, ""},
+    {"minus", "alt", "f11", false, ""}, {"equals", "alt", "f12", false, ""},
+    // M-! to M-+: Alt with the shifted digit row.
+    {"1", "alt shift", "f13", false, ""}, {"2", "alt shift", "f14", false, ""},
+    {"3", "alt shift", "f15", false, ""}, {"4", "alt shift", "f16", false, ""},
+    {"5", "alt shift", "f17", false, ""}, {"6", "alt shift", "f18", false, ""},
+    {"7", "alt shift", "f19", false, ""}, {"8", "alt shift", "f20", false, ""},
+    {"9", "alt shift", "f21", false, ""}, {"0", "alt shift", "f22", false, ""},
+    {"minus", "alt shift", "f23", false, ""}, {"equals", "alt shift", "f24", false, ""},
+    {"f13", "*", "f13", false, ""}, {"f14", "*", "f14", false, ""}, {"f15", "*", "f15", false, ""},
+    {"f16", "*", "f16", false, ""}, {"f17", "*", "f17", false, ""}, {"f18", "*", "f18", false, ""},
+    {"f19", "*", "f19", false, ""}, {"f20", "*", "f20", false, ""}, {"f21", "*", "f21", false, ""},
+    {"f22", "*", "f22", false, ""}, {"f23", "*", "f23", false, ""}, {"f24", "*", "f24", false, ""},
+};
+
+// The rules of a built-in map with rules ("pcomm", "mac" or "tn5250"), in
+// order.
 std::vector<BuiltinRule> builtin_rules(const std::string& normalised) {
+    if (normalised == "tn5250") return std::vector<BuiltinRule>(std::begin(kTn5250Rules), std::end(kTn5250Rules));
     std::vector<BuiltinRule> rules(std::begin(kPcommRules), std::end(kPcommRules));
     if (normalised == "mac") {
         for (BuiltinRule& r : rules)
@@ -446,7 +523,7 @@ std::vector<std::string> terminal_function_names() {
 
 bool builtin_keymap(const std::string& name, bool shift_fkeys, Keymap& out) {
     const std::string n = normalise(name);
-    if (n != "positional" && n != "pcomm" && n != "mac" && n != "none") return false;
+    if (n != "positional" && n != "pcomm" && n != "mac" && n != "tn5250" && n != "none") return false;
     out = Keymap();
     if (n == "none") return true;
     if (shift_fkeys) add_shift_fkey_rules(out);
@@ -487,7 +564,7 @@ bool parse_keymap(const std::string& text, const std::string& origin, bool shift
         }
     }
     if (!builtin_keymap(base, shift_fkeys, out)) {
-        error = origin + ": base must be \"pcomm\", \"mac\", \"positional\" or \"none\"";
+        error = origin + ": base must be \"pcomm\", \"mac\", \"tn5250\", \"positional\" or \"none\"";
         return false;
     }
     const toml::node* maps = root.get("map");
@@ -587,7 +664,7 @@ bool load_keymap(const std::string& spec, bool shift_fkeys, Keymap& out, std::st
     }
     std::ifstream f(spec, std::ios::binary);
     if (!f) {
-        error = "keymap '" + spec + "' is neither pcomm, mac, positional nor a readable file";
+        error = "keymap '" + spec + "' is neither pcomm, mac, tn5250, positional nor a readable file";
         return false;
     }
     std::ostringstream ss;
@@ -748,6 +825,7 @@ KeymapFile builtin_keymap_file(const std::string& name) {
 
 KeymapFile pcomm_keymap_file() { return builtin_keymap_file("pcomm"); }
 KeymapFile mac_keymap_file() { return builtin_keymap_file("mac"); }
+KeymapFile tn5250_keymap_file() { return builtin_keymap_file("tn5250"); }
 
 // --- Engine ------------------------------------------------------------------
 
