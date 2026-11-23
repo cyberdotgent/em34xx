@@ -147,7 +147,7 @@ bool SdlFrontend::run(Application& app, const FrontendOptions& opts, std::string
             win_h = int(win_h * fit);
         }
     }
-    s.window = SDL_CreateWindow(opts.title.c_str(), win_w, win_h, SDL_WINDOW_RESIZABLE);
+    s.window = SDL_CreateWindow(opts.title.c_str(), win_w, win_h, SDL_WINDOW_RESIZABLE | SDL_WINDOW_HIGH_PIXEL_DENSITY);
     if (!s.window) {
         error = std::string("SDL_CreateWindow failed: ") + SDL_GetError();
         return false;
@@ -158,8 +158,14 @@ bool SdlFrontend::run(Application& app, const FrontendOptions& opts, std::string
         return false;
     }
     SDL_SetRenderVSync(s.renderer, 1);
-    LOG_INFO("video", "SDL %d.%d.%d, video driver %s, renderer %s", SDL_MAJOR_VERSION, SDL_MINOR_VERSION,
-             SDL_MICRO_VERSION, SDL_GetCurrentVideoDriver(), SDL_GetRendererName(s.renderer));
+    {
+        int lw = 0, lh = 0, pw = 0, ph = 0;
+        SDL_GetWindowSize(s.window, &lw, &lh);
+        SDL_GetWindowSizeInPixels(s.window, &pw, &ph);
+        LOG_INFO("video", "SDL %d.%d.%d, video driver %s, renderer %s, window %dx%d (%dx%d pixels, display scale %.2f)",
+                 SDL_MAJOR_VERSION, SDL_MINOR_VERSION, SDL_MICRO_VERSION, SDL_GetCurrentVideoDriver(),
+                 SDL_GetRendererName(s.renderer), lw, lh, pw, ph, double(SDL_GetWindowDisplayScale(s.window)));
+    }
 
     // Wake the event loop as soon as the emulator reports a new picture
     // (Emulator::set_display_callback runs on the emulation thread; pushing
