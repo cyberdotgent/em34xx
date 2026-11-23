@@ -145,7 +145,13 @@ TwinaxMessage TwinaxEngine::run_program(unsigned ch, const TwinaxMessage& msg, u
             reg_[1] = uint8_t(addr >> 8);
             reg_[2] = uint8_t(count);
             reg_[3] = uint8_t(count >> 8);
-            c.busy = true;
+            // Receiving leaves the station busy until the firmware has taken
+            // the data and writes control bit 7. Sending does not: the
+            // firmware never writes that bit after an Activate Read
+            // [observed], and a controller that waits for not-busy before its
+            // next command (the 2661's code does) would wait out its limit
+            // after every read [observed with busy set here].
+            if (op & 0x02) c.busy = true;
             continue;
         }
         case 0xC:

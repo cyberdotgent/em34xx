@@ -149,6 +149,8 @@ TEST_CASE("twinax engine: activate write and read move data by DMA") {
     CHECK(resp[2].address == 7);
     CHECK(r.desc16(0, 0) == 0x3103);
     CHECK((r.req & 0x04) != 0);
+    // Sending leaves the station ready: the firmware does not drop busy after a read.
+    CHECK_FALSE(r.eng->busy(0));
 
     // An activate with nothing armed is invalid.
     r.req = 0;
