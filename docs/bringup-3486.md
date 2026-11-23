@@ -505,7 +505,14 @@ Consequences for the emulator:
   Field; the enhanced interface needs it implemented, and the Query Reply
   must only claim it for a terminal that supports it.
 
-### The mouse in emulation (prototype, `--mouse`)
+### The mouse in emulation (experimental, `--mouse`)
+
+**Experimental.** The mouse is off unless `--mouse` is given, and no menu or
+configuration file turns it on. What works: the firmware finds the mouse,
+sets it up and moves its pointer. What does not: clicks have no effect yet,
+with or without a host; only the SDL front end forwards the host's mouse,
+and it neither hides nor confines the host pointer. The option is there for
+bring-up work and may change.
 
 A standard two-button PS/2 mouse model (`src/input/ps2_mouse.*`) on the
 second port makes the firmware's pointer work (observed, 3487 mono, on

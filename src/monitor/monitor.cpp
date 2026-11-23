@@ -330,7 +330,7 @@ void Monitor::register_commands() {
     add("disconnect", {}, "[station]", "close the TN5250 session(s): the controller leaves the line",
         [this](A a) { return cmd_disconnect(a); });
     add("key", {}, "[+|-]name ...", "press and release host keys (HID names, e.g. enter f3 a 0x28)", [this](A a) { return cmd_key(a); });
-    add("mouse", {}, "dx dy [buttons]", "move the pointing device (counts; buttons: 1 left, 2 right, 4 middle)", [this](A a) { return cmd_mouse(a); });
+    add("mouse", {}, "dx dy [buttons]", "move the pointing device, experimental (counts; buttons: 1 left, 2 right, 4 middle)", [this](A a) { return cmd_mouse(a); });
     add("eeprom", {"nvram"}, "[dump|save [file]|set addr byte]", "show, dump, save or edit the EEPROM (hex)", [this](A a) { return cmd_eeprom(a); });
     add("assert", {}, "expr [message]", "fail the script if expr is zero", [this](A a) { return cmd_assert(a); });
     add("echo", {}, "text", "print text", [this](A a) { return cmd_echo(a); });

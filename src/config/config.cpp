@@ -217,8 +217,11 @@ Unit options (one ROM serves all of these):
       --nvram FILE          battery-backed RAM image (holds the setup
                             configuration); loaded at power-on, saved at exit.
                             Without it the RAM starts cleared every time
-      --mouse               plug a PS/2 mouse into the pointing-device port
-                            (3486/3487); host mouse movement drives it
+      --mouse               experimental: plug a PS/2 mouse into the
+                            pointing-device port (3486/3487). The terminal's
+                            pointer moves; clicks have no effect yet. Only
+                            the SDL front end forwards the host's mouse; see
+                            docs/bringup-3486.md
       --no-vdo-shim         do not stand in for the unmodelled video
                             signature of the power-on display test (POST then
                             stops at VDO); see docs/bringup-3477.md
