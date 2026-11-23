@@ -124,6 +124,24 @@ elseif(_em34xx_sdl STREQUAL "AUTO")
 endif()
 message(STATUS "SDL3 front end (em34xx): ${EM34XX_HAVE_SDL}")
 
+# SDL draws its own window frame on Wayland through libdecor, and only when
+# libdecor's headers were present as vcpkg built SDL (cmake/triplets/
+# x64-linux.cmake). Without them the window has no title bar or border on
+# compositors without server-side decorations, GNOME among them.
+if(EM34XX_HAVE_SDL AND CMAKE_SYSTEM_NAME STREQUAL "Linux")
+  find_package(PkgConfig QUIET)
+  if(PkgConfig_FOUND)
+    pkg_check_modules(EM34XX_LIBDECOR QUIET libdecor-0)
+    if(NOT EM34XX_LIBDECOR_FOUND)
+      message(WARNING
+        "libdecor development files not found (libdecor-devel / libdecor-0-dev): "
+        "the em34xx window will have no title bar or border on GNOME Wayland. "
+        "Install them, then rebuild SDL: delete ${CMAKE_BINARY_DIR}/vcpkg_installed "
+        "and vcpkg's cached sdl3 archive (~/.cache/vcpkg/archives), and configure again.")
+    endif()
+  endif()
+endif()
+
 # EM34XX_FRONTEND_COCOA  AUTO (default) / ON: build em34xx.app on macOS;
 #                        OFF: skip it. Never built elsewhere.
 set(EM34XX_FRONTEND_COCOA AUTO CACHE STRING "Cocoa front end (em34xx.app, macOS only): AUTO, ON or OFF")
