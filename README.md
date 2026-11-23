@@ -35,8 +35,9 @@ On macOS, em34xx.app works the same with Mac conventions: Command
 shortcuts, Settings in the app menu, and a window per terminal (every
 profile you open gets its own window; several run side by side). Its
 files live in `~/Library/Application Support/em34xx`; Mac keyboards have
-no Right Ctrl, so the key labelled *enter* (fn+Return on laptops) is the
-5250 Enter. More in [docs/frontend-cocoa.md](docs/frontend-cocoa.md).
+no Right Ctrl (PCOMM's Enter), so Return is the 5250 Enter and fn+Return
+(keypad Enter) is Field Exit. More in
+[docs/frontend-cocoa.md](docs/frontend-cocoa.md).
 
 ## Building
 

@@ -456,7 +456,7 @@ TEST_CASE("keymap files: errors name the line") {
     fails("[[map]\n", "k.toml");
 }
 
-TEST_CASE("mac keymap: PCOMM with keypad Enter as Enter") {
+TEST_CASE("mac keymap: PCOMM with Return as Enter, keypad Enter as Field Exit") {
     // The file form builds the built-in map.
     const KeymapFile mac = mac_keymap_file();
     Keymap from_text, builtin;
@@ -466,17 +466,20 @@ TEST_CASE("mac keymap: PCOMM with keypad Enter as Enter") {
     REQUIRE(builtin_keymap("mac", true, builtin));
     check_same_keymap(from_text, builtin);
 
-    // It differs from PCOMM in the keypad Enter rule only, in place.
+    // It differs from PCOMM in the plain Return rule only, in place.
     const KeymapFile pc = pcomm_keymap_file();
     REQUIRE(mac.entries.size() == pc.entries.size());
     size_t differ = 0;
     for (size_t i = 0; i < pc.entries.size(); ++i) {
-        if (mac.entries[i] == pc.entries[i]) continue;
+        const KeymapEntry& m = mac.entries[i];
+        if (m.host == "KP_Enter") CHECK(m.to == "fieldexit");          // fn+Return
+        if (m.host == "Enter" && m.mods == "shift") CHECK(m.to == "newline");
+        if (m == pc.entries[i]) continue;
         ++differ;
-        CHECK(pc.entries[i].host == "KP_Enter");
+        CHECK(pc.entries[i].host == "Enter");
+        CHECK(pc.entries[i].mods.empty());
         CHECK(pc.entries[i].to == "fieldexit");
-        CHECK(mac.entries[i].host == "KP_Enter");
-        CHECK(mac.entries[i].to == "enter");
+        CHECK(m.to == "enter");
     }
     CHECK(differ == 1);
 

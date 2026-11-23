@@ -1594,7 +1594,7 @@ bool entry_dialog(NSWindow* parent, KeymapEntry& e) {
     guarded([&] {
         if (!ask(_panel, "Restore the default keymap?",
                  "The default is the IBM Personal Communications (PCOMM) layout for Mac keyboards: Return is "
-                 "Field Exit, and the key labelled enter (fn+Return on laptops) is Enter.",
+                 "Enter, and the key labelled enter (fn+Return on laptops) is Field Exit.",
                  "Restore Defaults", "Cancel"))
             return;
         _file = _default;

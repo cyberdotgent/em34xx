@@ -98,7 +98,7 @@ enum HostMod : uint8_t {
 uint8_t host_modifier_bit(uint32_t hid);   // 0 if not a Shift/Ctrl/Alt key
 
 // Built-in keymaps: "positional", "pcomm" and "mac" (PCOMM for Mac
-// keyboards: keypad Enter, fn+Return on laptops, is Enter, not Field Exit). shift_fkeys adds the 122-key
+// keyboards: Return is Enter, keypad Enter / fn+Return is Field Exit). shift_fkeys adds the 122-key
 // Shift+F1..F12 -> F13..F24 rules (both maps). False if the name is unknown.
 bool builtin_keymap(const std::string& name, bool shift_fkeys, Keymap& out);
 

@@ -222,7 +222,7 @@ and timers keep running meanwhile.
   imported; Show in Finder for the ROM folder.
 - **Keymap** and **Key Mapping**: as em34xxw's; Mac key names in the
   capture box (Control, Option), Command is never captured. **Restore
-  Defaults** restores the **mac** map.
+  Defaults** restores the **mac** map (Return Enter, fn+Return Field Exit).
 - **Untrusted Certificate**: an alert with the certificate details and
   Stop (the default), Connect, Trust Permanently.
 - **Certificate Not Valid**: a critical alert listing every error and the
@@ -272,12 +272,13 @@ usages by position (`hid_from_keycode()`); modifiers come from
   too.
 - No text input system: keys reach the terminal as keys, dead keys and
   input methods do not apply.
-- Mac keyboards have no Right Ctrl (PCOMM's Enter): the default keymap is
-  **mac**, where the key labelled *enter* (keypad Enter, fn+Return on
-  laptops) is Enter and Return stays Field Exit. Keys the system keeps
-  (Mission Control's Control+arrows, F11 Show Desktop when set so) do not
-  reach the terminal; change them in System Settings > Keyboard or map
-  other keys.
+- Mac keyboards have no Right Ctrl (PCOMM's Enter, where the terminal's
+  Enter key is): the default keymap is **mac**, where **Return is Enter**
+  (the key used most) and the key labelled *enter* (keypad Enter,
+  fn+Return on laptops) is **Field Exit**; Shift+Return is New Line.
+  Keys the system keeps (Mission Control's Control+arrows, F11 Show
+  Desktop when set so) do not reach the terminal; change them in System
+  Settings > Keyboard or map other keys.
 
 ## Ending
 

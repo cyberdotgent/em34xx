@@ -232,12 +232,14 @@ const BuiltinRule kPcommRules[] = {
 };
 
 // "mac": the PCOMM map for Mac keyboards, which have no Right Ctrl (PCOMM's
-// Enter). The key Apple labels "enter" (keypad Enter; fn+Return on laptop
-// keyboards) sends Enter instead of Field Exit; Return stays Field Exit.
-// Each rule replaces the PCOMM rule with the same host key, modifiers and
-// keyboard, in place.
+// Enter, the terminal's Enter position). Enter is the most used key, so
+// Return sends it, and Field Exit moves to the key Apple labels "enter"
+// (keypad Enter; fn+Return on laptop keyboards), which PCOMM already maps
+// to Field Exit: the two are swapped against PCOMM. Shift+Return stays New
+// Line. Each rule replaces the PCOMM rule with the same host key, modifiers
+// and keyboard, in place.
 const BuiltinRule kMacOverrides[] = {
-    {"kpenter", "*", "enter", false, ""},
+    {"enter", "", "enter", false, ""},
 };
 
 // The rules of a built-in map with rules ("pcomm" or "mac"), in order.

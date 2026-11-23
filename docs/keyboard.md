@@ -192,10 +192,12 @@ Select it with `--keymap MAP` or `[keyboard] keymap = "MAP"`:
 - `pcomm` (default): the default 5250 keyboard of IBM Personal
   Communications (PCOMM), which matches how the real terminal is used from a
   PC (Right Ctrl = Enter, Esc = Attention, Shift+F1 = F13, ...);
-- `mac`: `pcomm` for Mac keyboards, which have no Right Ctrl: the key
-  Apple labels **enter** (keypad Enter; fn+Return on laptop keyboards) is
-  Enter instead of Field Exit; Return stays Field Exit. The default of the
-  macOS app (docs/frontend-cocoa.md);
+- `mac`: `pcomm` for Mac keyboards, which have no Right Ctrl (PCOMM's
+  Enter, where the terminal's Enter key is): Enter is used most, so
+  **Return is Enter**, and **Field Exit** is the key Apple labels *enter*
+  (keypad Enter; fn+Return on laptop keyboards), as in PCOMM. Return and
+  Field Exit are swapped against `pcomm`; Shift+Return stays New Line.
+  The default of the macOS app (docs/frontend-cocoa.md);
 - `positional`: physical positions only (plus Shift+F1..F12 → F13..F24 on the
   122-key keyboard);
 - a TOML file (below). `keymaps/pcomm-like.toml` is the `pcomm` map written
