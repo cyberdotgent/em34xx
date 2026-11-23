@@ -15,6 +15,7 @@ add_executable(em34xx_unit_tests
   test_keyboard_e2e.cpp
   test_display3477.cpp
   test_3477.cpp
+  test_3486.cpp
   test_twinax_engine.cpp
   test_wsc.cpp
   fake_station.cpp

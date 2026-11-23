@@ -403,7 +403,8 @@ missing file starts blank and is created on the first write. Every write
 transaction is saved when it ends (STOP), and pending changes are saved on
 exit. Without an image the EEPROM is **ephemeral**: blank at start,
 discarded at exit. The monitor shows its state in `info` and offers
-`eeprom`, `eeprom dump` and `eeprom save [FILE]`.
+`eeprom`, `eeprom dump`, `eeprom save [FILE]` and `eeprom set ADDR BYTE`
+(hexadecimal; edits one byte as a programmer would).
 
 ### Battery-backed RAM (setup configuration)
 

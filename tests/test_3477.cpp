@@ -184,6 +184,34 @@ TEST_CASE("3477 interrupt vectors and priority") {
     CHECK_FALSE(ic.intr_asserted());
 }
 
+TEST_CASE("interrupt vectors of the 3486 family's three-channel layout") {
+    Ibm3477Interrupts ic;
+    ic.set_keyboard_enabled(true);
+    ic.raise(Src::Keyboard);
+    CHECK(ic.acknowledge() == 0x0E);
+    CHECK(ic.vector(Src::Display) == 0x0C);
+    CHECK(ic.vector(Src::Twinax1Status) == 0x0A);
+    ic.set_three_channel_layout();
+    CHECK(ic.acknowledge() == 0x0F);
+    CHECK(ic.vector(Src::Timer) == 0x06);
+    CHECK(ic.vector(Src::Twinax1Event) == 0x08);
+    CHECK(ic.vector(Src::Twinax0Status) == 0x0A);
+    CHECK(ic.vector(Src::Display) == 0x0D);
+    ic.reset();   // the layout is wiring, not state
+    CHECK(ic.vector(Src::Keyboard) == 0x0F);
+
+    // The third channel's requests (2000D) and mask (2000F).
+    ic.request2(0x01);
+    CHECK_FALSE(ic.intr_asserted());
+    ic.set_mask2(0x7F);
+    CHECK(ic.acknowledge() == 0x09);
+    ic.acknowledge_bits2(0x01);
+    ic.request2(0x08);
+    CHECK(ic.acknowledge() == 0x0C);
+    ic.acknowledge_bits2(0x08);
+    CHECK_FALSE(ic.intr_asserted());
+}
+
 TEST_CASE("3477 interrupt registers in the gate array") {
     Sys s;
     s.w(0x20004, 0x7F);
@@ -397,6 +425,11 @@ TEST_CASE("I2C EEPROM persistence") {
         REQUIRE(e.open(path, err));
         CHECK(e.byte(0x05) == 0xA5);
         CHECK(e.byte(0x06) == 0xFF);
+        // A byte edited from the monitor is saved at once; out of range is
+        // refused.
+        REQUIRE(e.nv_set(0x30, 0xAA, err));
+        CHECK(e.byte(0x30) == 0xAA);
+        CHECK_FALSE(e.nv_set(0x100, 0x00, err));
         // Changes made outside a bus transaction are saved on destruction.
         e.set_byte(0x07, 0x77);
     }

@@ -59,6 +59,7 @@ public:
     std::string nv_status() const override;
     const std::vector<uint8_t>& nv_contents() const override { return data_; }
     bool nv_save(const std::string& path, std::string& error) override;
+    bool nv_set(size_t address, uint8_t value, std::string& error) override;
 
     std::string describe() const override;
 

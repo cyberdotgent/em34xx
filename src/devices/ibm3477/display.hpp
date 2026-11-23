@@ -54,6 +54,7 @@
 namespace em34xx {
 
 class I2cBus;
+class Ibm3486AuxPort;
 
 class Ibm3477Display : public Device, public DisplaySource {
 public:
@@ -68,8 +69,23 @@ public:
     void set_irq(std::function<void(bool)> line);
     // I2C bus driven by the bit-bang lines in 2012F. May be null.
     void set_i2c(I2cBus* bus);
+    // 3486 family: the second serial port's registers at 20144-20146 sit in
+    // this page. Without it they are plain storage.
+    void set_aux_port(Ibm3486AuxPort* port) { aux_ = port; }
     // CPU clock used to derive frame timing (default 8 MHz).
     void set_clock_hz(uint64_t hz);
+    // Vertical retrace lasts 1/divisor of the frame (default 90, which the
+    // 3477's display test accepts). Other tubes need another length.
+    void set_retrace_divisor(unsigned divisor);
+    // 3486 family: 20128 bit 3 inverts the retrace flag read at 2012F bit 3.
+    void set_sync_polarity_bit(bool on) { sync_polarity_bit_ = on; }
+    // Position of the 2-bit signature selector in 2012F: bits 6-5 on the
+    // 3477 (shift 5), bits 5-4 on the 3486 family (shift 4) [observed: the
+    // values each firmware writes].
+    void set_signature_selector_shift(unsigned shift) { sig_selector_shift_ = shift; }
+    // 3486 family: the picture is on while 20128 bit 6 is set, not bit 4
+    // [hypothesis; see enabled()].
+    void set_video_enable_bit6(bool on) { video_enable_bit6_ = on; }
     // Value of 2012F bits 7..4 when no signature result is latched.
     void set_sense(uint8_t nibble) { sense_ = uint8_t(nibble & 0x0F); }
 
@@ -136,10 +152,15 @@ private:
     std::array<uint8_t, 256> regs_{};
     std::function<void(bool)> irq_;
     I2cBus* i2c_ = nullptr;
+    Ibm3486AuxPort* aux_ = nullptr;
     uint8_t sense_ = 0;
     uint64_t clock_hz_ = 8000000;
     uint64_t frame_cycles_ = 0;
     uint64_t retrace_cycles_ = 0;
+    unsigned retrace_divisor_ = 90;
+    bool sync_polarity_bit_ = false;
+    unsigned sig_selector_shift_ = 5;
+    bool video_enable_bit6_ = false;
     uint64_t phase_ = 0;
     uint64_t frames_ = 0;
     bool in_retrace_ = false;

@@ -16,6 +16,7 @@
 #include <atomic>
 #include <csignal>
 #include <cstdio>
+#include <cstdlib>
 #include <fstream>
 
 namespace em34xx {
@@ -329,7 +330,7 @@ void Monitor::register_commands() {
     add("disconnect", {}, "[station]", "close the TN5250 session(s): the controller leaves the line",
         [this](A a) { return cmd_disconnect(a); });
     add("key", {}, "[+|-]name ...", "press and release host keys (HID names, e.g. enter f3 a 0x28)", [this](A a) { return cmd_key(a); });
-    add("eeprom", {"nvram"}, "[dump|save [file]]", "show, dump or save the setup EEPROM", [this](A a) { return cmd_eeprom(a); });
+    add("eeprom", {"nvram"}, "[dump|save [file]|set addr byte]", "show, dump, save or edit the EEPROM (hex)", [this](A a) { return cmd_eeprom(a); });
     add("assert", {}, "expr [message]", "fail the script if expr is zero", [this](A a) { return cmd_assert(a); });
     add("echo", {}, "text", "print text", [this](A a) { return cmd_echo(a); });
     add("source", {}, "file", "run commands from a file", [this](A a) { return cmd_source(a); });
@@ -869,8 +870,19 @@ bool Monitor::cmd_eeprom(const std::vector<std::string>& a) {
         } else if (sub == "save") {
             if (!nv->nv_save(a.size() > 2 ? a[2] : std::string(), err)) return false;
             text = nv->nv_status() + "\n";
+        } else if (sub == "set" && a.size() == 4) {
+            char* end1 = nullptr;
+            char* end2 = nullptr;
+            const unsigned long addr = std::strtoul(a[2].c_str(), &end1, 16);
+            const unsigned long value = std::strtoul(a[3].c_str(), &end2, 16);
+            if (*end1 || *end2 || a[2].empty() || a[3].empty() || value > 0xFF) {
+                err = "eeprom set: address and byte are hexadecimal";
+                return false;
+            }
+            if (!nv->nv_set(size_t(addr), uint8_t(value), err)) return false;
+            text = format("%03lX: %02lX\n", addr, value) + nv->nv_status() + "\n";
         } else {
-            err = "usage: eeprom [dump|save [file]]";
+            err = "usage: eeprom [dump|save [file]|set addr byte]";
             return false;
         }
         return true;

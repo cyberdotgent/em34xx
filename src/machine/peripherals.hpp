@@ -123,6 +123,14 @@ public:
     virtual const std::vector<uint8_t>& nv_contents() const = 0;
     // Write the contents to path (empty: the configured image file).
     virtual bool nv_save(const std::string& path, std::string& error) = 0;
+    // Change one byte, as a programmer would with the part out of its
+    // socket. Stores that cannot be edited refuse.
+    virtual bool nv_set(size_t address, uint8_t value, std::string& error) {
+        (void)address;
+        (void)value;
+        error = "this store cannot be edited";
+        return false;
+    }
 };
 
 // Built-in stand-ins used until a model's real display/keyboard hardware is

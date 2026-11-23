@@ -193,11 +193,13 @@ bool UserDirs::import_rom(const std::string& source, std::string& stored_as, std
     }
     stored_as.clear();
     note.clear();
+    // One image can serve several models (the 3486 and 3487 share theirs).
+    std::string names;
     for (const Model* m : runnable_models()) {
         if (const RomSpec* spec = rom_spec_for_data(m->info().roms, data)) {
-            stored_as = spec->file;
-            note = "IBM " + m->info().name + " " + spec->label + " (known good)";
-            break;
+            if (names.empty()) stored_as = spec->file;
+            names += (names.empty() ? "" : "/") + m->info().name;
+            note = "IBM " + names + " " + spec->label + " (known good)";
         }
     }
     if (stored_as.empty()) {
@@ -249,8 +251,8 @@ bool UserDirs::remove_rom(const std::string& file, std::string& error) const {
 
 std::vector<RomStatusRow> rom_status(const std::string& rom_dir) {
     std::vector<RomStatusRow> out;
-    // Only models a user can run: the 3486 and 3489 dumps are known to be
-    // incomplete or bad, so asking for them would only confuse.
+    // Only models a user can run: the 3489 dump is known to be bad, so
+    // asking for it would only confuse.
     for (const Model* m : runnable_models()) {
         for (const RomSpec& spec : m->info().roms) {
             RomStatusRow row;

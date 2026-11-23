@@ -46,6 +46,9 @@ struct TwinaxEngineLayout {
     uint32_t programs = 0x0080;        // 4 programs x 32 bytes per channel
     uint32_t program_stride = 0x80;    // distance between channels' program sets
     uint32_t descriptors = 0x0180;     // 16 bytes per channel
+    // Third channel (3486 family): its programs do not follow the stride,
+    // which would put them on the descriptors.
+    uint32_t third_programs = 0x0200;
 };
 
 class TwinaxEngine : public Device {
@@ -179,7 +182,9 @@ private:
 // The 3477's view of the engine through the system gate array: channel
 // control at 20000/20001, station addresses at 20008, channel enables and
 // engine run at 20009, the loopback test registers at 20020-2002B and the
-// test control bits of 20015. Offsets are relative to 20000.
+// test control bits of 20015. With a three-channel engine (3486 family)
+// also the third channel's control register at 2000B, its station
+// address at 2001A and its enable at 2001B. Offsets are relative to 20000.
 class Ibm3477TwinaxRegisters : public Device, public Ibm3477TwinaxPort {
 public:
     explicit Ibm3477TwinaxRegisters(TwinaxEngine& engine) : Device("twinax-regs"), eng_(engine) {}

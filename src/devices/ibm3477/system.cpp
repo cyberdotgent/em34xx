@@ -10,17 +10,9 @@ namespace em34xx {
 // ---------------------------------------------------------------------------
 // Interrupt controller
 
-uint8_t Ibm3477Interrupts::vector(Source s) {
-    switch (s) {
-    case Source::Timer: return 0x06;
-    case Source::Twinax0Event: return 0x07;
-    case Source::Twinax1Event: return 0x08;
-    case Source::Twinax0Status: return 0x09;
-    case Source::Twinax1Status: return 0x0A;
-    case Source::Display: return 0x0C;
-    case Source::Keyboard: return 0x0E;
-    }
-    return 0xFF;
+void Ibm3477Interrupts::set_three_channel_layout() {
+    vectors_ = {{0x06, 0x07, 0x08, 0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F}};
+    three_channel_ = true;
 }
 
 const char* Ibm3477Interrupts::source_name(Source s) {
@@ -28,10 +20,13 @@ const char* Ibm3477Interrupts::source_name(Source s) {
     case Source::Timer: return "timer";
     case Source::Twinax0Event: return "twinax0 event";
     case Source::Twinax1Event: return "twinax1 event";
+    case Source::Twinax2Event: return "twinax2 event";
+    case Source::Twinax2Status: return "twinax2 status";
     case Source::Twinax0Status: return "twinax0 status";
     case Source::Twinax1Status: return "twinax1 status";
     case Source::Display: return "display";
     case Source::Keyboard: return "keyboard";
+    case Source::Aux: return "second serial port";
     }
     return "?";
 }
@@ -51,6 +46,9 @@ static uint16_t source_bits(Ibm3477Interrupts::Source s) {
 void Ibm3477Interrupts::raise(Source s) {
     if (s == Source::Display) display_ = true;
     else if (s == Source::Keyboard) keyboard_ = true;
+    else if (s == Source::Aux) aux_ = true;
+    else if (s == Source::Twinax2Event) req2_ |= 0x01;
+    else if (s == Source::Twinax2Status) req2_ |= 0x02;
     else {
         const uint16_t bits = source_bits(s);
         req_ |= uint16_t(bits & -bits);   // lowest bit of the group
@@ -60,12 +58,18 @@ void Ibm3477Interrupts::raise(Source s) {
 void Ibm3477Interrupts::lower(Source s) {
     if (s == Source::Display) display_ = false;
     else if (s == Source::Keyboard) keyboard_ = false;
+    else if (s == Source::Aux) aux_ = false;
+    else if (s == Source::Twinax2Event) req2_ = uint8_t(req2_ & ~0x01);
+    else if (s == Source::Twinax2Status) req2_ = uint8_t(req2_ & ~0x7E);
     else req_ = uint16_t(req_ & ~source_bits(s));
 }
 
 bool Ibm3477Interrupts::line(Source s) const {
     if (s == Source::Display) return display_;
     if (s == Source::Keyboard) return keyboard_;
+    if (s == Source::Aux) return aux_;
+    if (s == Source::Twinax2Event) return (req2_ & 0x01) != 0;
+    if (s == Source::Twinax2Status) return (req2_ & 0x7E) != 0;
     return (req_ & source_bits(s)) != 0;
 }
 
@@ -76,6 +80,9 @@ bool Ibm3477Interrupts::highest(Source& out) const {
         bool pending;
         if (s == Source::Display) pending = display_;   // enable not identified: always on
         else if (s == Source::Keyboard) pending = keyboard_ && kbd_enable_;
+        else if (s == Source::Aux) pending = aux_ && aux_enable_;
+        else if (s == Source::Twinax2Event) pending = (req2_ & mask2_ & 0x01) != 0;
+        else if (s == Source::Twinax2Status) pending = (req2_ & mask2_ & 0x7E) != 0;
         else pending = (active & source_bits(s)) != 0;
         if (pending) {
             out = s;
@@ -103,18 +110,27 @@ uint8_t Ibm3477Interrupts::acknowledge() {
 void Ibm3477Interrupts::reset() {
     req_ = 0;
     mask_ = 0;
+    req2_ = 0;
+    mask2_ = 0;
     kbd_enable_ = false;
+    aux_enable_ = false;
     display_ = false;
     keyboard_ = false;
+    aux_ = false;
 }
 
 std::string Ibm3477Interrupts::describe() const {
     std::string t = format("  irq: request %04X mask %04X, keyboard %s%s, display %s\n", req_, mask_,
                            keyboard_ ? "requesting" : "idle", kbd_enable_ ? "" : " (disabled)",
                            display_ ? "requesting" : "idle");
+    if (three_channel_)
+        t += format("  third channel: request %02X mask %02X; second serial port %s%s\n", req2_, mask2_,
+                    aux_ ? "requesting" : "idle", aux_enable_ ? "" : " (disabled)");
     t += "  delivered:";
-    for (int i = 0; i < kSourceCount; ++i)
+    for (int i = 0; i < kSourceCount; ++i) {
+        if (vector(Source(i)) == 0xFF) continue;   // a source this board does not have
         t += format(" %02X=%llu", vector(Source(i)), (unsigned long long)delivered_[size_t(i)]);
+    }
     return t + "\n";
 }
 
@@ -148,7 +164,8 @@ Ibm3477System::Ibm3477System(uint64_t clock_hz, uint8_t straps, std::unique_ptr<
 
 Ibm3477System::~Ibm3477System() { kbd_->connect(nullptr); }
 
-bool Ibm3477System::is_twinax_register(uint32_t off) {
+bool Ibm3477System::is_twinax_register(uint32_t off) const {
+    if (third_channel_ && (off == 0x0B || off == 0x1A || off == 0x1B)) return true;
     return off <= 0x01 || off == 0x08 || off == 0x09 || (off >= 0x20 && off <= 0x2F);
 }
 
@@ -183,6 +200,8 @@ uint8_t Ibm3477System::read(uint32_t off, bool side_effects) {
     case 0x04: return uint8_t(ic_.mask());
     case 0x05: return uint8_t(ic_.mask() >> 8);
     case 0x0A: return straps_;
+    case 0x0D: return third_channel_ ? ic_.requests2() : latch_[off];
+    case 0x0F: return third_channel_ ? ic_.mask2() : latch_[off];
     case 0x10: return status_latch_;
     case 0x12: return kbd_->read(0);
     case 0x13: return kbd_->read(1);
@@ -208,6 +227,15 @@ void Ibm3477System::mmio_write8(uint32_t off, uint8_t v) {
     case 0x07:
         latch_[off] = v;
         ic_.set_keyboard_enabled(v & 1);
+        ic_.set_aux_enabled(v & 2);   // 3486 family; never requested on the 3477
+        return;
+    case 0x0D:
+        if (third_channel_) ic_.acknowledge_bits2(v);
+        else latch_[off] = v;
+        return;
+    case 0x0F:
+        if (third_channel_) ic_.set_mask2(v);
+        else latch_[off] = v;
         return;
     case 0x10:
         if ((v ^ status_latch_) & 0x80) {

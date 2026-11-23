@@ -46,6 +46,7 @@ std::vector<const Model*> runnable_models();
 // Individual model singletons (defined in model_*.cpp).
 const Model& model_3477();
 const Model& model_3486();
+const Model& model_3487();   // same board and firmware as the 3486
 const Model& model_3489();
 
 } // namespace em34xx
