@@ -1,6 +1,13 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 cmake_minimum_required(VERSION 3.21)
 
+# macOS: 11.0 (Big Sur) is the oldest system with an arm64 slice, and has
+# everything the Apple TLS backend uses. Set before project() so it reaches
+# the compiler checks and the vcpkg ports.
+if(CMAKE_HOST_APPLE AND NOT CMAKE_OSX_DEPLOYMENT_TARGET AND NOT DEFINED ENV{MACOSX_DEPLOYMENT_TARGET})
+  set(CMAKE_OSX_DEPLOYMENT_TARGET "11.0" CACHE STRING "Oldest macOS the build runs on")
+endif()
+
 project(em34xx
   VERSION 0.2.0
   DESCRIPTION "Hardware emulator for IBM 34xx-family 5250 terminals"
@@ -51,7 +58,8 @@ if(EM34XX_HARDENING AND CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang" AND NOT MSVC)
 endif()
 
 # TLS for the TN5250 client uses the host's own stack: SChannel on Windows
-# (always there), the system libssl/libcrypto elsewhere (not from vcpkg).
+# and Network.framework + Security.framework on macOS (always there), the
+# system libssl/libcrypto elsewhere (not from vcpkg).
 #   AUTO (default): use it when found, else build without TLS
 #   ON: fail configuration without it;  OFF: build without TLS
 set(EM34XX_TLS AUTO CACHE STRING "TLS for the TN5250 client: AUTO, ON or OFF")
@@ -64,6 +72,8 @@ endif()
 if(NOT _em34xx_tls STREQUAL "OFF")
   if(WIN32)
     set(EM34XX_TLS_BACKEND schannel)
+  elseif(APPLE)
+    set(EM34XX_TLS_BACKEND apple)
   else()
     find_package(OpenSSL 1.1.1)
     if(OPENSSL_FOUND)
@@ -78,9 +88,17 @@ if(EM34XX_TLS_BACKEND STREQUAL "openssl")
   message(STATUS "TN5250 TLS: system OpenSSL ${OPENSSL_VERSION} (${OPENSSL_SSL_LIBRARY})")
 elseif(EM34XX_TLS_BACKEND STREQUAL "schannel")
   message(STATUS "TN5250 TLS: Windows SChannel (secur32, crypt32)")
+elseif(EM34XX_TLS_BACKEND STREQUAL "apple")
+  message(STATUS "TN5250 TLS: Apple Network.framework and Security.framework")
 else()
   message(STATUS "TN5250 TLS: disabled (EM34XX_TLS=${EM34XX_TLS}); install the OpenSSL development "
                  "files (libssl-dev / openssl-devel) and reconfigure to enable it")
+endif()
+set(_em34xx_tls_source src/tn5250/tls_${EM34XX_TLS_BACKEND}.cpp)
+if(EM34XX_TLS_BACKEND STREQUAL "apple")
+  # Objective-C++ with ARC (Network.framework blocks and objects).
+  enable_language(OBJCXX)
+  set(_em34xx_tls_source src/tn5250/tls_apple.mm)
 endif()
 
 # Front ends: each is its own executable, configured only where it applies.
@@ -219,7 +237,7 @@ em34xx_library(em34xx_tn5250
   src/tn5250/record.cpp
   src/tn5250/telnet.cpp
   src/tn5250/tls_policy.cpp
-  src/tn5250/tls_${EM34XX_TLS_BACKEND}.cpp
+  ${_em34xx_tls_source}
   src/tn5250/transport.cpp
 )
 target_link_libraries(em34xx_tn5250 PUBLIC em34xx_host em34xx_net Threads::Threads)
@@ -227,6 +245,10 @@ if(EM34XX_TLS_BACKEND STREQUAL "openssl")
   target_link_libraries(em34xx_tn5250 PRIVATE OpenSSL::SSL OpenSSL::Crypto)
 elseif(EM34XX_TLS_BACKEND STREQUAL "schannel")
   target_link_libraries(em34xx_tn5250 PRIVATE secur32 crypt32)
+elseif(EM34XX_TLS_BACKEND STREQUAL "apple")
+  set_source_files_properties(src/tn5250/tls_apple.mm PROPERTIES COMPILE_OPTIONS "-fobjc-arc")
+  target_link_libraries(em34xx_tn5250 PRIVATE
+    "-framework Network" "-framework Security" "-framework CoreFoundation" "-framework Foundation")
 endif()
 
 # --- TN5250 bridge: the workstation controller with TN5250 sessions --------

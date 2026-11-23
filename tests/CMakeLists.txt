@@ -80,6 +80,8 @@ if(EM34XX_TLS_BACKEND STREQUAL "openssl")
   # The TLS test runs its own in-process OpenSSL server.
   target_compile_definitions(em34xx_tn5250_tests PRIVATE EM34XX_TLS_OPENSSL=1)
   target_link_libraries(em34xx_tn5250_tests PRIVATE OpenSSL::SSL OpenSSL::Crypto)
+elseif(EM34XX_TLS_BACKEND STREQUAL "apple")
+  target_compile_definitions(em34xx_tn5250_tests PRIVATE EM34XX_TLS_APPLE=1)
 endif()
 add_test(NAME tn5250 COMMAND em34xx_tn5250_tests)
 

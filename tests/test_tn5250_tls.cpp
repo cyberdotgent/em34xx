@@ -673,6 +673,72 @@ TEST_CASE("TCP socket: loopback connect, and a cancel flag abandons the attempt"
     CHECK_FALSE(listener.accept(0).valid());
 }
 
+#ifdef EM34XX_TLS_APPLE
+#include <chrono>
+#include <thread>
+
+// The Apple backend waits for Network.framework's handshake itself and
+// polls the cancel flag meanwhile.
+TEST_CASE("TLS transport (Apple): a cancel flag abandons a handshake the server never answers") {
+    CHECK(std::string(tls_backend_name()) == "Network.framework");
+    TcpSocket listener;
+    uint16_t port = 0;
+    std::string err;
+    for (uint16_t p = 47371; p < 47379 && !port; ++p)
+        if (listener.listen(p, true, err)) port = p;
+    REQUIRE_MESSAGE(port != 0, err);
+
+    Tn5250Config cfg;
+    cfg.host = "127.0.0.1";
+    cfg.port = port;
+    cfg.tls = true;
+    auto t = make_transport(cfg, err);
+    REQUIRE(t);
+    std::atomic<bool> cancel{false};
+    t->set_cancel(&cancel);
+    TcpSocket served;
+    std::thread server([&] {
+        served = listener.accept(5000);   // accepts and never answers the ClientHello
+        std::this_thread::sleep_for(std::chrono::milliseconds(300));
+        cancel.store(true);
+    });
+    const auto start = std::chrono::steady_clock::now();
+    CHECK_FALSE(t->connect("127.0.0.1", port, err));
+    server.join();
+    CHECK(served.valid());
+    CHECK(err.find("cancelled") != std::string::npos);
+    CHECK(std::chrono::steady_clock::now() - start < std::chrono::seconds(5));
+    CHECK(t->peer_certificate() == nullptr);
+    uint8_t b = 0;
+    CHECK(t->recv(&b, 1, 0) == -1);
+    CHECK_FALSE(t->send(&b, 1));
+}
+
+TEST_CASE("TLS transport (Apple): a server that closes during the handshake fails the connect") {
+    TcpSocket listener;
+    uint16_t port = 0;
+    std::string err;
+    for (uint16_t p = 47381; p < 47389 && !port; ++p)
+        if (listener.listen(p, true, err)) port = p;
+    REQUIRE_MESSAGE(port != 0, err);
+    Tn5250Config cfg;
+    cfg.host = "127.0.0.1";
+    cfg.port = port;
+    cfg.tls = true;
+    auto t = make_transport(cfg, err);
+    REQUIRE(t);
+    std::thread server([&] {
+        TcpSocket s = listener.accept(5000);
+        char buf[512];
+        s.recv(buf, sizeof buf, 2000);   // the ClientHello
+        s.close();
+    });
+    CHECK_FALSE(t->connect("127.0.0.1", port, err));
+    server.join();
+    CHECK(err.find("127.0.0.1:" + std::to_string(port)) != std::string::npos);
+}
+#endif
+
 #ifdef EM34XX_TLS_OPENSSL
 // --- live handshake against an in-process OpenSSL server ------------------
 
