@@ -1,8 +1,10 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 # CI: Linux build and tests, Windows x64 build (MinGW cross-compile, the same
-# toolchain as the local mingw-x64-release preset) uploaded as an artifact.
-# A tag v* also publishes a GitHub release with the Windows build and a
-# SHA256SUMS file attached.
+# toolchain as the local mingw-x64-release preset) and macOS universal build
+# and tests (macos-release preset), the Windows and macOS builds uploaded as
+# artifacts. A tag v* also publishes a GitHub release with the Windows build
+# and a SHA256SUMS file attached; the signed macOS build is added to that
+# release from a Mac afterwards (tools/macos-release.sh, docs/releasing.md).
 name: CI
 
 on:
@@ -120,6 +122,66 @@ jobs:
     outputs:
       name: ${{ steps.package.outputs.name }}
       version: ${{ steps.package.outputs.version }}
+
+  macos:
+    name: macOS universal build and tests
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install build tools
+        run: brew install ninja
+
+      - name: Set up vcpkg at the manifest baseline
+        run: |
+          baseline=$(python3 -c "import json;print(json.load(open('vcpkg.json'))['builtin-baseline'])")
+          git clone --quiet https://github.com/microsoft/vcpkg "$VCPKG_ROOT"
+          git -C "$VCPKG_ROOT" checkout --quiet "$baseline"
+          "$VCPKG_ROOT/bootstrap-vcpkg.sh" -disableMetrics
+          mkdir -p "${{ github.workspace }}/vcpkg-cache"
+
+      - name: Cache vcpkg binaries
+        uses: actions/cache@v4
+        with:
+          path: ${{ github.workspace }}/vcpkg-cache
+          key: vcpkg-macos-universal-${{ hashFiles('vcpkg.json', 'cmake/triplets/**') }}
+          restore-keys: vcpkg-macos-universal-
+
+      - name: Configure
+        run: cmake --preset macos-release
+
+      - name: Build
+        run: cmake --build --preset macos-release
+
+      - name: Test
+        run: ctest --preset macos-release -LE slow --output-on-failure
+
+      # Unsigned (ad hoc) build: on another Mac, Gatekeeper refuses it until
+      # it is allowed in System Settings > Privacy & Security, or the
+      # quarantine attribute is removed (xattr -dr com.apple.quarantine).
+      - name: Package
+        id: package
+        run: |
+          version=$(sed -n 's/^#define EM34XX_VERSION_STRING "\(.*\)"$/\1/p' build/macos-release/generated/em34xx_version.h)
+          name="em34xx-${version}-macos"
+          mkdir -p "dist/$name"
+          ditto build/macos-release/em34xx.app "dist/$name/em34xx.app"
+          cp build/macos-release/em34xx-headless LICENSE README.md "dist/$name/"
+          for f in "dist/$name/em34xx.app/Contents/MacOS/em34xx" "dist/$name/em34xx-headless"; do
+            archs=$(lipo -archs "$f")
+            echo "$f: $archs"
+            case "$archs" in *arm64*x86_64*|*x86_64*arm64*) ;; *) echo "::error::$f is not universal"; exit 1 ;; esac
+          done
+          codesign --verify --strict "dist/$name/em34xx.app"
+          (cd dist && ditto -c -k --keepParent "$name" "$name.zip")
+          echo "name=$name" >> "$GITHUB_OUTPUT"
+
+      - name: Upload build
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.package.outputs.name }}
+          path: dist/${{ steps.package.outputs.name }}.zip
+          if-no-files-found: error
 
   release:
     name: Release

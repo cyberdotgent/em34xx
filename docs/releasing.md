@@ -16,9 +16,17 @@ Every push and pull request:
   as `em34xx-<version>-win64.zip` (em34xxw.exe, em34xx-headless.exe,
   LICENSE, README.md) and uploaded as a workflow artifact, downloadable from
   the run's page.
+- **macOS**: universal (arm64 + x86_64) build of everything on a macOS
+  runner (`macos-release` preset), `ctest -LE slow`, packaged as
+  `em34xx-<version>-macos.zip` (em34xx.app, em34xx-headless, LICENSE,
+  README.md) and uploaded as a workflow artifact. Both executables are
+  checked to be universal. The app is signed ad hoc only: on another Mac,
+  Gatekeeper refuses it until it is allowed in System Settings > Privacy &
+  Security (or `xattr -dr com.apple.quarantine em34xx.app`).
 
 A tag `v*` additionally creates a GitHub release named after the tag with
-the Windows zip attached. The tag must match the project version (`v0.2`
+the Windows zip attached. The macOS job is not part of the release: the
+signed macOS build is added from a Mac afterwards (below). The tag must match the project version (`v0.2`
 for 0.2.0), otherwise the release job fails. The released zip is the
 end-user client only: the release job removes em34xx-headless.exe (the
 developer tool with the monitor and the GDB stub), which stays in the
@@ -52,3 +60,27 @@ To check a build: `x86_64-w64-mingw32-objdump -p em34xxw.exe` shows the
 3. Commit the version bump ("Release v0.2"), tag it `v0.2` (annotated), and
    push the commit and the tag: `git push origin main v0.2`.
 4. CI builds, tests and publishes the release.
+5. On the Mac, once the release exists with the Windows zip and
+   `SHA256SUMS`:
+
+   ```sh
+   git checkout v0.2
+   tools/macos-release.sh v0.2 --identity "Developer ID Application: ..." \
+       [--notary-profile PROFILE]
+   ```
+
+   It checks that HEAD is the tag, the tree is clean and the tag matches
+   the project version; builds the `macos-release` preset from scratch in
+   `build/macos-dist` and runs the tests; checks that the app is
+   universal; signs it with the hardened runtime and a secure timestamp;
+   with `--notary-profile` (a `xcrun notarytool store-credentials`
+   keychain profile) notarises the zip and staples the ticket; zips
+   `em34xx-<version>-macos.zip` (em34xx.app, LICENSE, README.md: the
+   end-user app only, as for Windows) with `ditto`; uploads it to the
+   release and adds its line to the release's `SHA256SUMS` (replacing an
+   earlier one for the same file). `--dry-run` stops before uploading;
+   with `--identity -` it signs ad hoc, for trying the script out.
+   Needs vcpkg (`VCPKG_ROOT`, default `~/vcpkg`) and the GitHub CLI.
+
+   Developer ID signing and notarisation are being set up (November 2026);
+   until then a release has no macOS build.
