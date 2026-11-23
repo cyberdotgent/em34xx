@@ -18,4 +18,7 @@
   included (docs/frontend-cocoa.md).
 - Tests: `ctest --preset debug -LE slow` (fast); the CPU vectors need
   `tools/fetch-test-vectors.sh` and take about 3 minutes in release.
-- The 3477 is the primary bring-up target; the 3486 waits for a re-dump.
+- The 3477 is the primary bring-up target. The 3486 model runs the 3487's
+  complete image (`54g0010.bin`), also as model 3487, and is in bring-up:
+  it passes POST, saves its setup, goes on line and shows a TN5250 host's
+  screen; see docs/bringup-3486.md for what is untested.

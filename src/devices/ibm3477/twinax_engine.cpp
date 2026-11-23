@@ -86,7 +86,8 @@ TwinaxMessage TwinaxEngine::poll_response(unsigned ch, uint8_t cmd) {
 TwinaxMessage TwinaxEngine::run_program(unsigned ch, const TwinaxMessage& msg, uint8_t cls) {
     Channel& c = ch_[ch];
     const unsigned prog = cls >> 6;
-    const uint32_t base = layout_.programs + layout_.program_stride * ch + 32 * prog;
+    const uint32_t base =
+        (ch == 2 ? layout_.third_programs : layout_.programs + layout_.program_stride * ch) + 32 * prog;
     uint8_t acc = 0;
     bool queue_mode = false;
     TwinaxMessage resp;
@@ -264,6 +265,7 @@ uint8_t Ibm3477TwinaxRegisters::twinax_read(uint32_t off) {
     switch (off) {
     case 0x00:
     case 0x01: return eng_.read_control(off);
+    case 0x0B: return eng_.channels() > 2 ? eng_.read_control(2) : reg_[off];
     case 0x15: return misc_;
     case 0x2B: return eng_.loopback_latch();
     default: return off < reg_.size() ? reg_[off] : 0xFF;
@@ -283,6 +285,15 @@ void Ibm3477TwinaxRegisters::twinax_write(uint32_t off, uint8_t v) {
         eng_.set_channel_enabled(0, (v & 0x02) != 0);
         eng_.set_channel_enabled(1, (v & 0x04) != 0);
         eng_.set_running((v & 0x80) != 0);
+        return;
+    case 0x0B:   // third channel's control register
+        if (eng_.channels() > 2) eng_.write_control(2, v);
+        return;
+    case 0x1A:   // third channel's station address
+        if (eng_.channels() > 2) eng_.set_station_address(2, v & 7);
+        return;
+    case 0x1B:   // bit 0 = third channel enable [hypothesis]; bits 1-2 are written set, meaning unknown
+        if (eng_.channels() > 2) eng_.set_channel_enabled(2, (v & 0x01) != 0);
         return;
     case 0x15:
         // Bit 6 = loopback; bits 3/2 = path; bit 4 = force a parity error;
@@ -306,7 +317,11 @@ void Ibm3477TwinaxRegisters::transmit(bool dma, bool bad_parity) {
         if (msg.size() > 1) msg.back().address = 7;
     } else {
         msg.push_back(TwinaxFrame{reg_[0x26], station});
-        if (reg_[0x25] & 0x0C) msg.push_back(TwinaxFrame{reg_[0x27], 7});
+        // Two frames: bit 2 or 3, and on a three-channel engine bit 6, as
+        // the 3486 firmware writes it for its third channel [hypothesis for
+        // all three].
+        const uint8_t two_frames = eng_.channels() > 2 ? 0x4C : 0x0C;
+        if (reg_[0x25] & two_frames) msg.push_back(TwinaxFrame{reg_[0x27], 7});
     }
     if (!msg.empty()) eng_.inject(msg, bad_parity);
 }

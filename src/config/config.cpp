@@ -207,15 +207,16 @@ Unit options (one ROM serves all of these):
                             Return as Enter and keypad Enter as Field
                             Exit), positional, or a TOML file (see keymaps/
                             and docs/keyboard.md)
-      --straps HEX          override the configuration strap byte (3477:
-                            display type and boot mode; see docs/bringup-3477.md)
-      --eeprom FILE         I2C EEPROM image (3477: monitor alignment values);
+      --straps HEX          override the configuration strap byte (display
+                            type and boot mode; see docs/bringup-3477.md and
+                            docs/bringup-3486.md)
+      --eeprom FILE         I2C EEPROM image (monitor alignment values);
                             created on the first write. Without it the EEPROM
                             is ephemeral (starts blank, discarded at exit)
-      --nvram FILE          battery-backed RAM image (3477: holds the setup
+      --nvram FILE          battery-backed RAM image (holds the setup
                             configuration); loaded at power-on, saved at exit.
                             Without it the RAM starts cleared every time
-      --no-vdo-shim         3477: do not stand in for the unmodelled video
+      --no-vdo-shim         do not stand in for the unmodelled video
                             signature of the power-on display test (POST then
                             stops at VDO); see docs/bringup-3477.md
       --list-keyboards      list keyboard layouts and their IDs

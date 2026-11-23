@@ -88,6 +88,16 @@ bool I2cEeprom::nv_save(const std::string& path, std::string& error) {
     return write_file(path, data_, error);
 }
 
+bool I2cEeprom::nv_set(size_t address, uint8_t value, std::string& error) {
+    if (address >= data_.size()) {
+        error = format("address %zX is outside the %zu-byte EEPROM", address, data_.size());
+        return false;
+    }
+    if (data_[address] != value) dirty_ = true;
+    data_[address] = value;
+    return flush(error);
+}
+
 std::string I2cEeprom::nv_status() const {
     return format("%s, %zu bytes, %s, %s", name().c_str(), data_.size(),
                   path_.empty() ? "ephemeral" : path_.c_str(), dirty_ ? "unsaved changes" : "clean");
@@ -113,6 +123,7 @@ bool I2cEeprom::i2c_write(uint8_t b) {
         return true;
     }
     // Page write: the low address bits wrap within the page.
+    LOG_DEBUG("eeprom", "%s: write [%02zX] <- %02X", name().c_str(), pointer_, b);
     if (data_[pointer_] != b) dirty_ = true;
     data_[pointer_] = b;
     wrote_ = true;
@@ -123,6 +134,7 @@ bool I2cEeprom::i2c_write(uint8_t b) {
 
 uint8_t I2cEeprom::i2c_read() {
     const uint8_t v = data_[pointer_];
+    LOG_DEBUG("eeprom", "%s: read [%02zX] -> %02X", name().c_str(), pointer_, v);
     pointer_ = (pointer_ + 1) % data_.size();
     return v;
 }

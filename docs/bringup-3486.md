@@ -1,16 +1,21 @@
 # 3486 bring-up notes
 
-Hardware facts and hypotheses for the IBM 3486 InfoWindow II, worked out
-from the **partial** dump of its ROM (`54g0011.bin`, see `roms/ROMS.md`)
-and compared with the 3477 (`docs/bringup-3477.md`). Each entry is labelled
-**observed** (seen in emulation or in the firmware's use of the hardware),
-**documented**, or **hypothesis**. This file describes hardware only.
+Hardware facts and hypotheses for the IBM 3486 InfoWindow II and its
+siblings, the 3487 and 3488, which share one firmware. They were first
+worked out from the **partial** content of the 3486's own ROM chip
+(`54G0011`) and compared with the 3477 (`docs/bringup-3477.md`). A complete
+image of the same firmware family, `54g0010.bin` from a 3487 logic module,
+is now available (see `roms/ROMS.md`), and the model
+(`src/models/model_3486.cpp`) runs it; its status is **bring-up**. Each
+entry is labelled **observed** (seen in emulation or in the firmware's use
+of the hardware), **documented**, or **hypothesis**. This file describes
+hardware only.
 
-Only segments `A000`, `B000`, `E000` and `F000` of the ROM are available.
-`8000`, `9000`, `C000` and `D000` are missing, and POST calls into `D000`
-early, so everything below comes from the surviving half and from running
-POST up to that call. The model (`src/models/model_3486.cpp`) stays
-**ROM-incomplete** and runs only with `--allow-bad-rom`.
+Most of what follows was written from segments `A000`, `B000`, `E000` and
+`F000` of `54G0011` alone, before `8000`, `9000`, `C000` and `D000` could be
+read. Addresses and sums quoted for `54G0011` are for that firmware level
+and have not all been rechecked against `54G0010`. "Boot progress" below
+gives the current state.
 
 ## Summary
 
@@ -156,8 +161,10 @@ and `20030-20031` (observed). The new registers (observed accesses,
     line control: written `02` released, `03` held. Its read bits are
     bit 0 parity, bit 1 busy, bit 6 byte received, and bit 7, see below.
     `20146` is written `FF` to clear. The firmware runs a keyboard-type
-    exchange on it. The attached device is unknown (hypothesis: a pointing
-    device or a power-management controller).
+    exchange on it. It takes the pointing device (see below). The model has
+    the port (`src/devices/ibm3486/aux_port.*`) with its wrap path and
+    interrupt, enabled by `20007` bit 1, and no device on it: a byte sent
+    with the line released gets no answer.
 
 ### `20145` bit 7: interrupt layout
 
@@ -169,12 +176,29 @@ code and switches layout on it (observed):
 | 1 | vector `0Eh` (as the 3477) | vector `0Dh` | not set up |
 | 0 | vector `0Fh` | vector `0Eh` | set up (descriptor `01A0`, programs `0200-027F`, `2000D/F`, `2001A`) |
 
-Which value a 3486 gives is **unknown**. It may be a board-revision or
-product (3486/3487) input. In the model the display page stores `20145`,
-so bit 7 reads 0, and the keyboard handshake then raises vector `0Eh`
-while the firmware waits on `0Fh` (observed). With bit 7 forced to 1 in a
-private experiment, the existing keyboard interface completes the reset/ID
-handshake (`FF` -> `FA`, `AA`, `BF BF`) (observed).
+Which value the board gives is **unknown**. It may be a board-revision or
+product (3486/3487) input. The model's second port reads bit 7 as 0, and
+the interrupt controller has the layout the firmware then uses. It is read
+off the vectors on which the running firmware installs handlers (observed
+after POST, one display configured; the others point at an `IRET` stub):
+
+| Vector | Source | 3477 |
+| --- | --- | --- |
+| `06h` | timer | `06h` |
+| `07h`, `08h`, `09h` | Twinax event, channels 0, 1, 2 | `07h`, `08h` |
+| `0Ah`, `0Bh`, `0Ch` | Twinax status, channels 0, 1, 2 | `09h`, `0Ah` |
+| `0Dh` | display | `0Ch` |
+| `0Eh` | second serial port | - |
+| `0Fh` | keyboard | `0Eh` |
+
+`06h`, `07h`, `0Ah`, `0Dh`, `0Eh` and `0Fh` have handlers and are delivered
+in emulation (observed); `08h`, `09h`, `0Bh` and `0Ch` follow from the
+pattern (hypothesis: no second or third session has been configured yet).
+With the display on the 3477's `0Ch` the firmware waited for ever for a
+display block request to finish while the interrupt landed on the stub
+(observed). With bit 7 forced to 1 in an earlier private experiment on
+`54G0011`, the keyboard interface completed the reset/ID handshake on
+`0Eh` (`FF` -> `FA`, `AA`, `BF BF`) (observed).
 
 ## Twinax
 
@@ -186,8 +210,98 @@ handshake (`FF` -> `FA`, `AA`, `BF BF`) (observed).
   Depending on a setup mode, channel 1 gets the second or the third
   address, and the third goes to `2001A`. Hypothesis: two display sessions
   plus one printer session, each on its own channel.
-- The model keeps the 3477's two channels: two displays, or display +
-  printer.
+- Registers of the third channel (observed in POST's loop-back test, which
+  runs every sub-test on all three channels): station address `2001A`,
+  enable `2001B` bit 0 (written `06` with the channel off and `07` with it
+  on; bits 1-2 unknown), channel control `2000B` (bit 7 drops busy, as
+  `20000/1`), request register `2000D` (write 1 to clear) and mask `2000F`.
+  Its programs are at `0200-027F`, not at the stride of the first two.
+- Frame generator: for the third channel the test writes `42` to `20025`
+  where it writes `06` and `0B` for the first two, and expects a two-frame
+  message each time. The model sends two frames for bit 6 as for bits 2
+  and 3 (hypothesis; the register's real layout is not known). `2002A` is
+  written with the second frame's data like `20028`; no modelled effect.
+- The model has the three channels; the third one's requests interrupt on
+  `09h`/`0Ch` (see the layout above). Offline Setup offers the terminal
+  modes One-Display, Two-Display, Display-Printer and Two-Display-Printer
+  (observed), so the third channel is the printer next to two displays.
+  The emulator still offers two sessions (two displays, or display +
+  printer), as on the 3477.
+
+## Display test
+
+POST's `VDO` test is the 3477's (see docs/bringup-3477.md, "Display test and
+the sense lines"), with these differences (observed):
+
+- The selector is `2012F` bits 5-4 (3477: bits 6-5); values `01`, `10` and
+  `11` are compared, `00` only has to read non-zero.
+- Timing windows: after the measurement is started at the beginning of
+  vertical retrace, the retrace flag (bit 3) must change within 3 to 9
+  status reads (3477: 10 to 31), and the next retrace must begin after 384
+  to 1439 reads. The model's retrace is 1/140 of the frame, about 120 us,
+  which gives 6 reads (hypothesis: the real length is unknown; the
+  3477's 1/90 gives 10).
+- The firmware expects the retrace flag inverted on the tubes for which it
+  sets `20128` bit 3 (types 3, 4 and 5; clear on type 2). The model inverts
+  bit 3 of `2012F` when `20128` bit 3 is set (hypothesis: a sync polarity
+  select).
+- The values it requires differ per tube. The temporary signature shim has
+  them for strap codes `42`, `4A`, `48` and `4C`, keyed on the frame
+  fingerprint as for the 3477. On colour (`4C`) all three selectors are
+  compared on the first screen, which fits one selector per colour signal
+  (hypothesis). Type 1 (`42` with `2012F` bit 1 set) and
+  type 7 (`44`) are not calibrated.
+
+## EEPROM and monitor alignment
+
+Same I2C bus and EEPROM as the 3477 (`A0/A1`). What the firmware does with
+it at power-on (observed on colour, type 6, once the setup is valid; the
+mono types made no EEPROM access in the same boots):
+
+- It reads byte `00`. If that is not `AA` it writes bytes `00-37` with its
+  default alignment values and then `AA` to `00`.
+- POST's `FOS` step then reads a list of bytes and requires `AA` at `00`
+  and `AA` at `30`. Its own defaults put `55` at `30`.
+- With `55` there the unit does not go on line: it shows a grid of dots
+  over the whole screen with `D` in the status line and stays there
+  (hypothesis: `30` is "monitor aligned", `55` = not yet, and the grid is
+  the alignment pattern a factory or service technician would work
+  through). Enter, F3, Space and F12 did nothing visible; how the procedure
+  is driven and completed from the keyboard is not known.
+- With byte `30` changed to `AA` by hand the same unit starts normally and
+  goes on line (observed).
+
+So a colour unit needs `--eeprom FILE`, one start so that the firmware
+writes its defaults, and then `eeprom set 30 aa` in the monitor (or the
+alignment procedure, once understood). The emulator does not ship a
+pre-filled EEPROM: the values are the firmware's.
+
+## Video enable and the tube bits of `20128`
+
+- `20128` bits 4-3 are constants of the tube (observed): the firmware ORs
+  a per-type value into every write, `10` on type 2, `18` on types 3-5 and
+  `00` on type 6 (colour). Bit 3 inverts the retrace flag (above). What
+  bit 4 does is unknown. On the 3477 model bit 4 is "video on"; that cannot
+  hold here, since colour never sets it and shows a picture on a real
+  unit.
+- The firmware writes `20128` without bit 6 while it changes the display
+  mode and with bit 6 when the screen is ready (observed on all types).
+  The model shows the picture while bit 6 is set (hypothesis). The 3477
+  model reads the same bit as the rule above the status line; the rule is
+  still drawn from it here.
+- `20140`, `20141` and `20149` are written with the timing block and differ
+  per tube (observed: `01 40 08` on types 2-4, `02 00 00` on type 5), so
+  they are timing or monitor settings, not a blanking control.
+
+## Display subtype and straps
+
+Without `--straps`, the model picks the strap code from `--display`:
+`color` -> `4C` (3487 HC0, type 6), `paperwhite` -> `48` (3487 HW0,
+type 5); `green` and `amber` -> `42` (3486, type 2) on model 3486 and
+`4A` (3487 HG0/HA0, types 3/4) on model 3487. Changing the subtype of a
+running terminal power-cycles it when the straps change. Colour cells are drawn with the 5250
+colour decoding of the 3477 model (hypothesis); only the single-colour
+setup screen has been seen so far, so the colours are unverified.
 
 ## Battery-backed RAM and EEPROM
 
@@ -263,29 +377,92 @@ sums, a 50-pin expansion connector). The `E13C` word that the 3489 code
 compares is the same checksum-skip flag as on the 3486, not a required
 signature.
 
-## Boot progress with the partial dump
+## Boot progress
 
-Observed with `--model 3486 --allow-bad-rom` (default straps `42`):
+Observed with `--model 3486` and `54g0010.bin`:
 
-1. Reset at `FFFF0` -> `F000:0000` -> `F000:01DF`: gate array masked, alarm
-   latch `9B`, display registers initialised, `20017` = `20`.
-2. Register-only RAM pre-test of `00500-0055F` and `39E80-3C07F` passes.
-3. ROM checksum: the first read of segment `8000` is an unmapped access,
-   so the machine stops there. With `policy log` the sum is `DBE9`, POST
-   beeps and halts.
-4. Skipping the checksum by hand (`bp f000:2b88`, `go`, `regs ip=2bcc`,
-   `go`), POST decodes the straps and the display type, waits for vertical
-   retrace, loads the display timing and mode blocks and `20140/41/49`.
-   On types other than 6 it then resets the keyboard. As modelled
-   (`20145` bit 7 = 0), the keyboard interrupt arrives on vector `0Eh`,
-   which is not installed yet, and the CPU runs into zeroed RAM. With
-   bit 7 = 1 (experiment), or with type 6 (`--straps 0c`), POST reaches
-   `call D000:13B6`, the first call into a missing segment.
+1. Reset at `FFFF0` -> `F000:0000`: gate array masked, alarm latch `9B`.
+2. ROM checksum: POST sums segments `8000` to `F000`, gets `619A` and
+   goes on.
+3. POST resets the keyboard. The interrupts arrive on vector `0Fh` and the
+   firmware's handler takes them.
+4. POST runs its test table. The state block at `0500` holds the current
+   test's three-letter EBCDIC name at `+20` and, after a failure, an error
+   record at `+24..+2F`; a fatal failure ends in `HLT` at `F000:0889` with
+   interrupts off. The tests that needed hardware the 3477 does not have:
+   - `COM` (Twinax loop-back): four phases, each run on **three** channels.
+     Needs the third channel (see [Twinax](#twinax)).
+   - `VDO` (display): the 3477's video-signature test with other timing
+     windows and selector bits (see [Display test](#display-test)).
+   - `MWP`: the manual-clock wrap test of the second serial port (see
+     `20144-20146` above); the keyboard port has the same test.
+5. POST completes. With an empty battery-backed RAM the terminal shows
+   **Offline Setup** ("Selections have been reset to the IBM default
+   values") with `SETUP` in the status line (observed with straps `42`,
+   `4A`, `48` and `4C`).
 
-The model maps the four good 64 KiB blocks at their linked segments
-(`A000`, `B000`, `E000`, `F000`) and leaves the others unmapped. This
-applies only when the known-bad dump is loaded; a good dump is mapped
-whole at `80000`.
+After POST (observed on the 3487 model, straps `4A`, and on colour, `4C`):
+
+6. Offline Setup works from the keyboard. A new unit needs two things
+   before it leaves setup: a station address (Customize workstation: cursor
+   down to the address row, Space on an address, F3 = Save and Exit) and a
+   serial number (Update serial number: Space on a character in each of the
+   nine rows, F3 = Save and Exit). F3 on the menu then leaves setup. With
+   `--nvram FILE` the next start skips setup.
+7. With a saved setup the terminal shows the on-line screen (empty, rule
+   and status line with the cursor position). `--twinax-host wsc` finds the
+   station at its address, identifies it (display, model ID `24` on mono
+   and `50` on colour) and polls it; typed characters are echoed.
+8. With the TN5250 bridge the host's screen is displayed (observed against
+   an OS/400 sign-on over TN5250, terminal type `IBM-3179-2`). Not checked:
+   signing on, the cursor position the host asks for (the status line showed
+   `1/1` on the sign-on screen), 27x132, a second session, a printer
+   session.
+
+Colour needs one more thing, see "EEPROM and monitor alignment".
+
+Not working (observed): `--straps 44` (type 7, 3488) does not start, and
+not because of the model. See "The 3488 strap code" below.
+
+### The 3488 strap code (type 7)
+
+`54G0010` on its own cannot run as a 3488 (observed):
+
+- The strap decoder accepts `010` as type 7, family 3, and the VPD model
+  table has a `3488` entry, but its suffix is the placeholder `XXX`.
+- During system start-up a routine in segment `D000` installs a
+  per-tube list of service-table entries. It selects the list by display
+  type: one list for types 1-2, one for 3-5, one for 6. For any other type
+  it selects nothing and still runs the installer, with the list pointer
+  left at whatever the previous routine put in `DS:SI`.
+- That value does not come from the hardware. The previous routine loads
+  `SI` with a constant and restores the caller's `DS`, so the pointer is
+  `D000:0025`, in the middle of code. The installer reads code bytes as a
+  list, overwrites service-table entries (the first one included) with
+  them and the CPU soon runs through a bad pointer into RAM. No register of
+  the gate array or display controller is read on the way that could change
+  this, so a real board with only this ROM would do the same (hypothesis:
+  not tested on hardware). The one input that could is the patch area: the
+  previous routine looks at the patch block in RAM at `469E0`, which is
+  empty here.
+
+So a 3488 needs code this image does not have. Hypothesis: the 3488 logic
+unit carries the optional ROM at `60000-7FFFF` (strap bit 6 = 0), whose
+patch records replace service-table entries by firmware level and could
+supply the type 7 case; or it has a ROM of its own. Either needs a dump
+from a 3488. The model warns when the straps select type 7.
+
+### With the 3486's own chip
+
+`54G0011` placed as `54g0010.bin` and loaded with `--allow-bad-rom` is
+mapped as its four 64 KiB blocks at their linked segments (`A000`, `B000`,
+`E000`, `F000`); the others stay unmapped. Observed before `54G0010` was
+available: the first read of segment `8000` by the ROM checksum is an
+unmapped access, so the machine stops there; with `policy log` the sum is
+`DBE9`, POST beeps and halts. With the checksum skipped by hand POST
+decodes the straps and the display type, waits for vertical retrace, loads
+the display timing and mode blocks and `20140/41/49`, resets the keyboard
+and reaches `call D000:13B6`, the first call into a missing segment.
 
 ## Pointing device and the enhanced user interface (observed by the owner)
 
@@ -307,18 +484,20 @@ Consequences for the emulator:
 
 ## Checklist for the complete dump
 
-1. Verify: 524288 bytes; no invariant address bit; the word sum of the
-   whole image is `619A`; blocks 2/3/6/7 (or 0/1/4/5, by the re-dump
-   method) match the current `A000/B000/E000/F000` content. Record the
-   SHA-256 in `roms/ROMS.md` and in `info_.roms`, and drop the known-bad
-   mapping path if no longer needed.
-2. Set the model status to `Bringup`.
+1. Done with `54g0010.bin`: 524288 bytes, no invariant address bit, word
+   sum `619A`, SHA-256 recorded in `roms/ROMS.md` and in `info_.roms`. Its
+   `A000/B000/E000/F000` content was not compared with `54G0011`'s (another
+   firmware level; the sums differ). The mapping path for the 3486's chip
+   is kept.
+2. Done: the model status is `Bringup`.
 3. RAM size: find the POST RAM test (probably in `C000/D000`) and the
    highest address it touches; adjust `kRamSize`. Check whether
    `60000-7FFFF` is probed as RAM or only as the option ROM.
-4. `20145` bit 7: decide from the code in the missing segments (or from the
-   unit) which layout a 3486 uses. If 0: keyboard on vector `0Fh`, the
-   second port on `0Eh`, three Twinax channels (see the proposals below).
+4. `20145` bit 7: the model takes the bit-7-is-0 layout for the keyboard
+   (vector `0Fh`). Still to decide from the code in `8000/9000/C000/D000`
+   (or from the unit) whether that is what the board gives. The second port
+   on `0Eh`, the third Twinax channel and the whole three-channel vector
+   layout are in.
 5. Fonts: no 3477-format compressed font plane is present in the surviving
    segments (observed). Look for them in `8000/9000/C000/D000`, and check
    the character-generator RAM location (`18000-1FFFF` on the 3477; this

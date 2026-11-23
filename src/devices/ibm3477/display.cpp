@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "devices/ibm3477/display.hpp"
 
+#include "devices/ibm3486/aux_port.hpp"
+
 #include "devices/i2c.hpp"
 #include "util/log.hpp"
 #include "util/strings.hpp"
@@ -37,6 +39,7 @@ constexpr uint32_t kRegStart = 0x30;
 constexpr uint32_t kRegStatusStart = 0x34;
 constexpr uint32_t kRegIrqAck = 0x36;
 constexpr uint32_t kRegBlockStart = 0x38;  // block request; written 3B, 3A, 39, 38
+constexpr uint32_t kRegAuxPort = 0x44;     // 3486 family: second serial port, 44-46
 
 constexpr uint8_t kCtlVideo = 0x10;
 constexpr uint8_t kCtlStatusRule = 0x40;
@@ -134,8 +137,13 @@ void Ibm3477Display::reset() {
 void Ibm3477Display::recompute_timing() {
     frame_cycles_ = std::max<uint64_t>(clock_hz_ / kRefreshHz, 100);
     // Vertical sync of a few scan lines out of a ~525-line frame [hyp].
-    retrace_cycles_ = std::max<uint64_t>(frame_cycles_ / 90, 1);
+    retrace_cycles_ = std::max<uint64_t>(frame_cycles_ / retrace_divisor_, 1);
     phase_ %= frame_cycles_;
+}
+
+void Ibm3477Display::set_retrace_divisor(unsigned divisor) {
+    retrace_divisor_ = divisor ? divisor : 90;
+    recompute_timing();
 }
 
 void Ibm3477Display::set_irq_line(bool on) {
@@ -159,7 +167,7 @@ void Ibm3477Display::tick(uint64_t cycles) {
         // next vertical retrace, where the result is latched [obs protocol].
         sig_measuring_ = false;
         sig_valid_ = true;
-        sig_result_ = vdo_shim_signature((regs_[kRegStatus] >> 5) & 3);
+        sig_result_ = vdo_shim_signature((regs_[kRegStatus] >> sig_selector_shift_) & 3);
     }
     if ((frame_started || (retrace && !in_retrace_)) && block_pending_) {
         // A block request completes at the next vertical retrace [hyp].
@@ -174,13 +182,18 @@ uint8_t Ibm3477Display::read_status() const {
     uint8_t v = uint8_t((sig_valid_ ? sig_result_ : sense_) << 4);
     if ((w & 0x01) || (i2c_ && !i2c_->sda_in())) v |= 0x01;
     if (w & 0x02) v |= 0x02;
-    if (in_retrace_) v |= 0x08;
+    // Bit 3 is the vertical sync line. On the 3486 family 20128 bit 3
+    // inverts it [observed: the firmware expects the flag inverted on the
+    // tubes for which it sets that bit; hypothesis: sync polarity].
+    const bool invert = sync_polarity_bit_ && (regs_[kRegControl] & 0x08);
+    if (in_retrace_ != invert) v |= 0x08;
     return v;
 }
 
 uint8_t Ibm3477Display::mmio_read8(uint32_t offset) {
     offset &= 0xFF;
     if (offset == kRegStatus) return read_status();
+    if (aux_ && offset >= kRegAuxPort && offset < kRegAuxPort + 3) return aux_->read(offset - kRegAuxPort);
     return regs_[offset];
 }
 
@@ -190,6 +203,10 @@ void Ibm3477Display::mmio_write8(uint32_t offset, uint8_t value) {
     offset &= 0xFF;
     const uint8_t old = regs_[offset];
     regs_[offset] = value;
+    if (aux_ && offset >= kRegAuxPort && offset < kRegAuxPort + 3) {
+        aux_->write(offset - kRegAuxPort, value);
+        return;
+    }
     switch (offset) {
     case kRegStatus:
         // Bit 7 starts a signature measurement on its rising edge; clearing
@@ -218,7 +235,13 @@ void Ibm3477Display::mmio_write8(uint32_t offset, uint8_t value) {
 bool Ibm3477Display::enabled() const {
     // 20128 is 00 while the firmware reloads the character generator [obs];
     // bit 4 is set whenever a screen is meant to be visible [hyp].
-    return (regs_[kRegControl] & kCtlVideo) && regs_[kRegMainRows] <= 64 &&
+    // 3486 family: 20128 bits 4-3 are constants of the tube (10 on type 2,
+    // 18 on types 3-5, 00 on colour) [observed], so bit 4 is not "video on"
+    // there. The firmware writes the register without bit 6 while it changes
+    // the mode and with it when the screen is ready [observed], so bit 6
+    // stands in for it [hypothesis].
+    const bool video = (regs_[kRegControl] & (video_enable_bit6_ ? kCtlStatusRule : kCtlVideo)) != 0;
+    return video && regs_[kRegMainRows] <= 64 &&
            regs_[kRegTotalRows] <= 64;
 }
 
@@ -381,7 +404,8 @@ struct VdoShimEntry {
 // Calibration table (temporary). Fingerprints of the display test's screens
 // as computed by vdo_fingerprint() with this emulator; nibbles are the
 // signatures a working unit measures for them. Display types 3 and 4 use
-// identical raster settings, so their entries coincide.
+// identical raster settings, so their entries coincide. The first twelve
+// entries are the 3477's.
 constexpr VdoShimEntry kVdoShimTable[] = {
     {1, 0xCB6EF411973D33EAULL, 0x2, "24x80 corner cells (types 3/4)"},
     {1, 0xEFC13297CCF74DBCULL, 0x0, "nearly empty (types 3/4)"},
@@ -395,6 +419,37 @@ constexpr VdoShimEntry kVdoShimTable[] = {
     {1, 0x6DBCB42E33A89264ULL, 0x1, "nearly empty + cursor (type 5)"},
     {1, 0x16BE48B1B1006520ULL, 0xB, "27x132 corner cells (type 5)"},
     {1, 0xCEADB1520B23E369ULL, 0x3, "43x80 corner cells (type 5)"},
+    // 3486 family (firmware 54G0010), by strap code; the selector is 2012F
+    // bits 5-4 there. The screens are named by the test's own step number
+    // until they are described.
+    {1, 0xF867E26C6D595335ULL, 0xD, "3486 type 2, test step 11"},
+    {2, 0xF867E26C6D595335ULL, 0x2, "3486 type 2, test step 12"},
+    {1, 0xBB04DAA9FE1C1D5FULL, 0x0, "3486 type 2, test step 15"},
+    {1, 0x724F3A9CC8C05CF6ULL, 0x1, "3486 type 2, test step 14"},
+    {1, 0x06D29123965E2579ULL, 0x7, "3487 types 3/4, test step 31"},
+    {2, 0x06D29123965E2579ULL, 0x2, "3487 types 3/4, test step 32"},
+    {1, 0xD606F3E4E2414E43ULL, 0x0, "3487 types 3/4, test step 35"},
+    {1, 0xA34459C71745BE86ULL, 0xB, "3487 types 3/4, test step 34"},
+    {1, 0x7EB2FC1F8B8C0653ULL, 0x0, "3487 types 3/4, test step 38"},
+    {1, 0x40BC8EDA74B4A35AULL, 0xC, "3487 types 3/4, test step 37"},
+    {1, 0x7E3F79BCBBEBCCA9ULL, 0x1, "3487 types 3/4, test step 36"},
+    {1, 0xFE7611BE9AD25149ULL, 0xA, "3487 types 3/4, test step 39"},
+    {1, 0xB86B40035AF58E66ULL, 0x9, "3487 type 5, test step 51"},
+    {2, 0xB86B40035AF58E66ULL, 0xC, "3487 type 5, test step 52"},
+    {1, 0x337B49F6FC32910CULL, 0xE, "3487 type 5, test step 55"},
+    {1, 0xF7A5C432B57F9FF9ULL, 0x7, "3487 type 5, test step 54"},
+    {1, 0xC898BF6D03E2D95DULL, 0x3, "3487 type 5, test step 58"},
+    {1, 0x52F93C4F962DE12DULL, 0x3, "3487 type 5, test step 57"},
+    {1, 0x921C28E89DB78EC6ULL, 0x3, "3487 type 5, test step 56"},
+    {1, 0xBF47EAAA2EA0983AULL, 0x9, "3487 type 5, test step 59"},
+    {1, 0xA2120A9B118403F6ULL, 0x0, "3487 type 6, test step 61"},
+    {2, 0xA2120A9B118403F6ULL, 0x2, "3487 type 6, test step 62"},
+    {3, 0xA2120A9B118403F6ULL, 0x2, "3487 type 6, test step 63"},
+    {1, 0xD4050AD46AA479FCULL, 0x0, "3487 type 6, test step 65"},
+    {3, 0x69F130DBEB3E3465ULL, 0x6, "3487 type 6, test step 64"},
+    {1, 0xF93F87A0C99CE579ULL, 0xD, "3487 type 6, test step 68"},
+    {1, 0x1DA06DE3C68A2052ULL, 0x7, "3487 type 6, test step 67"},
+    {1, 0x82D25E4F809D9DEEULL, 0xA, "3487 type 6, test step 66"},
 };
 
 constexpr uint64_t kFnvOffset = 0xCBF29CE484222325ull;

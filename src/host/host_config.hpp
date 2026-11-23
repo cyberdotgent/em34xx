@@ -85,8 +85,9 @@ const char* station_type_name(StationType type);
 // presents: 3477 colour -> IBM-3477-FC, 3477 green/amber/paper-white ->
 // IBM-3477-FG. The 5250 engine derives its Query Reply (screen sizes,
 // colour) from this type, so it follows what the model supports.
-// TODO(3486/3489): their own types once those models run; until then they
-// get the conservative 24x80 IBM-3179-2 (colour) / IBM-5251-11 (mono).
+// TODO(3486/3487/3489): their own types. The 3486 and 3487 run now but
+// still get the conservative 24x80 IBM-3179-2 (colour) / IBM-5251-11
+// (mono), so 27x132 is not offered to the host for them.
 std::string derived_terminal_type(const std::string& model, DisplaySubtype display);
 bool parse_station_type(const std::string& text, StationType& out);
 

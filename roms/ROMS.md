@@ -6,7 +6,7 @@ them by SHA-256 and contains no code or data taken from them.
 
 | Model | File | Size | SHA-256 | Status |
 | --- | --- | ---: | --- | --- |
-| 3486 | `54g0011.bin` | 524288 | `f5d968694fdb3b6991b219460eb0ce5eec131797a9c0ea928ec61a6a5b9291ef` | **Complete chip, incomplete firmware.** The chip is a 256 KiB mask ROM and this file holds all of it (twice, as a 27C040 read). The firmware also needs segments 8000/9000/C000/D000 from another source (see below). |
+| 3486 | `54g0010.bin` | 524288 | `7d04a011c1865c8c0745f9d2bb2948964dcd1ab1d0e8e4fa8cbde3d3b93ef51c` | **Good.** The complete 512 KiB firmware image, dumped from a 3487 logic module (one chip; see below). Maps at physical `0x80000..0xFFFFF`; holds the reset vector. The 3486 model runs it. |
 | 3477 | `95f4171.bin` | 131072 | `3f7fb58aec7505315ff94206c8dc05102e319944bd0bde55092274777fb39fde` | **Good (primary bring-up target).** Maps at physical `0xE0000..0xFFFFF`; holds the reset vector. No invariant address bit. |
 | 3477 | `95f4172.bin` | 131072 | `290a58cd5db6543957bdcb2c9e92efefd62a54e37bcd239d41d9bd9cdd6be1d0` | **Good.** Maps at physical `0xC0000..0xDFFFF`. No invariant address bit. |
 
@@ -17,7 +17,7 @@ refuses them unless explicitly overridden.
 
 | Model | File | SHA-256 | Problem |
 | --- | --- | --- | --- |
-| 3486 | `54g0011.bin` | `f5d968694fdb3b6991b219460eb0ce5eec131797a9c0ea928ec61a6a5b9291ef` | Not a bad read, but not runnable on its own: segments `8000`, `9000`, `C000` and `D000`, which the firmware calls and checksums, are not in this chip (see below). |
+| 3486 | `54g0011.bin` | `f5d968694fdb3b6991b219460eb0ce5eec131797a9c0ea928ec61a6a5b9291ef` | The 3486's own chip, read as 512 KiB. Not a bad read, but not runnable on its own: segments `8000`, `9000`, `C000` and `D000`, which the firmware calls and checksums, are not in this chip (see below). To experiment with it, place it as `54g0010.bin` and pass `--allow-bad-rom`. |
 
 ## 3477 placement
 
@@ -34,6 +34,24 @@ Verify with:
 ```sh
 sha256sum roms/*.bin
 ```
+
+## 3487 `54g0010.bin`
+
+A dump of the single 512 KiB ROM on a 3487 logic module, published with the
+dumper's InfoWindow notes (documented: one 512 KiB ROM on the board). The
+file name on that page is `54G0010.bin`; store it here in lower case.
+
+- 524288 bytes, eight different 64 KiB blocks, no invariant address bit
+  (observed).
+- Linear: file offset 0 is physical `80000`. The reset vector at the top
+  jumps to `F000:0000` (observed).
+- The word sum of the whole image is `619A`, the value POST requires, and
+  POST accepts it in emulation (observed).
+- The image names itself `54G0010` next to its model table, and carries
+  the 3486 and 3487 product names (observed). It is the shared
+  3486/3487/3488 firmware at a different level from the 3486's `54G0011`:
+  its segments `A000/B000/E000/F000` sum to `BA75`, where `54G0011` sums to
+  `DBE9` (observed).
 
 ## 3486 `54g0011.bin` analysis
 

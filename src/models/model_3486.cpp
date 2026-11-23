@@ -1,31 +1,37 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // IBM 3486 InfoWindow II.
 //
-// Not runnable yet: the only dump of its ROM is incomplete (see
-// roms/ROMS.md). The model is prepared from the surviving half so that it is
-// close to ready when a complete dump arrives. docs/bringup-3486.md gives the
-// evidence for every entry. Summary:
-//  - One 512 KiB ROM, 54G0011, mapped at 80000-FFFFF, reset vector at the
-//    top [observed: self-referencing pointer tables, reset vector]. The same
-//    ROM identifies as 3486, 3487 or 3488 depending on the straps
-//    [observed: VPD model table].
+// Runs the firmware image dumped from a 3487 logic module (54G0010, one
+// 512 KiB chip; roms/ROMS.md). docs/bringup-3486.md gives the evidence for
+// every entry. Summary:
+//  - One 512 KiB image mapped at 80000-FFFFF, reset vector at the top
+//    [observed: self-referencing pointer tables, reset vector, POST word
+//    sum]. The same firmware identifies as 3486, 3487 or 3488 depending on
+//    the straps [observed: VPD model table].
 //  - The board is a 3477 derivative: system gate array at 20000 and display
 //    controller at 20100, with the same interrupt, timer, keyboard, Twinax,
-//    printer and I2C registers [observed: same register use]. New
-//    registers sit in otherwise unused parts of both pages and are plain
+//    printer and I2C registers [observed: same register use]. It adds a
+//    third Twinax station channel and a second serial port for a pointing
+//    device [observed: POST tests both]; other new registers are plain
 //    storage here.
+//  - 20145 bit 7 reads 0 here, and the firmware then uses another
+//    interrupt layout than the 3477's (keyboard on 0Fh, display on 0Dh, a
+//    third Twinax channel) [observed code]; the model has that layout
+//    [hypothesis for the board].
 //  - RAM from 00000; the firmware uses addresses up to about 52000 [observed],
 //    and 60000-7FFFF is an optional ROM checked only when a strap says it is
 //    fitted [observed]. 384 KiB (00000-5FFFF) is a hypothesis.
 //  - 8088-class CPU: no 80186-only opcode in the reachable code, 8086 code
 //    generation (repeated single-bit shifts), no port I/O [observed].
-// While only the defective dump is available, its four good 64 KiB blocks
-// are mapped at the segments they were linked for and the four missing
-// segments are left unmapped, so the first access to them stops the machine
-// instead of running code from the wrong segment.
+// The 3486's own chip, 54G0011, holds only half of its firmware. Loaded with
+// --allow-bad-rom, its four 64 KiB blocks are mapped at the segments they
+// were linked for and the four missing segments are left unmapped, so the
+// first access to them stops the machine instead of running code from the
+// wrong segment.
 #include "models/model.hpp"
 
 #include "devices/battery_ram.hpp"
+#include "devices/ibm3486/aux_port.hpp"
 #include "devices/i2c.hpp"
 #include "devices/ibm3477/display.hpp"
 #include "devices/ibm3477/i2c.hpp"
@@ -54,6 +60,25 @@ constexpr uint32_t kOptionRomSize = 0x20000;
 // colour) and the 3488 (010); 011 and 000/111 are rejected by POST.
 constexpr uint8_t kDefaultStraps = 0x42;
 
+// Straps for a display subtype [observed decoder; which unit has which tube
+// is a hypothesis]: colour is the 3487 HC0 (type 6) and paper-white the 3487
+// HW0 (type 5). Green and amber are the 3486 (type 2) on the 3486 model and
+// the 3487 HG0/HA0 (types 3/4, straps 4A) on the 3487 model.
+uint8_t default_straps(bool is_3487, DisplaySubtype d) {
+    switch (d) {
+    case DisplaySubtype::Color: return 0x4C;
+    case DisplaySubtype::PaperWhite: return 0x48;
+    default: return is_3487 ? 0x4A : kDefaultStraps;
+    }
+}
+
+// Vertical retrace as a fraction of the frame. The display test requires the
+// retrace flag (2012F bit 3) to drop within 3 to 9 status reads of its start
+// and to come back one field later [observed windows]; the 3477's 1/90 lasts
+// 10 reads here. 1/140 (about 120 us) is in the middle [hypothesis: the real
+// length is not known].
+constexpr unsigned kRetraceDivisor = 140;
+
 // An address range where optional hardware is absent: reads float high,
 // writes go nowhere.
 class AbsentDevice : public Device {
@@ -80,10 +105,12 @@ private:
 
 class Model3486 : public Model {
 public:
-    Model3486() {
-        info_.name = "3486";
-        info_.description = "IBM 3486 InfoWindow II";
-        info_.status = ModelStatus::RomIncomplete;
+    // The 3486 and the 3487 are one board and one firmware; they differ in
+    // the tube and therefore in the default straps.
+    explicit Model3486(bool is_3487) : is_3487_(is_3487) {
+        info_.name = is_3487 ? "3487" : "3486";
+        info_.description = is_3487 ? "IBM 3487 InfoWindow II" : "IBM 3486 InfoWindow II";
+        info_.status = ModelStatus::Bringup;
         info_.cpu = CpuLevel::I8088;
         info_.address_bits = 20;
         // 30.000 MHz master oscillator on the logic board (observed); the
@@ -92,35 +119,51 @@ public:
         info_.max_sessions = 2;
         info_.max_printer_sessions = 1;
         info_.roms = {
-            {"system ROM (80000-FFFFF, reset vector)", "54g0011.bin", 0x80000, "", 0x80000},
+            {"system ROM (80000-FFFFF, reset vector)", "54g0010.bin", 0x80000,
+             "7d04a011c1865c8c0745f9d2bb2948964dcd1ab1d0e8e4fa8cbde3d3b93ef51c", 0x80000},
         };
         info_.known_bad_roms = {
-            {"54g0011.bin", "f5d968694fdb3b6991b219460eb0ce5eec131797a9c0ea928ec61a6a5b9291ef",
-             "read as 27C040 with chip A17 stuck high; segments 8000/9000/C000/D000 missing"},
+            {"", "f5d968694fdb3b6991b219460eb0ce5eec131797a9c0ea928ec61a6a5b9291ef",
+             "54G0011, the 3486's 256 KiB chip: segments 8000/9000/C000/D000 are not in it"},
         };
         info_.notes = {
-            "no complete ROM dump yet: POST stops at the ROM checksum (first read of segment 8000); "
-            "skipped by hand, it reaches the first far call into segment D000 (observed; see "
-            "docs/bringup-3486.md)",
+            "ROM 54G0010, dumped from a 3487 logic module as one 512 KiB chip (documented by the dumper); "
+            "its word sum over 80000-FFFFF is 619A, which POST requires (observed)",
+            "one firmware for 3486/3487/3488: the straps select the model in the VPD (observed)",
+            "the 3486's own chip, 54G0011, holds segments A000/B000/E000/F000 only and at another "
+            "firmware level (observed: different word sum); it runs only as far as the first call into "
+            "segment D000 and needs --allow-bad-rom",
             "20145 bit 7 selects the interrupt layout (observed code): 1 = keyboard on vector 0Eh as on "
             "the 3477, 0 = keyboard on 0Fh, second serial port on 0Eh and a third Twinax channel. The "
-            "display page stores 20145, so bit 7 reads 0 and the keyboard handshake runs into an "
-            "empty vector 0Eh (observed); which value the 3486 board gives is unknown",
-            "one ROM, 54G0011, for 3486/3487/3488: the straps select the model in the VPD (observed)",
+            "second port reads bit 7 as 0, and the interrupt controller has that layout: Twinax events "
+            "07-09h, status 0A-0Ch, display 0Dh, second port 0Eh, keyboard 0Fh (observed: the vectors the "
+            "firmware installs; hypothesis: which value bit 7 has on the board)",
+            "POST completes; Offline Setup works from the keyboard, and with a saved setup the terminal goes "
+            "on line and shows a TN5250 host's screen (observed, straps 4A and 4C; 42 and 48 reach setup); "
+            "colour also needs EEPROM byte 30 = AA, which the firmware's own defaults leave at 55 (observed)",
+            "44 (3488, type 7) does not start: the firmware's own start-up has no case for type 7 (observed); "
+            "signing on, 27x132, second and printer sessions are untested",
+            "picture on = 20128 bit 6 (hypothesis); bits 4-3 are per-tube constants (observed), so the 3477's "
+            "bit 4 video enable does not apply; colour attribute decoding is the 3477 model's and unverified",
+            "--display color selects straps 4C (3487 HC0), paperwhite 48 (3487 HW0); green/amber 42 (3486 "
+            "BA0) on model 3486 and 4A (3487 HG0/HA0) on model 3487 (observed decoder, hypothesis for the units)",
+            "display test: retrace of 1/140 frame and 20128 bit 3 as sync polarity (hypotheses that satisfy "
+            "the test's windows); its required values come from the temporary signature shim",
             "CPU: NEC V20 (D70108L-8) on the logic board (observed); the firmware uses no 80186-only "
             "opcode and no port I/O (observed), so it is emulated as an 8088 for now; V20-specific "
             "behaviour (undocumented opcodes, timing) is not modelled",
             "clock: single 30.000 MHz oscillator (observed); CPU at 7.5 MHz = 30/4 (hypothesis)",
             "system gate array at 20000 and display controller at 20100, 3477-compatible register use "
-            "(observed); new registers 2000D/2000F/20017/2001A/2001B and 20140-2014F are plain storage",
+            "(observed); of the new registers 2000B/2000D/2000F/2001A/2001B (third Twinax channel) and "
+            "20144-20146 (second serial port) are modelled, 20017 and the rest of 20140-2014F are plain storage",
             "RAM 384 KiB at 00000-5FFFF (hypothesis; the firmware uses up to about 52000, observed); "
             "optional ROM 60000-7FFFF absent, strap 2000A bit 6 = 1 (observed decoder)",
-            "straps 42: display type 2 = 3486 BA0, mono family (observed decoder, hypothesis for the unit)",
-            "ROM word sum over 80000-FFFFF must be 619A (observed POST check); the dump fails it",
-            "Twinax: the firmware drives a third station channel (station address 2001A, request 2000D, "
-            "mask 2000F) when 20145 bit 7 is 0 (observed code, hypothesis meaning); two channels modelled",
+            "Twinax: three station channels; the third has its station address at 2001A, enable 2001B bit 0, "
+            "control 2000B, requests 2000D and mask 2000F (observed in POST's loop-back test), interrupts "
+            "on 09h and 0Ch",
             "sessions: two displays, or display + printer (as the 3477; to be confirmed for the 3486)",
-            "second keyboard-style serial port at 20144-20146 (observed protocol; device unknown); storage only",
+            "second keyboard-style serial port at 20144-20146 for a pointing device, interrupt on 0Eh, enable "
+            "20007 bit 1 (observed protocol and POST wrap test); modelled with no device attached",
         };
     }
 
@@ -148,20 +191,28 @@ public:
         kbd->keyboard().set_keymap(std::move(keymap));
         Ibm3477KeyboardInterface* kbd_ptr = kbd.get();
 
-        const uint8_t straps = opt.straps >= 0 ? uint8_t(opt.straps) : kDefaultStraps;
-        if (opt.straps < 0 && opt.display != DisplaySubtype::Green)
-            LOG_WARN("system", "3486: the display subtype does not change the straps (the 3486 is "
-                               "monochrome; colour and other tubes are 3487 strap codes, see "
-                               "docs/bringup-3486.md); using straps 42");
+        const uint8_t straps = opt.straps >= 0 ? uint8_t(opt.straps) : default_straps(is_3487_, opt.display);
+        if ((straps & 0x0E) == 0x04)
+            LOG_WARN("system", "3486: straps %02X select display type 7 (3488), which the 54G0010 firmware "
+                               "does not carry through its start-up: expect it to stop in POST "
+                               "(docs/bringup-3486.md)", straps);
         Ibm3477System& sys = m.add_device<Ibm3477System>(info_.clock_hz, straps, std::move(kbd));
         bus.map_mmio("system", Ibm3477System::kBase, Ibm3477System::kSize, &sys);
+        sys.interrupts().set_three_channel_layout();
         bus.set_interrupt_controller(&sys.interrupts());
         m.set_keyboard(kbd_ptr);
 
-        TwinaxEngine& link = m.add_device<TwinaxEngine>(bus, 2u, info_.clock_hz);
+        // Three station channels; the third reports through 2000D/2000F.
+        sys.set_third_channel(true);
+        TwinaxEngine& link = m.add_device<TwinaxEngine>(bus, 3u, info_.clock_hz);
         Ibm3477Interrupts& irq = sys.interrupts();
-        link.set_raise([&irq](unsigned ch, uint8_t bits) { irq.request(uint16_t(bits << (8 * ch))); });
-        link.set_pending([&irq](unsigned ch) { return uint8_t((irq.requests() >> (8 * ch)) & 0x7F); });
+        link.set_raise([&irq](unsigned ch, uint8_t bits) {
+            if (ch == 2) irq.request2(bits);
+            else irq.request(uint16_t(bits << (8 * ch)));
+        });
+        link.set_pending([&irq](unsigned ch) {
+            return uint8_t((ch == 2 ? irq.requests2() : uint8_t(irq.requests() >> (8 * ch))) & 0x7F);
+        });
         link.set_host([&m]() { return m.twinax_host(); });
         Ibm3477TwinaxRegisters& link_regs = m.add_device<Ibm3477TwinaxRegisters>(link);
         sys.set_twinax_port(&link_regs);
@@ -174,11 +225,18 @@ public:
 
         Ibm3477Display& disp = m.add_device<Ibm3477Display>(bus, opt);
         disp.set_clock_hz(info_.clock_hz);
+        disp.set_retrace_divisor(kRetraceDivisor);
+        disp.set_sync_polarity_bit(true);
+        disp.set_signature_selector_shift(4);
+        disp.set_video_enable_bit6(true);
         disp.set_i2c(&i2c.bus());
         disp.set_irq([&irq](bool on) {
             if (on) irq.raise(Ibm3477Interrupts::Source::Display);
             else irq.lower(Ibm3477Interrupts::Source::Display);
         });
+        Ibm3486AuxPort& aux = m.add_device<Ibm3486AuxPort>();
+        aux.connect(&irq);
+        disp.set_aux_port(&aux);
         bus.map_mmio("display", Ibm3477Display::kRegBase, 0x100, &disp);
         m.set_display(&disp);
 
@@ -187,9 +245,9 @@ public:
                 bus.map_rom(r.spec.file, r.spec.base, std::move(r.data));
                 continue;
             }
-            // The A17-stuck dump: file blocks 0/1/4/5 hold the segments
-            // A000/B000/E000/F000 (roms/ROMS.md). 8000/9000/C000/D000 stay
-            // unmapped.
+            // The 3486's 256 KiB chip read as 512 KiB: file blocks 0/1/4/5
+            // hold the segments A000/B000/E000/F000 (roms/ROMS.md).
+            // 8000/9000/C000/D000 stay unmapped.
             static const struct { uint32_t block, base; const char* name; } kGood[] = {
                 {0, 0xA0000, "54g0011.bin (A000)"}, {1, 0xB0000, "54g0011.bin (B000)"},
                 {4, 0xE0000, "54g0011.bin (E000)"}, {5, 0xF0000, "54g0011.bin (F000)"},
@@ -198,19 +256,32 @@ public:
                 const auto first = r.data.begin() + std::ptrdiff_t(g.block) * 0x10000;
                 bus.map_rom(g.name, g.base, std::vector<uint8_t>(first, first + 0x10000));
             }
-            LOG_WARN("rom", "3486: defective dump mapped as segments A000/B000/E000/F000 only; "
+            LOG_WARN("rom", "3486: 54G0011 mapped as segments A000/B000/E000/F000 only; "
                             "8000/9000/C000/D000 are missing and unmapped");
         }
     }
 
+    bool display_change_needs_power_cycle(const TerminalOptions& current, DisplaySubtype to) const override {
+        if (Model::display_change_needs_power_cycle(current, to)) return true;
+        // The display-type straps (2000A) follow the subtype unless they are
+        // given explicitly, and the firmware reads them at power-on.
+        return current.straps < 0 && default_straps(is_3487_, current.display) != default_straps(is_3487_, to);
+    }
+
 private:
+    bool is_3487_;
     ModelInfo info_;
 };
 
 } // namespace
 
 const Model& model_3486() {
-    static const Model3486 m;
+    static const Model3486 m(false);
+    return m;
+}
+
+const Model& model_3487() {
+    static const Model3486 m(true);
     return m;
 }
 

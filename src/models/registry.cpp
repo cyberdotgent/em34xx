@@ -20,7 +20,7 @@ bool Model::display_change_needs_power_cycle(const TerminalOptions& current, Dis
 }
 
 const std::vector<const Model*>& all_models() {
-    static const std::vector<const Model*> models = {&model_3477(), &model_3486(), &model_3489()};
+    static const std::vector<const Model*> models = {&model_3477(), &model_3486(), &model_3487(), &model_3489()};
     return models;
 }
 

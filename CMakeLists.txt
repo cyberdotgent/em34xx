@@ -242,6 +242,7 @@ em34xx_library(em34xx_machines
   src/devices/ibm3477/keyboard_if.cpp
   src/devices/ibm3477/system.cpp
   src/devices/ibm3477/twinax_engine.cpp
+  src/devices/ibm3486/aux_port.cpp
 )
 target_link_libraries(em34xx_machines PUBLIC em34xx_emu PRIVATE em34xx_tomlplusplus)
 

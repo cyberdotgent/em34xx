@@ -25,13 +25,23 @@ class Ibm3477KeyboardInterface;
 // request register (read at 20002, write 1 to clear) and a 16-bit enable
 // mask (20004, 1 = enabled) cover the timer and the Twinax sources; the
 // display and keyboard have their own request lines. Each source has a fixed
-// vector, presented on the interrupt-acknowledge cycle. Requests are levels:
+// vector, presented on the interrupt-acknowledge cycle. The 3486 family's
+// board has a third Twinax channel and a second serial port, and its
+// vectors from 09h on are one or two higher (set_three_channel_layout()).
+// Requests are levels:
 // a source stays pending until its device or a W1C write clears it.
 class Ibm3477Interrupts : public InterruptController {
 public:
     // In priority order, highest first.
-    enum class Source { Timer, Twinax0Event, Twinax1Event, Twinax0Status, Twinax1Status, Display, Keyboard };
-    static constexpr int kSourceCount = 7;
+    enum class Source {
+        Timer,
+        Twinax0Event, Twinax1Event, Twinax2Event,
+        Twinax0Status, Twinax1Status, Twinax2Status,
+        Display,
+        Aux,        // second serial port (3486 family)
+        Keyboard,
+    };
+    static constexpr int kSourceCount = 10;
 
     // Request-register bits of the latched sources.
     static constexpr uint16_t kTimerBit = 0x8000;
@@ -40,7 +50,12 @@ public:
     static constexpr uint16_t kTwinax0StatusBits = 0x007E;
     static constexpr uint16_t kTwinax1StatusBits = 0x7E00;
 
-    static uint8_t vector(Source s);
+    uint8_t vector(Source s) const { return vectors_[size_t(s)]; }
+    // 3486 family [observed: the vectors its firmware installs handlers on]:
+    // Twinax events 07-09h and status 0A-0Ch for three channels, display
+    // 0Dh, second serial port 0Eh, keyboard 0Fh. The 3477 has events
+    // 07/08h, status 09/0Ah, display 0Ch and keyboard 0Eh.
+    void set_three_channel_layout();
     static const char* source_name(Source s);
 
     // Drive a source's request line. For the latched sources raise() sets
@@ -55,8 +70,17 @@ public:
     void acknowledge_bits(uint16_t bits) { req_ = uint16_t(req_ & ~bits); }
     uint16_t mask() const { return mask_; }
     void set_mask(uint16_t m) { mask_ = m; }
+    // Third Twinax channel of the 3486 family: its own request (2000D) and
+    // mask (2000F) registers, same bit layout as one byte of 20002/20004.
+    void request2(uint8_t bits) { req2_ |= bits; }
+    uint8_t requests2() const { return req2_; }
+    void acknowledge_bits2(uint8_t bits) { req2_ = uint8_t(req2_ & ~bits); }
+    uint8_t mask2() const { return mask2_; }
+    void set_mask2(uint8_t m) { mask2_ = m; }
     bool keyboard_enabled() const { return kbd_enable_; }
     void set_keyboard_enabled(bool on) { kbd_enable_ = on; }
+    bool aux_enabled() const { return aux_enable_; }
+    void set_aux_enabled(bool on) { aux_enable_ = on; }
     bool line(Source s) const;   // request present, ignoring the enables
 
     // Highest-priority pending and enabled source; false if none.
@@ -72,9 +96,16 @@ public:
 private:
     uint16_t req_ = 0;
     uint16_t mask_ = 0;
+    uint8_t req2_ = 0;
+    uint8_t mask2_ = 0;
     bool kbd_enable_ = false;
+    // 3477 layout; the entries of sources it does not have are never used.
+    std::array<uint8_t, kSourceCount> vectors_{{0x06, 0x07, 0x08, 0xFF, 0x09, 0x0A, 0xFF, 0x0C, 0xFF, 0x0E}};
+    bool three_channel_ = false;
+    bool aux_enable_ = false;
     bool display_ = false;
     bool keyboard_ = false;
+    bool aux_ = false;
     std::array<uint64_t, kSourceCount> delivered_{};
 };
 
@@ -108,6 +139,10 @@ public:
     Ibm3477KeyboardInterface& keyboard_interface() { return *kbd_; }
     void set_twinax_port(Ibm3477TwinaxPort* p) { twinax_ = p; }   // hook for the link device
     void set_audio(AudioSink* a) { audio_ = a; }                   // alarm tone and speaker gate
+    // 3486 family: a third Twinax channel, with request/mask registers at
+    // 2000D/2000F and link registers at 2000B and 2001A/2001B. Off, those are plain
+    // storage (3477).
+    void set_third_channel(bool on) { third_channel_ = on; }
     uint8_t straps() const { return straps_; }
     bool tone_on() const { return (status_latch_ & 0x80) != 0; }
     bool speaker_gate() const { return (misc_ & 0x02) != 0; }
@@ -122,12 +157,13 @@ public:
 
 private:
     uint8_t read(uint32_t offset, bool side_effects);
-    static bool is_twinax_register(uint32_t offset);
+    bool is_twinax_register(uint32_t offset) const;
 
     Ibm3477Interrupts ic_;
     std::unique_ptr<Ibm3477KeyboardInterface> kbd_;
     Ibm3477TwinaxPort* twinax_ = nullptr;
     AudioSink* audio_ = nullptr;
+    bool third_channel_ = false;
     uint8_t straps_;
     uint64_t timer_period_;
     uint64_t timer_acc_ = 0;
