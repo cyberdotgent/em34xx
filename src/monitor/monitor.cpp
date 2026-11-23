@@ -330,6 +330,7 @@ void Monitor::register_commands() {
     add("disconnect", {}, "[station]", "close the TN5250 session(s): the controller leaves the line",
         [this](A a) { return cmd_disconnect(a); });
     add("key", {}, "[+|-]name ...", "press and release host keys (HID names, e.g. enter f3 a 0x28)", [this](A a) { return cmd_key(a); });
+    add("mouse", {}, "dx dy [buttons]", "move the pointing device (counts; buttons: 1 left, 2 right, 4 middle)", [this](A a) { return cmd_mouse(a); });
     add("eeprom", {"nvram"}, "[dump|save [file]|set addr byte]", "show, dump, save or edit the EEPROM (hex)", [this](A a) { return cmd_eeprom(a); });
     add("assert", {}, "expr [message]", "fail the script if expr is zero", [this](A a) { return cmd_assert(a); });
     add("echo", {}, "text", "print text", [this](A a) { return cmd_echo(a); });
@@ -1038,6 +1039,22 @@ bool Monitor::cmd_key(const std::vector<std::string>& a) {
     emu_.with_machine([&](Machine& m) {
         for (const HostKeyEvent& ev : events) m.key_event(ev);
     });
+    return true;
+}
+
+bool Monitor::cmd_mouse(const std::vector<std::string>& a) {
+    if (a.size() < 3 || a.size() > 4) return fail("usage: mouse dx dy [buttons]");
+    const int dx = std::atoi(a[1].c_str());
+    const int dy = std::atoi(a[2].c_str());
+    const unsigned buttons = a.size() > 3 ? unsigned(std::atoi(a[3].c_str())) : 0u;
+    bool present = false;
+    emu_.with_machine([&](Machine& m) {
+        if (PointerSink* p = m.pointer()) {
+            present = true;
+            p->pointer_event(dx, dy, buttons);
+        }
+    });
+    if (!present) return fail("no pointing device is plugged in (--mouse)");
     return true;
 }
 

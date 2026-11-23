@@ -120,6 +120,7 @@ private:
     bool cmd_connect(const std::vector<std::string>& a);
     bool cmd_disconnect(const std::vector<std::string>& a);
     bool cmd_key(const std::vector<std::string>& a);
+    bool cmd_mouse(const std::vector<std::string>& a);
     bool cmd_assert(const std::vector<std::string>& a);
     bool cmd_echo(const std::vector<std::string>& a);
     bool cmd_source(const std::vector<std::string>& a);

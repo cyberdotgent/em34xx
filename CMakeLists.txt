@@ -252,6 +252,7 @@ em34xx_library(em34xx_machines
   src/models/model_3489.cpp
   src/input/host_keymap.cpp
   src/input/keyboard_ids.cpp
+  src/input/ps2_mouse.cpp
   src/input/set3_keyboard.cpp
   src/devices/battery_ram.cpp
   src/devices/i2c.cpp

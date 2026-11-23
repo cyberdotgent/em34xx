@@ -54,6 +54,9 @@ struct TerminalOptions {
     // Host keymap: "pcomm" (default), "positional" or a TOML file
     // (src/input/host_keymap.hpp, docs/keyboard.md).
     std::string keymap = "pcomm";
+    // Pointing device on the terminal's second port: "none" or "mouse" (a
+    // PS/2 mouse; 3486 family only). Plugged in before power-on.
+    std::string pointing_device = "none";
     // Configuration strap byte presented by the model, -1 = derived from the
     // display subtype (3477: register 2000A).
     int straps = -1;
@@ -132,6 +135,9 @@ public:
         display_dirty_ = true;
     }
     void set_keyboard(KeyboardSink* k) { keyboard_ = k; }
+    // The terminal's pointing device, if one is plugged in.
+    void set_pointer(PointerSink* p) { pointer_ = p; }
+    PointerSink* pointer() { return pointer_; }
     void set_nvram(NonVolatileStore* n) { nvram_ = n; }
     // Where the machine's sound goes; null = nowhere. Devices hold audio(),
     // which forwards to the sink set here, so it can change at any time
@@ -180,6 +186,7 @@ private:
     TerminalOptions options_;
     DisplaySource* display_ = nullptr;
     KeyboardSink* keyboard_ = nullptr;
+    PointerSink* pointer_ = nullptr;
     NonVolatileStore* nvram_ = nullptr;
     std::unique_ptr<TwinaxHost> twinax_;
     bool display_dirty_ = true;

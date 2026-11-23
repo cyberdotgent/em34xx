@@ -64,6 +64,15 @@ struct HostKeyEvent {
     std::string name;   // for logging only
 };
 
+// A pointing device the user moves: relative movement in device counts (dy
+// positive = towards the user) and the buttons held (bit 0 left, bit 1
+// right, bit 2 middle).
+class PointerSink {
+public:
+    virtual ~PointerSink() = default;
+    virtual void pointer_event(int dx, int dy, unsigned buttons) = 0;
+};
+
 class KeyboardSink {
 public:
     virtual ~KeyboardSink() = default;
