@@ -113,6 +113,12 @@ public:
     // machine. Battery-backed RAM is written first and read back by the new
     // machine. False (with error): the old machine keeps running.
     bool rebuild_machine(const TerminalOptions& options, std::string& error);
+    // The same with another terminal model (one that can run: its ROMs are
+    // read from the ROM folder now): model() changes, and so do the type
+    // new TN5250 sessions announce and the session limits. `options` are
+    // the new terminal's (its own battery-backed RAM file, for one). False
+    // (with error): the old terminal keeps running.
+    bool set_model(const Model& model, const TerminalOptions& options, std::string& error);
     // Write the battery-backed RAM and the setup EEPROM to their files now
     // (Machine::flush_nonvolatile, under the machine lock), with the
     // terminal running: for a front end that may not get a clean exit (the
@@ -138,7 +144,8 @@ public:
 private:
     bool configure(int argc, char** argv);
     bool build_machine();
-    std::unique_ptr<Machine> make_machine(const TerminalOptions& options, std::string& error);
+    std::unique_ptr<Machine> make_machine(const Model& model, const TerminalOptions& options, std::string& error);
+    bool rebuild(const Model& model, const TerminalOptions& options, std::string& error);
     bool fail(const std::string& message, int code = 2);
     int final_status() const;
 
@@ -149,6 +156,8 @@ private:
     // The display subtype new TN5250 bridges announce (terminal type); the
     // bridge factory reads it, set_display_subtype() changes it.
     std::shared_ptr<std::atomic<DisplaySubtype>> bridge_display_;
+    // The model they are bridges for (set_model() changes it).
+    std::shared_ptr<std::atomic<const Model*>> bridge_model_;
     // Declared after the emulator so they are destroyed first.
     std::unique_ptr<Frontend> frontend_;
     std::unique_ptr<AppTooling> tooling_;

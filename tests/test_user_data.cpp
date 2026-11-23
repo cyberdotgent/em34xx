@@ -102,6 +102,69 @@ TEST_CASE("user folder: profile files") {
     CHECK_FALSE(UserDirs::valid_profile_name("nul.txt", why));
 }
 
+TEST_CASE("user folder: which model a front end starts as") {
+    TempRoot tmp;
+    UserDirs dirs(user_dirs_root(tmp.str()));
+    std::string err;
+    REQUIRE(dirs.ensure(err));
+    const Model* m3477 = find_model("3477");
+    const Model* m3486 = find_model("3486");
+    const Model* m3487 = find_model("3487");
+    REQUIRE(m3477);
+    REQUIRE(m3486);
+    REQUIRE(m3487);
+
+    // No ROMs: nothing can start, whatever is wanted; a wanted runnable
+    // model is reported so that its files can be named.
+    CHECK(ready_models(dirs.roms()).empty());
+    StartModel sm = choose_start_model("", dirs.roms());
+    CHECK(sm.model == nullptr);
+    CHECK(sm.wanted_unready == nullptr);
+    sm = choose_start_model("3487", dirs.roms());
+    CHECK(sm.model == nullptr);
+    CHECK(sm.wanted_unready == m3487);
+    const std::string text = unusable_roms_text(*m3487, dirs.roms());
+    CHECK(text.find(m3487->info().roms[0].file) != std::string::npos);
+    CHECK(text.find("missing") != std::string::npos);
+    CHECK(unusable_roms(*m3477, dirs.roms()).size() == m3477->info().roms.size());
+
+    // Only the 3486/3487 image (right size, unknown hash: usable): both of
+    // its models are ready, the 3477 is not, and one set is enough.
+    const RomSpec& shared = m3487->info().roms[0];
+    write_bytes(fs::path(dirs.roms()) / shared.file, std::vector<uint8_t>(shared.size, 0x11));
+    const auto ready = ready_models(dirs.roms());
+    REQUIRE(ready.size() == 2);
+    CHECK(ready[0] == m3486);
+    CHECK(ready[1] == m3487);
+    CHECK(unusable_roms_text(*m3487, dirs.roms()).empty());
+    sm = choose_start_model("", dirs.roms());
+    CHECK(sm.model == m3486);
+    CHECK(sm.wanted_unready == nullptr);
+    sm = choose_start_model("3487", dirs.roms());
+    CHECK(sm.model == m3487);
+    CHECK(sm.wanted_unready == nullptr);
+    // A profile for the 3477: it is named as wanted, and a ready model is
+    // still offered to start with.
+    sm = choose_start_model("3477", dirs.roms());
+    CHECK(sm.model == m3486);
+    CHECK(sm.wanted_unready == m3477);
+    // Only one of the 3477's two images: still not ready, and only the
+    // other one is listed.
+    const RomSpec& first = m3477->info().roms[0];
+    write_bytes(fs::path(dirs.roms()) / first.file, std::vector<uint8_t>(first.size, 0x22));
+    CHECK_FALSE(model_roms_ready(*m3477, dirs.roms()));
+    const auto lacking = unusable_roms(*m3477, dirs.roms());
+    REQUIRE(lacking.size() == m3477->info().roms.size() - 1);
+    CHECK(lacking[0].spec.file != first.file);
+    // Unknown and not yet runnable names are no preference.
+    sm = choose_start_model("3489", dirs.roms());
+    CHECK(sm.model == m3486);
+    CHECK(sm.wanted_unready == nullptr);
+    sm = choose_start_model("no-such-model", dirs.roms());
+    CHECK(sm.model == m3486);
+    CHECK(sm.wanted_unready == nullptr);
+}
+
 TEST_CASE("user folder: ROM status and import") {
     TempRoot tmp;
     UserDirs dirs(user_dirs_root(tmp.str()));

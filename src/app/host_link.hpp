@@ -51,6 +51,14 @@ public:
 
     bool bridge_available() const { return static_cast<bool>(bridge_); }
     const AppConfig& base() const { return base_; }
+    // The terminal became another model (Application::set_model): its name
+    // in the base configuration and its session limits, for the next
+    // connect().
+    void set_model(const std::string& name, unsigned max_sessions, int max_printers) {
+        base_.model = name;
+        max_sessions_ = max_sessions;
+        max_printers_ = max_printers;
+    }
 
     // Put the TN5250 bridge on the line with cfg's [twinax] and [tn5250]
     // settings, replacing the current controller (its sessions close).

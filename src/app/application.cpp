@@ -137,8 +137,9 @@ bool Application::configure(int argc, char** argv) {
 
 // ROMs and a machine built with these terminal options, reset; no Twinax
 // host yet.
-std::unique_ptr<Machine> Application::make_machine(const TerminalOptions& options, std::string& error) {
-    const ModelInfo& info = model_->info();
+std::unique_ptr<Machine> Application::make_machine(const Model& model, const TerminalOptions& options,
+                                                   std::string& error) {
+    const ModelInfo& info = model.info();
     std::vector<LoadedRom> roms;
     std::vector<std::string> warnings;
     if (!load_roms(cfg_.rom_dir, info.roms, info.known_bad_roms, cfg_.allow_bad_rom, roms, warnings, error))
@@ -148,7 +149,7 @@ std::unique_ptr<Machine> Application::make_machine(const TerminalOptions& option
     auto machine = std::make_unique<Machine>(info);
     machine->set_options(options);
     try {
-        model_->build(*machine, roms);
+        model.build(*machine, roms);
     } catch (const std::exception& e) {
         error = e.what();
         return nullptr;
@@ -162,23 +163,24 @@ bool Application::build_machine() {
     const ModelInfo& info = model_->info();
     std::string error;
 
-    std::unique_ptr<Machine> machine = make_machine(cfg_.terminal, error);
+    std::unique_ptr<Machine> machine = make_machine(*model_, cfg_.terminal, error);
     if (!machine) return fail(error);
     error = cfg_.twinax.validate(info.max_sessions, info.max_printer_sessions);
     if (!error.empty()) return fail(error);
 
     // The TN5250 bridge: the virtual workstation controller with one TN5250
     // session per display station (src/host/wsc/tn5250_bridge.hpp).
-    const std::string model_name = info.name;
+    bridge_model_ = std::make_shared<std::atomic<const Model*>>(model_);
+    auto bridge_model = bridge_model_;
     bridge_display_ = std::make_shared<std::atomic<DisplaySubtype>>(cfg_.terminal.display);
     auto display = bridge_display_;
     // The front end's TLS trust handler (HostLink::set_tls_trust_handler)
     // reaches each new bridge through the broker.
     auto trust = std::make_shared<TlsTrustBroker>();
-    Tn5250HostFactory bridge = [model_name, display, trust](const TwinaxConfig& tw, const Tn5250Config& tn,
+    Tn5250HostFactory bridge = [bridge_model, display, trust](const TwinaxConfig& tw, const Tn5250Config& tn,
                                                             std::string& err) {
         wsc::BridgeOptions bo;
-        bo.model = model_name;
+        bo.model = bridge_model->load()->info().name;
         bo.display = display->load();
         bo.tls_trust = trust->for_new_bridge();
         return wsc::make_tn5250_bridge(tw, tn, std::move(bo), err);
@@ -335,6 +337,18 @@ bool Application::set_display_subtype(DisplaySubtype to, std::string& error) {
 }
 
 bool Application::rebuild_machine(const TerminalOptions& options, std::string& error) {
+    return rebuild(*model_, options, error);
+}
+
+bool Application::set_model(const Model& model, const TerminalOptions& options, std::string& error) {
+    error = model.can_build();
+    if (error.empty() && model.info().status != ModelStatus::Bringup)
+        error = "model " + model.info().name + " cannot run yet (" + model_status_name(model.info().status) + ")";
+    if (!error.empty()) return false;
+    return rebuild(model, options, error);
+}
+
+bool Application::rebuild(const Model& model, const TerminalOptions& options, std::string& error) {
     if (!emu_) {
         error = "no machine";
         return false;
@@ -350,7 +364,7 @@ bool Application::rebuild_machine(const TerminalOptions& options, std::string& e
         std::string err;
         if (!m.flush_nonvolatile(err)) LOG_ERROR("nvram", "%s", err.c_str());
     });
-    std::unique_ptr<Machine> machine = make_machine(options, error);
+    std::unique_ptr<Machine> machine = make_machine(model, options, error);
     if (!machine) {
         LOG_ERROR("machine", "rebuild failed: %s", error.c_str());
         emu_->resume();
@@ -366,7 +380,16 @@ bool Application::rebuild_machine(const TerminalOptions& options, std::string& e
     old.reset();
     cfg_.terminal = options;
     if (bridge_display_) bridge_display_->store(options.display);
-    LOG_INFO("machine", "rebuilt with display %s; power on", display_subtype_name(options.display));
+    if (&model != model_) {
+        // Another terminal: new sessions announce its type, and its limits
+        // apply to the next connection.
+        model_ = &model;
+        cfg_.model = model.info().name;
+        if (bridge_model_) bridge_model_->store(model_);
+        host_link_->set_model(model.info().name, model.info().max_sessions, int(model.info().max_printer_sessions));
+    }
+    LOG_INFO("machine", "rebuilt as IBM %s with display %s; power on", model.info().name.c_str(),
+             display_subtype_name(options.display));
     emu_->resume();
     return true;
 }

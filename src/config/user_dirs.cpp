@@ -272,4 +272,46 @@ bool model_roms_ready(const Model& model, const std::string& rom_dir) {
     return true;
 }
 
+std::vector<const Model*> ready_models(const std::string& rom_dir) {
+    std::vector<const Model*> out;
+    for (const Model* m : runnable_models())
+        if (model_roms_ready(*m, rom_dir)) out.push_back(m);
+    return out;
+}
+
+std::vector<RomStatusRow> unusable_roms(const Model& model, const std::string& rom_dir) {
+    std::vector<RomStatusRow> out;
+    for (const RomSpec& spec : model.info().roms) {
+        RomStatusRow row;
+        row.model = model.info().name;
+        row.model_status = model_status_name(model.info().status);
+        row.spec = spec;
+        row.status = check_rom_file(rom_dir, spec, model.info().known_bad_roms);
+        if (!row.status.usable()) out.push_back(std::move(row));
+    }
+    return out;
+}
+
+std::string unusable_roms_text(const Model& model, const std::string& rom_dir) {
+    std::string text;
+    for (const RomStatusRow& r : unusable_roms(model, rom_dir)) {
+        text += r.spec.file + " - " + r.spec.label + ": " + rom_file_state_name(r.status.state);
+        if (!r.status.note.empty()) text += " (" + r.status.note + ")";
+        text += "\n";
+    }
+    return text;
+}
+
+StartModel choose_start_model(const std::string& wanted, const std::string& rom_dir) {
+    StartModel out;
+    const std::vector<const Model*> ready = ready_models(rom_dir);
+    if (!ready.empty()) out.model = ready.front();
+    for (const Model* m : runnable_models()) {
+        if (m->info().name != wanted) continue;
+        if (model_roms_ready(*m, rom_dir)) out.model = m;
+        else out.wanted_unready = m;
+    }
+    return out;
+}
+
 } // namespace em34xx

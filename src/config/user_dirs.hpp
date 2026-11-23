@@ -82,5 +82,28 @@ struct RomStatusRow {
 std::vector<RomStatusRow> rom_status(const std::string& rom_dir);
 // Whether every ROM `model` needs is present and loadable.
 bool model_roms_ready(const Model& model, const std::string& rom_dir);
+// The models that can run now: runnable_models() whose ROMs are all there.
+// A front end needs one of them to start; the others stay selectable once
+// their images are imported.
+std::vector<const Model*> ready_models(const std::string& rom_dir);
+// The ROMs `model` needs and cannot load from rom_dir (missing, unreadable,
+// wrong size, known bad); empty when it is ready.
+std::vector<RomStatusRow> unusable_roms(const Model& model, const std::string& rom_dir);
+// The same as text for a message, one line per image:
+// "54g0010.bin - system ROM (80000-FFFFF, reset vector): missing".
+std::string unusable_roms_text(const Model& model, const std::string& rom_dir);
+
+// Which terminal a front end starts as.
+struct StartModel {
+    // The model to run: the wanted one when it is ready, else the first
+    // ready model; null when no model has its ROMs.
+    const Model* model = nullptr;
+    // The wanted model when it is a runnable model whose ROMs are not all
+    // there (the user is told which files and may import them); else null.
+    const Model* wanted_unready = nullptr;
+};
+// `wanted`: the model a profile asks for ("" or an unknown or not yet
+// runnable name: no preference).
+StartModel choose_start_model(const std::string& wanted, const std::string& rom_dir);
 
 } // namespace em34xx
