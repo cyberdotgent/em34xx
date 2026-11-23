@@ -276,9 +276,10 @@ usages by position (`hid_from_keycode()`); modifiers come from
   Enter key is): the default keymap is **mac**, where **Return is Enter**
   (the key used most) and the key labelled *enter* (keypad Enter,
   fn+Return on laptops) is **Field Exit**; Shift+Return is New Line.
-  Keys the system keeps (Mission Control's Control+arrows, F11 Show
-  Desktop when set so) do not reach the terminal; change them in System
-  Settings > Keyboard or map other keys.
+  Observed (2026-11-23, by hand, against pub400.com): Return submits the
+  sign-on screen as Enter. Keys the system keeps (Mission Control's
+  Control+arrows, F11 Show Desktop when set so) do not reach the terminal;
+  change them in System Settings > Keyboard or map other keys.
 
 ## Ending
 
