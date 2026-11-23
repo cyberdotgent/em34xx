@@ -9,7 +9,7 @@ if(CMAKE_HOST_APPLE AND NOT CMAKE_OSX_DEPLOYMENT_TARGET AND NOT DEFINED ENV{MACO
 endif()
 
 project(em34xx
-  VERSION 0.2.0
+  VERSION 0.2.1
   DESCRIPTION "Hardware emulator for IBM 34xx-family 5250 terminals"
   LANGUAGES CXX)
 
