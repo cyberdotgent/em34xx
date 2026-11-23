@@ -45,6 +45,11 @@ You need CMake 3.21 or later, Ninja, a C++17 compiler and
 [vcpkg](https://vcpkg.io). TLS uses the system OpenSSL on Linux, SChannel
 on Windows and Network.framework on macOS.
 
+On Linux SDL is built against the system X11 and Wayland development
+packages, and needs libdecor's (`libdecor-devel` on Fedora, `libdecor-0-dev`
+on Debian and Ubuntu) to give the window a title bar and border on GNOME
+Wayland; CI's package list in `.github/workflows/ci.yml` is the full set.
+
 ```sh
 export VCPKG_ROOT=~/vcpkg
 cmake --preset release && cmake --build --preset release
