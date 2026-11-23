@@ -419,15 +419,25 @@ if(EM34XX_HAVE_COCOA)
   target_link_libraries(em34xx_frontend_cocoa PUBLIC em34xx_runtime
     PRIVATE em34xx_version_header "-framework AppKit" "-framework Carbon" "-framework Foundation")
 
-  # Icons from the PNG masters (tools/gen_macos_assets.py).
+  # Icons from tools/gen_macos_assets.py: the application icon is a ready
+  # iconset (every size drawn for itself), the document icon a PNG master that
+  # the build scales.
   set(_em34xx_icons)
+  set(_em34xx_cocoa_res ${PROJECT_SOURCE_DIR}/src/frontend/cocoa/res)
+  set(_em34xx_icon_source_em34xx ${_em34xx_cocoa_res}/em34xx.iconset)
+  set(_em34xx_icon_source_profile ${_em34xx_cocoa_res}/profile.png)
+  set(_em34xx_icon_depends_em34xx)
+  foreach(_size IN ITEMS 16x16 16x16@2x 32x32 32x32@2x 128x128 128x128@2x 256x256 256x256@2x 512x512 512x512@2x)
+    list(APPEND _em34xx_icon_depends_em34xx ${_em34xx_cocoa_res}/em34xx.iconset/icon_${_size}.png)
+  endforeach()
+  set(_em34xx_icon_depends_profile ${_em34xx_cocoa_res}/profile.png)
   foreach(_icon IN ITEMS em34xx profile)
     set(_icns ${PROJECT_BINARY_DIR}/cocoa/${_icon}.icns)
     add_custom_command(OUTPUT ${_icns}
-      COMMAND ${CMAKE_COMMAND} -DSOURCE=${PROJECT_SOURCE_DIR}/src/frontend/cocoa/res/${_icon}.png
+      COMMAND ${CMAKE_COMMAND} -DSOURCE=${_em34xx_icon_source_${_icon}}
         -DICONSET=${PROJECT_BINARY_DIR}/cocoa/${_icon}.iconset -DOUTPUT=${_icns}
         -P ${PROJECT_SOURCE_DIR}/src/frontend/cocoa/make_icns.cmake
-      DEPENDS ${PROJECT_SOURCE_DIR}/src/frontend/cocoa/res/${_icon}.png
+      DEPENDS ${_em34xx_icon_depends_${_icon}}
         ${PROJECT_SOURCE_DIR}/src/frontend/cocoa/make_icns.cmake
       COMMENT "Icon ${_icon}.icns"
       VERBATIM)

@@ -1,15 +1,20 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: GPL-3.0-or-later
-"""Generate the em34xx.app icons (original artwork) as 1024 px PNG masters.
+"""Generate the em34xx.app icons (original artwork).
 
 Writes into src/frontend/cocoa/res/:
-  em34xx.png    application icon: the em34xxw terminal glyph on the macOS
-                rounded-square plate (824 px plate on a 1024 px canvas)
-  profile.png   .em34xx document icon: the em34xxw document glyph
+  em34xx.iconset/  application icon, every size of an .icns drawn for itself:
+                   16, 32 and 64 px are em34xxw's own pixel drawings with no
+                   plate (16x16, 16x16@2x and 32x32, 32x32@2x); 128 px and up
+                   are the 64 px drawing on the macOS rounded-square plate
+                   (824/1024 of the canvas), each art pixel 10 px square at
+                   1024 px
+  profile.png      .em34xx document icon, a 1024 px master: the em34xxw
+                   document glyph
 
 The glyphs come from tools/gen_win32_assets.py, so both front ends show the
-same pictures. The build turns each PNG into an .icns with sips and iconutil
-(src/frontend/cocoa/make_icns.cmake). Rendering in pure Python takes a minute.
+same pictures. The build packs the iconset and scales the master into .icns
+files with iconutil and sips (src/frontend/cocoa/make_icns.cmake). Rendering in pure Python takes a minute.
 Run from the repository root: python3 tools/gen_macos_assets.py
 """
 import os
@@ -45,7 +50,8 @@ def app_icon():
     plate = w.rect(m, m, 1 - m, 1 - m, r)
     layers = [(shadow, (0, 0, 0, 70)),
               (plate, gradient((246, 243, 236, 255), (214, 207, 192, 255), m, 1 - m))]
-    return layers + placed(w.g_terminal(), 0.20, 0.19, 0.60)
+    # 64 art pixels of 10 px: 640 px, on whole pixels so the edges stay hard.
+    return layers + placed(w.g_terminal(64), 192 / 1024, 188 / 1024, 640 / 1024)
 
 
 def document_icon():
@@ -103,7 +109,19 @@ def write_png(path, rows):
 
 def main():
     os.makedirs(OUT, exist_ok=True)
-    write_png(os.path.join(OUT, "em34xx.png"), render(app_icon(), 1024))
+    iconset = os.path.join(OUT, "em34xx.iconset")
+    os.makedirs(iconset, exist_ok=True)
+    for points, scale in ((16, 1), (16, 2), (32, 1), (32, 2), (128, 1), (128, 2), (256, 1), (256, 2), (512, 1),
+                          (512, 2)):
+        pixels = points * scale
+        if pixels <= 64:
+            rows = [b"".join(bytes(c) if c else b"\x00\x00\x00\x00" for c in row)
+                    for row in w.terminal_pixels(pixels)]
+        else:
+            # More samples at the sizes where an art pixel is not a whole number.
+            rows = render(app_icon(), pixels, ss=4 if pixels < 512 else 2)
+        name = "icon_%dx%d%s.png" % (points, points, "@2x" if scale == 2 else "")
+        write_png(os.path.join(iconset, name), rows)
     write_png(os.path.join(OUT, "profile.png"), render(document_icon(), 1024))
 
 

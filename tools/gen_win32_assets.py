@@ -3,7 +3,11 @@
 """Generate the em34xxw icons and toolbar bitmaps (original artwork).
 
 Writes into src/frontend/win32/res/:
-  em34xxw.ico      application icon: a terminal (16, 24, 32, 48, 64 px)
+  em34xxw.ico      application icon: a 3477 as Windows 9x pixel art, drawn
+                   per size (16, 24, 32, 48, 64 px), and the 64 px
+                   drawing four times over at 256 px for Explorer's large views
+                   (stored uncompressed like the others, which windres is sure
+                   to take; a PNG entry would be smaller)
   profile.ico      .em34xx document icon (16, 32, 48 px)
   toolbar16.bmp    toolbar strip, 8 glyphs, 32-bit BGRA with alpha
   toolbar24.bmp    the same at 24 px (picked at 120-167 dpi)
@@ -13,7 +17,8 @@ Writes into src/frontend/win32/res/:
   status32.bmp
 
 The glyphs are drawn from simple shapes in unit coordinates with 4x4
-supersampling, so every size is rendered, not scaled. Toolbar order (must
+supersampling, so every size is rendered, not scaled; the application icon
+is pixel art instead (terminal_pixels). Toolbar order (must
 match the image indices in src/frontend/win32/win32_frontend.cpp):
   0 connect to profile, 1 new connection, 2 save, 3 disconnect, 4 settings,
   5 keymap, 6 reconnect, 7 reboot (power cycle)
@@ -191,15 +196,316 @@ def g_keymap():
             (rect(0.78, 0.60, 0.88, 0.69, 0.015), AMBER)]
 
 
-def g_terminal():
-    bezel = rect(0.04, 0.06, 0.96, 0.76, 0.08)
-    screen = rect(0.12, 0.13, 0.88, 0.66, 0.03)
-    text = union(rect(0.18, 0.21, 0.62, 0.26), rect(0.18, 0.32, 0.80, 0.37), rect(0.18, 0.43, 0.52, 0.48),
-                 rect(0.18, 0.54, 0.30, 0.59))
-    stand = poly([(0.40, 0.74), (0.60, 0.74), (0.68, 0.90), (0.32, 0.90)])
-    base = rect(0.22, 0.88, 0.78, 0.96, 0.03)
-    return [(stand, DARK), (base, DARK), (bezel, DARK), (rect(0.07, 0.09, 0.93, 0.73, 0.06), (214, 206, 186, 255)),
-            (screen, (12, 28, 16, 255)), (text, (80, 230, 110, 255))]
+# --- the application icon: pixel art -----------------------------------------
+#
+# A 3477 behind its keyboard, in the manner of a Windows 9x icon: one
+# drawing per size on the pixel grid, a black outline, a short fixed palette,
+# light from the top left and no anti-aliasing. Original artwork after
+# photographs of the terminal: beige cabinet, broad taupe bezel, the control
+# strip under the tube (grille, two blue keys, the power switch and its light) and the
+# 122-key keyboard in front, which hides the stand. The bezel block stands proud of the cabinet: the rear housing behind it
+# is lower, and the chassis with the control strip runs under both to the back. The badge is a blank plate; no maker's mark is drawn.
+
+PX_K = (0, 0, 0, 255)          # outline
+PX_W = (255, 251, 240, 255)    # highlight (the Windows palette's cream)
+PX_B = (216, 208, 184, 255)    # cabinet beige
+PX_S = (168, 160, 136, 255)    # cabinet in shadow
+PX_T = (140, 132, 112, 255)    # bezel taupe
+PX_D = (96, 90, 76, 255)       # bezel in shadow
+PX_G = (12, 36, 22, 255)       # the tube, dark
+PX_Y = (64, 240, 96, 255)      # phosphor, bright: green-screen green
+PX_O = (28, 128, 56, 255)      # phosphor, dim
+PX_U = (40, 88, 184, 255)      # the blue keys
+PX_N = (0, 0, 128, 255)        # badge
+
+# Per size: front face, the side (depth of the bezel block, depth of the rear
+# housing, how far the rear housing's top steps down), cabinet rim, bezel widths (side,
+# top, bottom), control strip and the details, all in pixels.
+# kbd is the keyboard: its box, how far the terminal moves up for it (kbd_dy)
+# and to the right, so that the keyboard's left end stands clear (term_dx),
+# the shear of its top (kbd_slope: rows to a pixel, 0 for none), the rows of
+# its front face and so of its right side too (kbd_face), the rows of keys, the bank of function keys above
+# the main block (first row, last row, first column, last column) and the
+# blocks of keys as column ranges; or kbd_caps, every key by itself. The key
+# columns are those of the near edge, before the shear.
+# Text rows are (row, first column, last column, colour) inside the screen:
+# a host menu (title, numbered options, rules, function keys, status row).
+def _keycaps_64():
+    """The 64 px keyboard key by key, before it is sheared: wells (the dark
+    ground of each block of keys) and caps (x0, x1, row, colour), one pixel a
+    key at a pitch of two. White keys and the grey ones of a 122-key keyboard,
+    the space bar, and the cursor keys as a cross."""
+    white, grey = PX_W, PX_S
+    rows = [50, 52, 54, 56, 58]
+    wells = [(2, 49, 6, 59), (8, 49, 36, 59), (46, 49, 55, 59),
+             # The cursor block: its two full rows, then only the cross.
+             (38, 49, 44, 53), (40, 53, 42, 59), (38, 55, 44, 57)]
+    caps = []
+    # The function keys: 2 rows of 12 with no gaps, three groups of four that
+    # differ in colour only (grey, white, grey), dark ground all round.
+    wells.append((10, 43, 34, 47))
+    for k in range(12):
+        x = 11 + 2 * k
+        caps += [(x, x, y, white if k // 4 == 1 else grey) for y in (44, 46)]
+    for y in rows:
+        caps += [(x, x, y, grey) for x in (3, 5)]       # the ten keys at the left
+        # The numeric pad: its top row and its right column are grey keys.
+        caps += [(x, x, y, grey if y == 50 or x == 53 else white) for x in (47, 49, 51, 53)]
+        for x in range(9, 36, 2):
+            if y == 58 and x not in (9, 13, 31, 35):
+                continue                                # the space bar and the gaps
+            is_grey = x in (9, 35) or y == 58       # one column of grey keys at each end
+            caps.append((x, x, y, grey if is_grey else white))
+    # The bottom row: key, a gap one key wide, key, the space bar, key, gap, key.
+    # The gaps are the keyboard's own colour, open to its near margin.
+    caps.append((15, 29, 58, white))
+    # The pad's tall key: the last two keys of its right column joined. Its
+    # lower end is a column to the right here, so that after the shear the key
+    # is one upright bar; the well is a column wider on the right to keep dark
+    # ground all round it.
+    caps += [(53, 53, 57, grey), (53, 53, 58, PX_D), (54, 54, 58, grey)]
+    caps += [(x, x, y, PX_B) for x in (11, 33) for y in (58, 59)]
+    for y, xs in ((50, (39, 41, 43)), (52, (39, 41, 43)), (54, (41,)), (56, (39, 41, 43)), (58, (41,))):
+        caps += [(x, x, y, grey) for x in xs]       # the cursor block is all grey keys
+    # One column to the left: the far edge reaches a column less far right
+    # now that the keyboard is a row deeper.
+    wells = [(x0 - 1, y0, x1 - 1, y1) for x0, y0, x1, y1 in wells]
+    caps = [(x0 - 1, x1 - 1, y, col) for x0, x1, y, col in caps]
+    return wells, caps
+
+
+TERMINAL_LAYOUT = {
+    # 16 px is drawn square on: no side, and a one-pixel bevelled rim for the
+    # whole of the cabinet front, so the screen is as large as it can be.
+    16: dict(front=(1, 0, 14, 10), side=(0, 0, 0), rim=1, bezel=(0, 0, 0), strip=(3, 10, 12, 12),
+             round=False, badge=None,
+             text=[(1, 1, 5, PX_Y), (3, 1, 7, PX_Y), (5, 1, 3, PX_Y)],
+             grille=[], keys=[(5, 5), (7, 7)], switch=(10, 10), strip_rows=(11, 11),
+             kbd=(0, 13, 15, 15), kbd_dy=0, kbd_slope=0, kbd_face=0, kbd_keys=(14, 14), kbd_f=None,
+             kbd_groups=[(1, 2), (4, 9), (11, 11), (13, 14)]),
+    24: dict(front=(1, 1, 18, 16), side=(2, 2, 2), rim=1, bezel=(1, 1, 2), strip=(4, 16, 18, 19),
+             round=False, badge=None,
+             text=[(1, 1, 2, PX_Y), (1, 5, 7, PX_Y), (3, 2, 2, PX_Y), (3, 4, 8, PX_Y), (5, 1, 10, PX_O),
+                   (7, 1, 3, PX_Y), (7, 5, 7, PX_Y)],
+             grille=[6], keys=[(8, 8), (10, 10)], switch=(12, 13), led=(15, 15, 17), strip_rows=(17, 17),
+             kbd=(0, 20, 23, 23), kbd_dy=0, kbd_slope=1, kbd_face=0, kbd_keys=(21, 22), kbd_f=None,
+             kbd_groups=[(2, 3), (5, 12), (14, 15), (17, 19)]),
+    32: dict(front=(2, 1, 24, 21), side=(3, 3, 3), rim=1, bezel=(2, 2, 3), strip=(5, 21, 24, 25),
+             round=True, badge=(5, 3, 7),
+             text=[(1, 1, 3, PX_Y), (1, 6, 9, PX_Y), (3, 3, 3, PX_Y), (3, 5, 10, PX_Y), (5, 3, 3, PX_Y),
+                   (5, 5, 8, PX_Y), (7, 1, 13, PX_O), (9, 1, 3, PX_Y), (9, 5, 8, PX_Y), (10, 12, 13, PX_O)],
+             grille=[7, 9], keys=[(11, 12), (14, 15)], switch=(17, 19), led=(21, 21, 23), strip_rows=(22, 23),
+             kbd=(0, 26, 31, 31), kbd_dy=0, kbd_slope=1, kbd_face=1, kbd_keys=(27, 29), kbd_f=None,
+             kbd_groups=[(2, 3), (5, 17), (19, 21), (23, 26)]),
+    48: dict(front=(3, 2, 36, 32), side=(4, 5, 5), rim=2, bezel=(3, 3, 4), strip=(8, 32, 36, 38),
+             round=True, badge=(8, 6, 12),
+             text=[(1, 1, 4, PX_Y), (1, 9, 14, PX_Y), (3, 1, 9, PX_Y), (5, 3, 3, PX_Y), (5, 5, 12, PX_Y),
+                   (7, 3, 3, PX_Y), (7, 5, 9, PX_Y), (9, 3, 3, PX_Y), (9, 5, 11, PX_Y), (9, 14, 18, PX_Y),
+                   (11, 1, 20, PX_O), (13, 1, 4, PX_Y), (13, 6, 10, PX_Y), (13, 12, 16, PX_Y), (15, 1, 20, PX_O),
+                   (16, 1, 1, PX_Y), (16, 18, 20, PX_O)],
+             grille=[10, 12, 14], keys=[(17, 19), (21, 23)], switch=(25, 28), led=(30, 30, 35), strip_rows=(34, 36),
+             kbd=(0, 37, 47, 47), kbd_dy=2, kbd_slope=2, kbd_face=2, kbd_keys=(41, 44), kbd_f=(38, 39, 7, 26),
+             kbd_groups=[(2, 4), (7, 26), (29, 33), (36, 41)]),
+    # 64 px has room for the keyboard key by key (kbd_caps); the larger sizes
+    # are enlargements of this drawing. The keyboard is the full width and the
+    # terminal smaller behind it, its left side over the first function key.
+    64: dict(front=(14, 0, 50, 34), side=(5, 6, 6), rim=2, bezel=(3, 4, 4), strip=(19, 34, 50, 40),
+             round=True, badge=(19, 4, 24),
+             text=[(1, 1, 5, PX_Y), (1, 10, 16, PX_Y), (3, 1, 11, PX_Y), (5, 4, 4, PX_Y), (5, 6, 14, PX_Y),
+                   (7, 4, 4, PX_Y), (7, 6, 10, PX_Y), (9, 4, 4, PX_Y), (9, 6, 13, PX_Y), (9, 16, 21, PX_Y),
+                   (12, 1, 3, PX_Y), (12, 5, 23, PX_O), (15, 1, 5, PX_Y), (15, 7, 12, PX_Y), (15, 14, 19, PX_Y),
+                   (17, 1, 23, PX_O), (19, 1, 1, PX_Y), (19, 20, 23, PX_O)],
+             grille=[21, 23, 25, 27], keys=[(30, 33), (35, 38)], switch=(40, 44), led=(46, 47, 37),
+             strip_rows=(36, 38),
+             kbd=(0, 41, 63, 63), kbd_dy=0, kbd_slope=3, kbd_face=2, kbd_caps=_keycaps_64()),
+}
+
+
+def terminal_pixels(n):
+    """The terminal at n x n: rows of colours, None where transparent."""
+    if n not in TERMINAL_LAYOUT:
+        return enlarged_terminal(n)
+    lay = TERMINAL_LAYOUT[n]
+    g = [[None] * n for _ in range(n)]
+
+    def box(x0, y0, x1, y1, c):
+        for y in range(y0, y1 + 1):
+            for x in range(x0, x1 + 1):
+                g[y][x] = c
+
+    def frame(x0, y0, x1, y1, c):
+        box(x0, y0, x1, y0, c)
+        box(x0, y1, x1, y1, c)
+        box(x0, y0, x0, y1, c)
+        box(x1, y0, x1, y1, c)
+
+    # The control strip under the tube.
+    x0, y0, x1, y1 = lay["strip"]
+    box(x0, y0, x1, y1, PX_K)
+    box(x0 + 1, y0 + 1, x1 - 1, y1 - 1, PX_B)
+    r0, r1 = lay["strip_rows"]
+    if y1 - 1 > r1:
+        box(x0 + 1, y1 - 1, x1 - 1, y1 - 1, PX_S)
+    if r0 > y0 + 1:
+        box(x0 + 1, y0 + 1, x1 - 1, r0 - 1, PX_S)      # in the shadow of the bezel block
+    for x in lay["grille"]:
+        box(x, r0, x, r1, PX_D)
+    for k0, k1 in lay["keys"]:
+        box(k0, r0, k1, r1, PX_U)
+    k0, k1 = lay["switch"]
+    box(k0, r0, k1, r1, PX_W)
+    if "led" in lay:
+        # The power light beside the switch, lit (first column, last column, row).
+        l0, l1, ly = lay["led"]
+        box(l0, ly, l1, ly, PX_Y)
+
+    # The side, falling away to the right. The bezel is a block that stands
+    # proud at the front; behind it the rear housing is lower, and under both
+    # the chassis that carries the control strip runs through to the back.
+    fx0, fy0, fx1, fy1 = lay["front"]
+    d1, d2, step = lay["side"]
+    chassis = lay["strip"][3]
+    for i in range(1, d1 + d2 + 2 if d1 else 1):
+        inset = i // 2      # the edges leave from the front's own corners
+        x = fx1 + i
+        # The chassis' lower edge climbs steeply from the strip's corner, then
+        # runs back a little below the underside of the bezel block.
+        under = fy1 - inset
+        bottom = max(under + 2, chassis - 2 * i)
+        if i <= d1:
+            top = fy0 + inset
+            box(x, top, x, under, PX_B if i == 1 and d1 > 1 else PX_S)
+            g[under][x] = PX_K
+        else:
+            top = fy0 + inset + step
+            box(x, top, x, under, PX_S)
+            if i == d1 + 1:
+                # The back edge of the bezel block: a line down its whole height
+                # where there is a column to spare, else only the step.
+                box(x, fy0 + inset, x, under if d2 > 1 else top, PX_K)
+        box(x, under + 1, x, bottom, PX_S)
+        # Under that edge the base of the chassis is set back: a darker band
+        # from the strip's corner to the back, darkest right under the edge.
+        lower = max(chassis - i // 2, bottom + 2) if n >= 24 else bottom
+        if lower > bottom:
+            box(x, bottom + 1, x, lower, PX_T)
+            g[bottom + 1][x] = PX_D
+            g[lower][x] = PX_K
+        if i == d1 + d2 + 1:
+            box(x, top, x, lower, PX_K)
+        g[top][x] = g[bottom][x] = PX_K
+
+    # The front: cabinet rim, bezel, tube.
+    box(fx0, fy0, fx1, fy1, PX_K)
+    x0, y0, x1, y1 = fx0 + 1, fy0 + 1, fx1 - 1, fy1 - 1
+    rim = lay["rim"]
+    if rim:
+        box(x0, y0, x1, y1, PX_B)
+        box(x0, y1, x1, y1, PX_S)
+        box(x1, y0, x1, y1, PX_S)
+        box(x0, y0, x1 - 1, y0, PX_W)
+        box(x0, y0, x0, y1 - 1, PX_W)
+        x0, y0, x1, y1 = x0 + rim, y0 + rim, x1 - rim, y1 - rim
+    box(x0, y0, x1, y1, PX_T)
+    bs, bt, bb = lay["bezel"]
+    sx0, sy0, sx1, sy1 = x0 + bs, y0 + bt, x1 - bs, y1 - bb
+    if bs >= 2:
+        # The bezel slopes in to the glass: dark where it faces away from the light.
+        frame(sx0 - 1, sy0 - 1, sx1 + 1, sy1 + 1, PX_S)
+        box(sx0 - 1, sy0 - 1, sx1 + 1, sy0 - 1, PX_D)
+        box(sx0 - 1, sy0 - 1, sx0 - 1, sy1, PX_D)
+    box(sx0, sy0, sx1, sy1, PX_G)
+    if lay["round"]:
+        g[sy0][sx0] = g[sy0][sx1] = g[sy1][sx0] = PX_D
+        g[sy1][sx1] = PX_S
+    for row, c0, c1, col in lay["text"]:
+        box(sx0 + c0, sy0 + row, sx0 + c1, sy0 + row, col)
+    if lay["badge"]:
+        bx0, by, bx1 = lay["badge"]
+        box(bx0, by, bx1, by, PX_K)
+        box(bx0 + 1, by, bx0 + 1 + (bx1 - bx0 > 2), by, PX_N)
+    # The keyboard, a 122-key one lying on the desk in front: ten keys at the
+    # left, the main block with the bank of function keys above it, the cursor
+    # keys, the numeric pad. Its top is drawn in the terminal's own
+    # projection, the depth running off to the right: each row further back
+    # sits further right, over a front face that stands upright. The terminal
+    # moves up where the keyboard needs the room.
+    dy, dx = lay["kbd_dy"], lay.get("term_dx", 0)
+    g = [[None] * dx + row[:n - dx] for row in g[dy:]] + [[None] * n for _ in range(dy)]
+    x0, y0, x1, y1 = lay["kbd"]
+    slope, face = lay["kbd_slope"], lay["kbd_face"]
+    near = y1 - 1 - face                    # the top's nearest row
+
+    def shift(y):
+        return (near - y) // slope if slope and y < near else 0
+
+    right = x1 - shift(y0) - (1 if face else 0)     # a column for the side's own edge
+    flat = [[None] * n for _ in range(n)]   # the keyboard before the shear
+
+    def kbox(bx0, by0, bx1, by1, c):
+        for y in range(by0, by1 + 1):
+            flat[y][bx0:bx1 + 1] = [c] * (bx1 - bx0 + 1)
+
+    kbox(x0, y0, right, y1, PX_K)
+    kbox(x0 + 1, y0 + 1, right - 1, near, PX_B)
+    if face:
+        kbox(x0 + 1, near + 1, right - 1, y1 - 1, PX_S)
+    if "kbd_caps" in lay:
+        wells, caps = lay["kbd_caps"]
+        for wx0, wy0, wx1, wy1 in wells:
+            kbox(wx0, wy0, wx1, wy1, PX_D)
+        for cx0, cx1, cy, col in caps:
+            kbox(cx0, cy, cx1, cy, col)
+    else:
+        k0, k1 = lay["kbd_keys"]
+        blocks = [(k0, k1, c0, c1) for c0, c1 in lay["kbd_groups"]]
+        if lay["kbd_f"]:
+            blocks.append(lay["kbd_f"])
+        for r0, r1, c0, c1 in blocks:
+            for y in range(r0, r1 + 1):
+                for x in range(c0, c1 + 1):
+                    # A checker in the sheared picture, not before it.
+                    flat[y][x] = PX_W if (x + shift(y) + y) % 2 == 0 else PX_T
+    for y in range(y0, y1 + 1):
+        for x in range(x0, right + 1):
+            if flat[y][x]:
+                g[y][x + shift(y)] = flat[y][x]
+    # The right side has the front face's depth and its colour: the top's
+    # right edge drawn again that many rows lower, and the band from the one
+    # to the other filled, with no line between the top and the side.
+    # Its outline keeps the top edge's even steps all the way down past the
+    # front face, and the far corner is squared off.
+    if face:
+        g[y0][right + shift(y0) + 1] = PX_K
+        for y in range(y0 + 1, y1):
+            edge = right + shift(min(y, near))
+            low = right + shift(max(y - face, y0))
+            for x in range(edge, low + 1):
+                g[y][x] = PX_S
+            g[y][low + 1] = PX_K
+    return g
+
+
+def enlarged_terminal(n):
+    """A size with no drawing of its own: the largest drawing that divides it,
+    every pixel a k x k square, never a fractional scale (96 is the 48 px
+    drawing; 128, 192, 256 and 512 are the 64 px one)."""
+    base = max(s for s in TERMINAL_LAYOUT if n % s == 0)
+    k = n // base
+    return [[c for c in row for _ in range(k)] for row in terminal_pixels(base) for _ in range(k)]
+
+
+def pixel_glyph(grid):
+    """A pixel drawing as glyph layers, one per colour, for the shape renderers."""
+    n = len(grid)
+
+    def layer(col):
+        return lambda x, y: 0 <= x < 1 and 0 <= y < 1 and grid[int(y * n)][int(x * n)] == col
+    return [(layer(col), col) for col in sorted({c for row in grid for c in row if c})]
+
+
+def g_terminal(size=48):
+    return pixel_glyph(terminal_pixels(size))
 
 
 def g_document():
@@ -270,7 +576,8 @@ def dib(rows, mask=False):
 
 
 def write_ico(path, glyph, sizes):
-    images = [dib(render(glyph, s), mask=True) for s in sizes]
+    """glyph: layers, or a function of the size for art drawn per size."""
+    images = [dib(render(glyph(s) if callable(glyph) else glyph, s), mask=True) for s in sizes]
     out = bytearray(struct.pack("<HHH", 0, 1, len(sizes)))
     offset = 6 + 16 * len(sizes)
     for s, img in zip(sizes, images):
@@ -292,7 +599,7 @@ def write_strip(path, glyphs, size):
 
 def main():
     os.makedirs(OUT, exist_ok=True)
-    write_ico(os.path.join(OUT, "em34xxw.ico"), g_terminal(), [16, 24, 32, 48, 64])
+    write_ico(os.path.join(OUT, "em34xxw.ico"), g_terminal, [16, 24, 32, 48, 64, 256])
     write_ico(os.path.join(OUT, "profile.ico"), g_document(), [16, 32, 48])
     glyphs = [g_profiles(), g_new_connection(), g_save(), g_disconnect(), g_settings(), g_keymap(), g_connect(),
               g_reboot()]
