@@ -25,6 +25,7 @@ to = "none"
 
 [[map]]
 host = "Enter"
+mods = "*"
 to = "enter"
 
 [[map]]
@@ -56,6 +57,11 @@ to = "newline"
 host = "Tab"
 mods = "shift"
 to = "backtab"
+
+[[map]]
+host = "i"
+mods = "ctrl"
+to = "tab"
 
 [[map]]
 host = "PageDown"
@@ -126,6 +132,7 @@ to = "insert"
 
 [[map]]
 host = "Delete"
+mods = "*"
 to = "delete"
 
 [[map]]

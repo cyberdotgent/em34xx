@@ -249,21 +249,28 @@ const BuiltinRule kMacOverrides[] = {
 // Toggle, Refresh and Quit (functions of that program, not terminal keys)
 // and + / - as Field Plus / Field Minus inside signed numeric fields (the
 // terminal's firmware, not the keymap, knows the field). Ours, marked below:
-// Esc and the keypad as in "pcomm", Shift+Return, and Alt+1..0 for F1-F10
-// (the manual's row for them is blank; inferred from its Alt+- = F11).
+// Esc and the keypad as in "pcomm", and Shift+Return. The manual's row for
+// F1 - F10 reads "M-1 to M-" with the last key missing: Alt+1..9 for F1-F9
+// are documented, Alt+0 for F10 is a hypothesis (the next key of the digit
+// row, before its Alt+- = F11).
 const BuiltinRule kTn5250Rules[] = {
     // Ctrl only selects rules here. Without these the Ctrl keys would press
     // the terminal keys at their positions (Reset and Enter on the 122-key
     // keyboard) at the start of every chord.
     {"lctrl", "*", "none", false, ""},
     {"rctrl", "*", "none", false, ""},
-    {"enter", "", "enter", false, ""},
+    // Return and Delete with any modifier: a rule with no modifiers would
+    // leave Ctrl+Return, Shift+Delete and the like to the keys at those
+    // positions (Field Exit, New Line). The rules that name a modifier
+    // (Shift+Return, Alt+Delete) are more specific and still win.
+    {"enter", "*", "enter", false, ""},
     {"kpenter", "*", "enter", false, ""},
     {"j", "ctrl", "enter", false, ""},
     {"m", "ctrl", "enter", false, ""},
     {"j", "ctrl alt", "newline", false, ""},
     {"enter", "shift", "newline", false, ""},     // ours
     {"tab", "shift", "backtab", false, ""},
+    {"i", "ctrl", "tab", false, ""},              // Next Field
     {"pagedown", "*", "rollup", false, ""},
     {"d", "ctrl", "rollup", false, ""},
     {"f", "ctrl", "rollup", false, ""},
@@ -277,7 +284,7 @@ const BuiltinRule kTn5250Rules[] = {
     {"insert", "*", "insert", false, ""},
     {"i", "alt", "insert", false, ""},
     {"delete", "alt", "insert", false, ""},
-    {"delete", "", "delete", false, ""},
+    {"delete", "*", "delete", false, ""},
     {"r", "ctrl", "reset", false, ""},
     {"r", "alt", "reset", false, ""},
     {"p", "ctrl", "print", false, ""},
@@ -299,10 +306,10 @@ const BuiltinRule kTn5250Rules[] = {
     {"escape", "shift", "sysrq", false, ""},      // ours (pcomm)
     {"kpplus", "*", "field+", false, ""},         // ours (pcomm)
     {"kpminus", "*", "field-", false, ""},        // ours (pcomm)
-    {"1", "alt", "f1", false, ""}, {"2", "alt", "f2", false, ""}, {"3", "alt", "f3", false, ""},   // inferred
+    {"1", "alt", "f1", false, ""}, {"2", "alt", "f2", false, ""}, {"3", "alt", "f3", false, ""},
     {"4", "alt", "f4", false, ""}, {"5", "alt", "f5", false, ""}, {"6", "alt", "f6", false, ""},
     {"7", "alt", "f7", false, ""}, {"8", "alt", "f8", false, ""}, {"9", "alt", "f9", false, ""},
-    {"0", "alt", "f10", false, ""},
+    {"0", "alt", "f10", false, ""},               // hypothesis
     {"minus", "alt", "f11", false, ""}, {"equals", "alt", "f12", false, ""},
     // M-! to M-+: Alt with the shifted digit row.
     {"1", "alt shift", "f13", false, ""}, {"2", "alt shift", "f14", false, ""},

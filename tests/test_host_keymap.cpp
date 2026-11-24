@@ -388,7 +388,7 @@ TEST_CASE("keymap files: built-ins written out match") {
 
 TEST_CASE("tn5250 keymap: Return is Enter, functions on Ctrl and Alt chords") {
     constexpr uint32_t kLCtrlKey = 0xE0, kRCtrlKey = 0xE4, kLAltKey = 0xE2, kLShiftKey = 0xE1;
-    constexpr uint32_t kC = 0x06, kH = 0x0B, kJ = 0x0D, kK = 0x0E, kR = 0x15, kX = 0x1B, kZ = 0x1D;
+    constexpr uint32_t kC = 0x06, kH = 0x0B, kI = 0x0C, kJ = 0x0D, kK = 0x0E, kR = 0x15, kX = 0x1B, kZ = 0x1D;
     constexpr uint32_t k1 = 0x1E, kMinus = 0x2D, kKpEnter = 0x58, kKpPlus = 0x57, kF11 = 0x44;
     for (KeyboardType type : {KeyboardType::Terminal122, KeyboardType::Enhanced}) {
         Rig tn(type, "tn5250"), pc(type, "pcomm");
@@ -445,6 +445,33 @@ TEST_CASE("tn5250 keymap: Return is Enter, functions on Ctrl and Alt chords") {
         const Ev sysrq = chord(kLCtrlKey, kC);
         CHECK_FALSE(sysrq.empty());
         CHECK(sysrq.front() != "+11");
+
+        // Return and Delete keep their terminal key whatever modifier is
+        // held (review of PR 3: with a modifier they fell through to the
+        // keys at their positions, Field Exit and New Line). A held Shift
+        // or Alt presses its own terminal key, released around the function
+        // key; Ctrl presses nothing.
+        auto held = [](const char* mod, Ev inner) {
+            Ev v{std::string("+") + mod, std::string("-") + mod};
+            v.insert(v.end(), inner.begin(), inner.end());
+            v.insert(v.end(), {std::string("+") + mod, std::string("-") + mod});
+            return v;
+        };
+        tn.tap(kDelete);
+        const Ev del = tn.take();
+        CHECK(del == pcomm(kDelete));
+        CHECK(chord(kLCtrlKey, kDelete) == del);
+        CHECK(chord(kRCtrlKey, kDelete) == del);
+        CHECK(chord(kLShiftKey, kDelete) == held("12", del));
+        CHECK(chord(kLCtrlKey, kEnter) == enter);
+        CHECK(chord(kRCtrlKey, kEnter) == enter);
+        CHECK(chord(kLAltKey, kEnter) == alt(enter));
+        // The more specific rules still win: Alt+Delete is Insert.
+        CHECK(chord(kLAltKey, kDelete) == alt(pcomm(kInsert)));
+
+        // Ctrl+I: Next Field, the Tab key.
+        CHECK(chord(kLCtrlKey, kI) == pcomm(kTab));
+        CHECK(chord(kRCtrlKey, kI) == pcomm(kTab));
 
         // Ctrl+Alt+J: New Line, as PCOMM's Shift+Enter between the Shift keys.
         pc.key(kLShiftKey, true);
