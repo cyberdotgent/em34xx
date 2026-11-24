@@ -158,7 +158,7 @@ struct DisplayRig {
     TerminalOptions opts;
     DisplayController disp;
 
-    explicit DisplayRig(const DisplayLayout& layout) : disp(bus, layout, false, true) {
+    explicit DisplayRig(const DisplayLayout& layout, bool colour = false) : disp(bus, layout, colour, true) {
         bus.map_ram("ram", 0, 0x20000);
         bus.map_mmio("display", 0x20100, 0x100, &disp);
         disp.set_clock_hz(kClock);
@@ -260,7 +260,7 @@ TEST_CASE("3486 display: writes to the screen are tracked and dots are widened b
                  {0x34, 0x00}, {0x35, 0x6E}, {0x28, on}})
             r->bus.mem_write8(0x20100 + rv.first, rv.second);
         r->bus.poke8(0x18000 + 0x41 * 32u, 0x20);   // dot 2 of line 0
-        r->bus.poke8(0xC200 + 1, 0x20);
+        r->bus.poke8(0xC200 + 1, 0x00);   // a plain cell (20 is non-display on the 3486 family)
     }
     auto lit = [](DisplayRig& r) {
         Framebuffer fb;
@@ -376,6 +376,60 @@ void eeprom_write(I2cEeprom& e, uint8_t address, uint8_t value) {
     e.i2c_stop();
 }
 } // namespace
+
+TEST_CASE("3486 family display: colour guns in the extension byte, non-display in the attribute") {
+    // One solid glyph in a 24x80 screen of 12-dot cells, picture on (20128
+    // bit 6); cell = character, attribute, extension.
+    auto rig = [](DisplayRig& r) {
+        auto reg = [&](uint32_t n, uint8_t v) { r.bus.mem_write8(0x20100 + n, v); };
+        reg(0x0F, 20);
+        reg(0x14, 25);
+        reg(0x15, 24);
+        reg(0x2A, 0x01);
+        reg(0x31, 0x42);
+        reg(0x35, 0x6E);
+        reg(0x28, 0x40);
+        for (int line = 0; line < 21; ++line) r.bus.poke8(0x18000 + 0xC1 * 32 + uint32_t(line), 0xFF);
+    };
+    auto cell = [](DisplayRig& r, int col, uint8_t attr, uint8_t ext) {
+        r.bus.poke8(0xC200 + uint32_t(col) * 3, 0xC1);
+        r.bus.poke8(0xC200 + uint32_t(col) * 3 + 1, attr);
+        r.bus.poke8(0xC200 + uint32_t(col) * 3 + 2, ext);
+    };
+    auto at = [](const Framebuffer& fb, int col) { return fb.pixels[size_t(col * 24 + 4)]; };
+    auto red_of = [](uint32_t c) { return (c >> 16) & 0xFF; };
+    auto green_of = [](uint32_t c) { return (c >> 8) & 0xFF; };
+    auto blue_of = [](uint32_t c) { return c & 0xFF; };
+
+    DisplayRig c(kDisplayLayout3486, true);
+    rig(c);
+    cell(c, 0, 0x00, 0x04);   // green
+    cell(c, 1, 0x00, 0x02);   // blue
+    cell(c, 2, 0x00, 0x08);   // red
+    cell(c, 3, 0x00, 0x0C);   // yellow
+    cell(c, 4, 0x00, 0x0E);   // white
+    cell(c, 5, 0x20, 0x04);   // non-display
+    Framebuffer fb;
+    c.disp.render(fb);
+    REQUIRE(fb.width == 80 * 24);
+    CHECK(green_of(at(fb, 0)) > red_of(at(fb, 0)));
+    CHECK(blue_of(at(fb, 1)) > red_of(at(fb, 1)));
+    CHECK(red_of(at(fb, 2)) > green_of(at(fb, 2)));
+    CHECK(blue_of(at(fb, 3)) < green_of(at(fb, 3)));
+    CHECK(red_of(at(fb, 3)) > 0x80);
+    CHECK(blue_of(at(fb, 4)) > 0x80);
+    CHECK(red_of(at(fb, 4)) > 0x80);
+    CHECK(at(fb, 5) == 0xFF000000u);
+
+    // The monochrome unit hides the same way.
+    DisplayRig m(kDisplayLayout3486);
+    rig(m);
+    cell(m, 0, 0x00, 0x00);
+    cell(m, 1, 0x20, 0x00);
+    m.disp.render(fb);
+    CHECK(at(fb, 0) != 0xFF000000u);
+    CHECK(at(fb, 1) == 0xFF000000u);
+}
 
 TEST_CASE("3486 colour unit: the alignment stand-in marks EEPROM byte 30 once the firmware initialises it") {
     std::string err;

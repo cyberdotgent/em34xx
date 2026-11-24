@@ -21,7 +21,7 @@ struct Rig {
     TerminalOptions opts;
     DisplayController disp;
 
-    explicit Rig(bool colour = false) : disp(bus, kDisplayLayout3477, colour, true) {
+    explicit Rig(bool colour = false) : disp(bus, colour ? kDisplayLayout3477Colour : kDisplayLayout3477, colour, true) {
         bus.map_ram("ram", 0, 0x20000);
         bus.map_mmio("display", 0x20100, 0x100, &disp);
     }
@@ -137,7 +137,8 @@ TEST_CASE("3477 display: attributes, font 2 and the status line") {
     r.bus.poke8(0x1C000 + 0x05 * 32, 0xFF);   // font 2 glyph 05: line 0 solid
     r.cell(0xC200, 0, 0, 0xC1, 0x22);           // high intensity
     r.cell(0xC200, 0, 1, 0xC1, 0x21);           // reverse
-    r.cell(0xC200, 0, 2, 0xC1, 0x27);           // non-display
+    r.cell(0xC200, 0, 2, 0xC1, 0x00);           // non-display: extension bit 7
+    r.bus.poke8(0xC200 + 2 * 3 + 2, 0x80);
     r.cell(0xC200, 0, 3, 0xC1, 0x24);           // underline
     r.cell(0xC200, 0, 4, 0x05, 0xA0);           // font 2
     r.cell(0xEE00, 0, 0, 0xC1, 0x00);           // status line
@@ -168,23 +169,40 @@ TEST_CASE("3477 display: attributes, font 2 and the status line") {
 }
 
 TEST_CASE("3477 display: colour attributes") {
+    // The colour unit: picture on with 20128 bit 6, two pixels per dot.
     Rig r(true);
     r.mode_80x24_12px();
+    r.reg(0x28, 0x40);
     r.bus.poke8(0x18000 + 0xC1 * 32, 0xFF);
-    const uint8_t attrs[] = {0x20, 0x22, 0x28, 0x30, 0x32, 0x38, 0x3A};
+    // Gun bits: 02 red, 20 green, 40 blue (green, white, red, turquoise,
+    // yellow, pink, blue).
+    const uint8_t attrs[] = {0x20, 0x62, 0x02, 0x60, 0x22, 0x42, 0x40};
     for (int i = 0; i < 7; ++i) r.cell(0xC200, 0, i, 0xC1, attrs[i]);
+    // Red, reversed and underlined (07) is shown; a non-display cell has
+    // bit 7 of its third byte set.
+    r.cell(0xC200, 0, 8, 0xC1, 0x07);
+    r.cell(0xC200, 0, 9, 0xC1, 0x20);
+    r.bus.poke8(0xC200 + 9 * 3 + 2, 0x80);
     Framebuffer fb;
     r.disp.render(fb);
+    REQUIRE(fb.width == 80 * 12 * 2);
     std::vector<uint32_t> seen;
     for (int i = 0; i < 7; ++i) {
-        const uint32_t c = px(fb, i * 12 + 3, 0);
+        const uint32_t c = px(fb, (i * 12 + 3) * 2, 0);
         CHECK(c != kBlack);
         for (uint32_t s : seen) CHECK(c != s);   // seven distinct colours
         seen.push_back(c);
     }
-    const uint32_t green = seen[0], red = seen[2];
-    CHECK(((green >> 8) & 0xFF) > ((green >> 16) & 0xFF));
-    CHECK(((red >> 16) & 0xFF) > ((red >> 8) & 0xFF));
+    auto red_of = [](uint32_t c) { return (c >> 16) & 0xFF; };
+    auto green_of = [](uint32_t c) { return (c >> 8) & 0xFF; };
+    auto blue_of = [](uint32_t c) { return c & 0xFF; };
+    const uint32_t green = seen[0], red = seen[2], yellow = seen[4], blue = seen[6];
+    CHECK(green_of(green) > red_of(green));
+    CHECK(red_of(red) > green_of(red));
+    CHECK(blue_of(blue) > red_of(blue));
+    CHECK(blue_of(yellow) < green_of(yellow));
+    CHECK(px(fb, (8 * 12 + 3) * 2, 5) == red);      // reversed: the cell's background
+    CHECK(px(fb, (9 * 12 + 3) * 2, 0) == kBlack);
 }
 
 TEST_CASE("3477 display: blink and cursor") {

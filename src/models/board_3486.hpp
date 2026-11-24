@@ -56,6 +56,12 @@ constexpr DisplayLayout kDisplayLayout3486 = {
     // 80-column line: the beam is as wide as there, not narrower because
     // the dots are fewer [hypothesis].
     1280,
+    // Colour unit: guns in the extension byte, blue 02, green 04, red 08
+    // [observed on a host screen: blue 02, green 04, red 08, yellow 0C,
+    // white 0E, and a blue status line; turquoise 06 and pink 0A follow,
+    // not seen]. Non-display, monochrome units too: attribute bit 5
+    // [observed: a password field on both].
+    {2, 0x08, 0x04, 0x02, 1, 0x20},
 };
 
 } // namespace em34xx

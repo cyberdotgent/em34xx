@@ -373,9 +373,9 @@ Without `--straps`, the strap code is the variant's (docs/models.md):
 `3486-BA` -> `42` (type 2), `3487-HG` -> `4A` (HG0/HA0, types 3/4),
 `3487-HC` -> `4C` (HC0, type 6). The phosphor of a monochrome variant does
 not change it; the firmware's paper-white type (`48`, HW0, type 5) is
-reachable only with `--straps 48`. Colour cells are drawn with the 5250
-colour decoding of the 3477 model (hypothesis); only the single-colour
-setup screen has been seen so far, so the colours are unverified.
+reachable only with `--straps 48`. Colour cells carry one bit per gun in
+their extension byte, and a non-display cell has attribute bit 5 set
+(observed on a host's sign-on screen; docs/bringup-3477.md, "Screen cells").
 
 ## Battery-backed RAM and EEPROM
 

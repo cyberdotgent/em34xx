@@ -86,6 +86,18 @@ struct DisplayLayout {
     // whatever the dot count of the mode shown. 0 = the spread is per dot of
     // whatever is shown.
     unsigned beam_reference_dots;
+    // What differs in the cells. A cell is three bytes: character,
+    // attribute, extension.
+    //  - Colour units: one bit per gun, all in the attribute byte or all in
+    //    the extension byte. Zero on a board without a colour unit.
+    //  - All units: the bit that makes a cell non-display.
+    struct Cells {
+        uint8_t gun_byte;      // 1 = attribute, 2 = extension
+        uint8_t red, green, blue;
+        uint8_t hidden_byte;   // 1 = attribute, 2 = extension
+        uint8_t hidden;
+    };
+    Cells cells;
 };
 
 class DisplayController : public Device, public DisplaySource {

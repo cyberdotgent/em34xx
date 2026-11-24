@@ -385,6 +385,38 @@ firmware can boot:
 Remove the table and implement the real function as soon as single-dot
 signatures (above) or the gate array's documentation are available.
 
+### Screen cells: attributes, colour and non-display
+
+A cell is three bytes: character, attribute, extension. Read from the
+cells the firmware writes for a TN5250 host's sign-on screen that uses
+green, white, red, yellow and blue blocks, column separators, an underlined
+field and a password field, compared with IBM PCOMM's picture of the same
+screen (observed unless marked):
+
+| | 3477 (both ROM pairs) | 3486 family |
+| --- | --- | --- |
+| Reverse, underline, column separators | attribute bits 0, 2, 4 | the same |
+| High intensity, monochrome units | attribute bit 1 | attribute bit 1 |
+| Blink | attribute bit 3 (hypothesis) | the same (hypothesis) |
+| Font 2 | attribute bit 7 | the same |
+| Colour guns, colour units | attribute: red `02`, green `20`, blue `40` | extension: blue `02`, green `04`, red `08` |
+| Non-display, all units | extension bit 7 | attribute bit 5 |
+
+- Colours are the gun combinations: yellow is red + green (`22` / `0C`),
+  white all three (`62` / `0E`). Turquoise and pink follow (hypothesis; not
+  on that screen). A cell with no gun has not been seen and is drawn green.
+- The status line's cells are blue on both colour units; the rule above it
+  is drawn blue too (hypothesis: its colour is in no register seen).
+- The monochrome 3477 writes attribute `20` for some plain cells and `00`
+  for others; they are drawn alike.
+- The colours are in the cells: nothing was found to come from the
+  EEPROM or the setup values. The shades are the emulator's own choice.
+- Each board states its bits in its display description
+  (`DisplayLayout::Cells`, `src/models/board_*.hpp`).
+- Before this was read from a colour firmware, the model guessed the
+  colour from attribute bits 4-1 and hid cells with 7 in bits 2-0. That
+  drew blue as green and red as white, and showed non-display fields.
+
 ### Keyboard interface (`20012-20014`)
 
 A byte-wide shift register on the keyboard's clock and data lines, connected

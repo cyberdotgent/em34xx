@@ -46,6 +46,9 @@ constexpr DisplayLayout kDisplayLayout3477 = {
     {0x28, 0x80},   // cursor_on
     false,          // half_dot_stretch: its strokes are two dots wide in the generator
     0,              // beam_reference_dots: the spread was tuned per dot on this tube
+    // cells: no guns (a monochrome unit); non-display is extension bit 7
+    // [observed: a password field], as on the colour unit.
+    {0, 0, 0, 0, 2, 0x80},
 };
 
 // The colour unit: the same controller, but its firmware keeps 20128 bit 4
@@ -67,6 +70,11 @@ constexpr DisplayLayout kDisplayLayout3477Colour = {
     {0x28, 0x80},   // cursor_on
     true,           // half_dot_stretch
     1280,           // beam_reference_dots
+    // Guns in the attribute byte: red 02, green 20, blue 40 [observed on a
+    // host screen: green 20, blue 40, red 02, yellow 22, white 62, and a
+    // blue status line; turquoise 60 and pink 42 follow, not seen].
+    // Non-display: extension bit 7 [observed: a password field].
+    {1, 0x02, 0x20, 0x40, 2, 0x80},
 };
 
 } // namespace em34xx

@@ -72,37 +72,29 @@ struct CellLook {
     bool font2 = false;
 };
 
-// Attribute byte. Observed values: 20 for cleared screen cells, 21 for the
-// one reverse cell of the power-on display test, A0 for a character that
-// the firmware takes from the second font, 00 and 40 in the status line.
-// Bit 7 selects font 2 [obs]. Bits 4..0 are taken to be the 5250 screen
-// attribute (20h + bits) [hyp]: bit0 reverse, bit1 high intensity, bit2
-// underline, bit3 blink, bit4 column separators, with 7 in bits 2..0 meaning
-// non-display. On colour units the same bits select the 5250 colours.
-// Bits 6 and 5 and the extension byte are not interpreted.
-CellLook decode_attr(uint8_t attr, bool colour) {
+// A cell's attribute and extension bytes.
+// Attribute, all units: bit 7 selects font 2 [obs]; bit0 reverse, bit2
+// underline, bit4 column separators [obs on host screens]; bit3 blink [hyp].
+// Monochrome units: bit1 high intensity [obs on host screens].
+// Colour units: one bit per gun, in the attribute or the extension byte.
+// Non-display is one bit as well. Where these are differs per board
+// (DisplayLayout::Cells). No gun at all has not been seen; it is drawn
+// green rather than black so that such text cannot vanish [hyp].
+CellLook decode_attr(uint8_t attr, uint8_t ext, bool colour, const DisplayLayout::Cells& cc) {
     CellLook l;
     l.font2 = attr & 0x80;
-    const uint8_t a = attr & 0x1F;
-    if ((a & 0x07) == 0x07) {
-        l.hidden = true;
-        return l;
-    }
-    l.reverse = a & 0x01;
-    l.underline = a & 0x04;
-    const bool hi = a & 0x02;
+    l.reverse = attr & 0x01;
+    l.underline = attr & 0x04;
+    l.blink = attr & 0x08;
+    l.column_sep = attr & 0x10;
+    l.hidden = (cc.hidden_byte == 2 ? ext : attr) & cc.hidden;
     if (!colour) {
-        l.fg = hi ? kGreyBright : kGreyNormal;
-        l.blink = a & 0x08;
-        l.column_sep = a & 0x10;
+        l.fg = (attr & 0x02) ? kGreyBright : kGreyNormal;
         return l;
     }
-    switch (a >> 3) {
-    case 0: l.fg = hi ? kWhite : kGreen; break;
-    case 1: l.fg = kRed; l.blink = hi; break;
-    case 2: l.fg = hi ? kYellow : kTurquoise; l.column_sep = !l.underline; break;
-    default: l.fg = hi ? kBlue : kPink; break;
-    }
+    const uint8_t guns = cc.gun_byte == 2 ? ext : attr;
+    static constexpr uint32_t kGuns[8] = {kGreen, kRed, kGreen, kYellow, kBlue, kPink, kTurquoise, kWhite};
+    l.fg = kGuns[((guns & cc.red) ? 1 : 0) | ((guns & cc.green) ? 2 : 0) | ((guns & cc.blue) ? 4 : 0)];
     return l;
 }
 
@@ -303,7 +295,7 @@ void DisplayController::draw_row(Framebuffer& fb, uint32_t addr, int y0, int col
     for (int c = 0; c < cols; ++c) {
         const uint32_t cell = addr + uint32_t(c) * 3;
         const uint8_t code = mem(cell);
-        const CellLook l = decode_attr(mem(cell + 1), colour);
+        const CellLook l = decode_attr(mem(cell + 1), mem(cell + 2), colour, layout_.cells);
         const uint32_t glyph = kCharGenBase + (l.font2 ? 0x4000u : 0u) + uint32_t(code) * 32;
         const bool show = !l.hidden && !(l.blink && !blink_phase);
         const bool cursor = c == cursor_col;
@@ -376,8 +368,9 @@ void DisplayController::render(Framebuffer& fb) {
     // width (observed: photographs of a 3486, where it lines up exactly with
     // the field underlines and has their thickness).
     if (g.status_rows > 0 && g.rows > 0 && (regs_[kRegControl] & kCtlStatusRule)) {
-        const uint32_t colour =
-            colour_ ? kGreen : kGreyNormal;
+        // Blue on a colour unit, as its status line is [hyp: the rule's
+        // colour is not in any register seen].
+        const uint32_t colour = colour_ ? kBlue : kGreyNormal;
         const int ul_top = std::min<int>(regs_[kRegLineTop], g.cell_h - 1);
         const int ul_bottom = std::min<int>(std::max<int>(regs_[kRegLineBottom], ul_top), g.cell_h - 1);
         for (int line = ul_top; line <= ul_bottom; ++line)
