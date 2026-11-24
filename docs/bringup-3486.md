@@ -314,6 +314,21 @@ procedure once it is understood.
   per tube (observed: `01 40 08` on types 2-4, `02 00 00` on type 5), so
   they are timing or monitor settings, not a blanking control.
 
+## Cursor on and off
+
+- The firmware never sets `20128` bit 7, which shows the cursor on the
+  3477 model (observed: the register stays `58` on a green 3487 in Offline
+  Setup and on line).
+- Each time it places the cursor it writes the position (`20118` row,
+  `20117` column) and then `20127` with bit 6 set; its routine that takes
+  the cursor away writes `20127` with bits 6 and 2 clear (observed).
+  `20127` is `00` in Offline Setup, which shows no cursor, and `70` on
+  line.
+- The model shows the cursor while `20127` bit 6 is set (hypothesis from
+  the above). Bits 5, 4 and 2 are not modelled; bit 4 follows a setup or
+  mode flag, so it may be the cursor's style or blink (hypothesis). The
+  cursor is drawn as a steady block, as on the 3477 model.
+
 ## Display subtype and straps
 
 Without `--straps`, the model picks the strap code from `--display`:
@@ -435,10 +450,11 @@ After POST (observed on the 3487 model, straps `4A`, and on colour, `4C`):
    station at its address, identifies it (display, model ID `24` on mono
    and `50` on colour) and polls it; typed characters are echoed.
 8. With the TN5250 bridge the host's screen is displayed (observed against
-   an OS/400 sign-on over TN5250, terminal type `IBM-3179-2`). Not checked:
-   signing on, the cursor position the host asks for (the status line showed
-   `1/1` on the sign-on screen), 27x132, a second session, a printer
-   session.
+   an OS/400 sign-on over TN5250, terminal type `IBM-3179-2`). The cursor
+   stands in the first input field, and Tab and typed characters move it
+   (observed on the 3487 model, green, against an OS/400 sign-on; the
+   status line shows the same position). Not checked: signing on, 27x132,
+   a second session, a printer session.
 
 Colour needs one more thing, see "EEPROM and monitor alignment".
 

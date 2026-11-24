@@ -32,6 +32,7 @@ constexpr uint32_t kRegMainRows = 0x15;    // rows above the status line
 constexpr uint32_t kRegCursorCol = 0x17;
 constexpr uint32_t kRegCursorRow = 0x18;
 constexpr uint32_t kRegMode0 = 0x25;       // bit4: 132 columns of 8-pixel cells
+constexpr uint32_t kRegCursorCtl = 0x27;   // 3486 family: bit6 cursor
 constexpr uint32_t kRegControl = 0x28;     // bit4 video on, bit6 status rule, bit7 cursor
 constexpr uint32_t kRegMode5 = 0x2A;       // bit0: 12-pixel cells, else 16
 constexpr uint32_t kRegStatus = 0x2F;
@@ -44,6 +45,7 @@ constexpr uint32_t kRegAuxPort = 0x44;     // 3486 family: second serial port, 4
 constexpr uint8_t kCtlVideo = 0x10;
 constexpr uint8_t kCtlStatusRule = 0x40;
 constexpr uint8_t kCtlCursor = 0x80;
+constexpr uint8_t kCursorCtlOn = 0x40;
 
 constexpr uint64_t kRefreshHz = 60;
 constexpr uint32_t kBlinkFrames = 32;      // half period of character blink
@@ -269,13 +271,18 @@ Ibm3477Display::Geometry Ibm3477Display::geometry() const {
     return g;
 }
 
+bool Ibm3477Display::cursor_on() const {
+    if (cursor_enable_reg27_) return (regs_[kRegCursorCtl] & kCursorCtlOn) != 0;
+    return (regs_[kRegControl] & kCtlCursor) != 0;
+}
+
 std::string Ibm3477Display::describe() const {
     const Geometry g = geometry();
     return format("  %s, %dx%d+%d cells of %dx%d px, main %05X, status %05X\n"
                   "  cursor row %u col %u (%s), frame %llu, retrace %d, irq %d, block pending %d\n",
                   enabled() ? "enabled" : "blanked", g.cols, g.rows, g.status_rows, g.cell_w, g.cell_h,
                   g.main_start, g.status_start, regs_[kRegCursorRow], regs_[kRegCursorCol],
-                  (regs_[kRegControl] & kCtlCursor) ? "on" : "off", (unsigned long long)frames_,
+                  cursor_on() ? "on" : "off", (unsigned long long)frames_,
                   in_retrace_ ? 1 : 0, irq_pending_ ? 1 : 0, block_pending_ ? 1 : 0) +
            format("  video signature: shim %s (temporary), %s\n", vdo_shim_ ? "on" : "off",
                   sig_measuring_ ? "measuring"
@@ -339,7 +346,7 @@ void Ibm3477Display::render(Framebuffer& fb) {
     if (ram_ && ram_->kind != Region::Kind::Ram) ram_ = nullptr;
 
     const bool blink_phase = (frames_ / kBlinkFrames) % 2 == 0;
-    const int cur_row = (regs_[kRegControl] & kCtlCursor) ? int(regs_[kRegCursorRow]) : -1;
+    const int cur_row = cursor_on() ? int(regs_[kRegCursorRow]) : -1;
     const int cur_col = regs_[kRegCursorCol];
     const uint32_t stride = uint32_t(g.cols) * 3;
     for (int r = 0; r < g.rows + g.status_rows; ++r) {

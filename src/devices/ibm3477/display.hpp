@@ -86,6 +86,12 @@ public:
     // 3486 family: the picture is on while 20128 bit 6 is set, not bit 4
     // [hypothesis; see enabled()].
     void set_video_enable_bit6(bool on) { video_enable_bit6_ = on; }
+    // 3486 family: the cursor is shown while 20127 bit 6 is set, not 20128
+    // bit 7 [observed: the firmware sets the bit with every cursor position
+    // it writes, clears it to hide the cursor and never sets 20128 bit 7].
+    void set_cursor_enable_reg27(bool on) { cursor_enable_reg27_ = on; }
+    // Whether the firmware has the cursor switched on.
+    bool cursor_on() const;
     // Value of 2012F bits 7..4 when no signature result is latched.
     void set_sense(uint8_t nibble) { sense_ = uint8_t(nibble & 0x0F); }
 
@@ -161,6 +167,7 @@ private:
     bool sync_polarity_bit_ = false;
     unsigned sig_selector_shift_ = 5;
     bool video_enable_bit6_ = false;
+    bool cursor_enable_reg27_ = false;
     uint64_t phase_ = 0;
     uint64_t frames_ = 0;
     bool in_retrace_ = false;

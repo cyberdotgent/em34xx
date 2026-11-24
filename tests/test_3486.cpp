@@ -198,6 +198,28 @@ TEST_CASE("3486 display: retrace length and the sync polarity bit") {
     CHECK_FALSE(disp.enabled());
 }
 
+TEST_CASE("3486 display: the cursor is switched by 20127 bit 6") {
+    Bus bus{20};
+    TerminalOptions opts;
+    Ibm3477Display disp(bus, opts);
+    bus.map_ram("ram", 0, 0x20000);
+    bus.map_mmio("display", 0x20100, 0x100, &disp);
+
+    // 3477: 20128 bit 7.
+    bus.mem_write8(0x20127, 0x70);
+    CHECK_FALSE(disp.cursor_on());
+    bus.mem_write8(0x20128, 0xD0);
+    CHECK(disp.cursor_on());
+
+    // 3486 family: the firmware never sets that bit; it writes 20127 with
+    // bit 6 to show the cursor and without it to hide it.
+    disp.set_cursor_enable_reg27(true);
+    bus.mem_write8(0x20128, 0x58);
+    CHECK(disp.cursor_on());
+    bus.mem_write8(0x20127, 0x30);
+    CHECK_FALSE(disp.cursor_on());
+}
+
 TEST_CASE("3486 display: the signature selector is 2012F bits 5-4") {
     Bus bus{20};
     TerminalOptions opts;

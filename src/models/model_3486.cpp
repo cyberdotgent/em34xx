@@ -244,6 +244,7 @@ public:
         disp.set_sync_polarity_bit(true);
         disp.set_signature_selector_shift(4);
         disp.set_video_enable_bit6(true);
+        disp.set_cursor_enable_reg27(true);
         disp.set_i2c(&i2c.bus());
         disp.set_irq([&irq](bool on) {
             if (on) irq.raise(Ibm3477Interrupts::Source::Display);
