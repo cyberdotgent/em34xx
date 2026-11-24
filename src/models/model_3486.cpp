@@ -30,18 +30,9 @@
 // wrong segment.
 #include "models/model.hpp"
 
-#include "hw/battery_ram.hpp"
 #include "models/alignment_shim_3486.hpp"
-#include "hw/aux_port.hpp"
 #include "models/board_3486.hpp"
-#include "hw/i2c.hpp"
-#include "hw/display_controller.hpp"
-#include "hw/i2c_eeprom.hpp"
-#include "hw/keyboard_interface.hpp"
-#include "hw/system_gate_array.hpp"
-#include "hw/twinax_engine.hpp"
-#include "input/host_keymap.hpp"
-#include "input/keyboard_ids.hpp"
+#include "models/parts.hpp"
 #include "machine/machine.hpp"
 #include "util/log.hpp"
 
@@ -71,37 +62,16 @@ constexpr uint8_t kDefaultStraps = 0x42;
 constexpr uint8_t kStraps3487Mono = 0x4A;
 constexpr uint8_t kStraps3487Colour = 0x4C;
 
-// An address range where optional hardware is absent: reads float high,
-// writes go nowhere.
-class AbsentDevice : public Device {
-public:
-    using Device::Device;
-    uint8_t mmio_read8(uint32_t) override { return 0xFF; }
-    void mmio_write8(uint32_t, uint8_t) override {}
-    uint8_t peek8(uint32_t) override { return 0xFF; }
-    std::string describe() const override { return "  absent option: reads FF, ignores writes\n"; }
-};
-
-// Owner of the two-wire bus (bit-banged through 2012F, as on the 3477).
-class I2cBusDevice : public Device {
-public:
-    I2cBusDevice() : Device("i2c") { bus_.attach(0x8C >> 1, &monitor_ctl_); }
-    I2cBus& bus() { return bus_; }
-    void reset() override { bus_.reset(); }
-    std::string describe() const override { return bus_.describe(); }
-
-private:
-    I2cBus bus_;
-    I2cLogDevice monitor_ctl_{"monitor controller"};   // 3477 device at 8C [hypothesis for the 3486]
-};
-
-class Model3486 : public Model {
-public:
-    // The 3486 and the 3487 are one board and one firmware; they differ in
-    // the tube and therefore in the default straps.
-    explicit Model3486(bool is_3487) : is_3487_(is_3487) {
-        info_.name = is_3487 ? "3487" : "3486";
-        info_.description = is_3487 ? "IBM 3487 InfoWindow II" : "IBM 3486 InfoWindow II";
+// The 3486 and the 3487 are one board and one firmware; they differ in the
+// tube and therefore in their variants (straps). This is what they share:
+// the board's facts and its build. Each terminal is a class of its own
+// below.
+class InfoWindow2Board : public Model {
+protected:
+    InfoWindow2Board(const char* name, const char* description, std::vector<ModelVariant> variants) {
+        info_.name = name;
+        info_.description = description;
+        info_.variants = std::move(variants);
         info_.status = ModelStatus::Bringup;
         // NEC V20 (D70108L-8) on the logic board [observed].
         info_.cpu = CpuLevel::NecV20;
@@ -111,19 +81,6 @@ public:
         info_.clock_hz = 7500000;
         info_.max_sessions = 2;
         info_.max_printer_sessions = 1;
-        const std::vector<Phosphor> tubes = {phosphor_green(), phosphor_amber(), phosphor_paper_white()};
-        // The TN5250 types are the conservative 24x80 ones: what these
-        // units announce through a real controller has not been established.
-        if (is_3487)
-            info_.variants = {
-                {"3487-HG", "monochrome", false, false, kStraps3487Mono, "IBM-5251-11", tubes},
-                {"3487-HC", "colour", true, false, kStraps3487Colour, "IBM-3179-2", {}},
-            };
-        else
-            info_.variants = {
-                // The firmware's VPD suffix for these straps is BA0 [observed].
-                {"3486-BA", "monochrome", false, false, kDefaultStraps, "IBM-5251-11", tubes},
-            };
         info_.options = {
             {"vdo-shim", "TEMPORARY: stand in for the unmodelled video signature of the power-on display test "
                          "(off: POST stops at VDO)", true},
@@ -182,86 +139,42 @@ public:
         };
     }
 
+
+public:
     const ModelInfo& info() const override { return info_; }
 
     void build(Machine& m, std::vector<LoadedRom>& roms) const override {
         const TerminalOptions& opt = m.options();
         Bus& bus = m.bus();
-
-        bus.map_ram("ram", 0x00000, kRamSize);
-        BatteryBackedRam& nvram = m.add_device<BatteryBackedRam>("nvram", bus, 0x00000u, kRamSize);
-        AbsentDevice& option = m.add_device<AbsentDevice>("option-rom-absent");
-        bus.map_mmio("option-rom-absent", kOptionRomBase, kOptionRomSize, &option);
-
-        uint8_t id1 = 0xBF, id2 = 0xBF;
-        std::string error;
-        if (!nvram.open(opt.nvram_path, error)) throw std::runtime_error(error);
-        if (!resolve_keyboard_id(opt, id1, id2, error)) throw std::runtime_error(error);
-        KeyboardType type = KeyboardType::Terminal122;
-        parse_keyboard_type(opt.keyboard_type, type);
-        auto kbd = std::make_unique<KeyboardInterface>(info_.clock_hz, type, id1, id2);
-        kbd->keyboard().set_shift_fkeys(opt.shift_fkeys);
-        auto keymap = std::make_shared<Keymap>();
-        if (!load_keymap(opt.keymap, opt.shift_fkeys, *keymap, error)) throw std::runtime_error(error);
-        kbd->keyboard().set_keymap(std::move(keymap));
-        KeyboardInterface* kbd_ptr = kbd.get();
-
         const ModelVariant& variant = variant_for(opt);
         const uint8_t straps = opt.straps >= 0 ? uint8_t(opt.straps) : variant.straps;
         if ((straps & 0x0E) == 0x04)
             LOG_WARN("system", "3486: straps %02X select display type 7 (3488), which the 54G0010 firmware "
                                "does not carry through its start-up: expect it to stop in POST "
                                "(docs/bringup-3486.md)", straps);
-        SystemGateArray& sys = m.add_device<SystemGateArray>(info_.clock_hz, straps, kLinkChannels3486, std::move(kbd));
-        bus.map_mmio("system", SystemGateArray::kBase, SystemGateArray::kSize, &sys);
-        bus.set_interrupt_controller(&sys.interrupts());
-        m.set_keyboard(kbd_ptr);
 
-        // Three station channels; the third reports through 2000D/2000F.
-        TwinaxEngine& link = m.add_device<TwinaxEngine>(bus, kLinkChannels3486, info_.clock_hz, kLinkLayout3486);
-        GateArrayInterrupts& irq = sys.interrupts();
-        link.set_raise([&irq](unsigned ch, uint8_t bits) {
-            if (ch == 2) irq.request2(bits);
-            else irq.request(uint16_t(bits << (8 * ch)));
-        });
-        link.set_pending([&irq](unsigned ch) {
-            return uint8_t((ch == 2 ? irq.requests2() : uint8_t(irq.requests() >> (8 * ch))) & 0x7F);
-        });
-        link.set_host([&m]() { return m.twinax_host(); });
-        TwinaxRegisters& link_regs = m.add_device<TwinaxRegisters>(link);
-        sys.set_twinax_port(&link_regs);
-
-        I2cBusDevice& i2c = m.add_device<I2cBusDevice>();
-        I2cEeprom& eeprom = m.add_device<I2cEeprom>("eeprom");
-        if (!eeprom.open(opt.eeprom_path, error)) throw std::runtime_error(error);
-        eeprom.attach(i2c.bus(), 0xA0);
-        m.set_nvram(&eeprom);
+        parts::battery_backed_ram(m, 0x00000, kRamSize);
+        parts::absent_option(m, "option-rom-absent", kOptionRomBase, kOptionRomSize);
+        // The alarm tone is not connected on this board's model yet.
+        SystemGateArray& sys = parts::system_gate_array(m, info_.clock_hz, straps, kLinkChannels3486, false);
+        parts::link_engine(m, sys, info_.clock_hz, kLinkChannels3486, kLinkLayout3486);
+        const parts::TwoWireBus i2c = parts::two_wire_bus(m);
         // A colour unit (display type 6) only goes on line with its monitor
         // alignment marked done; part of setting such a unit up, since there
-        // is no tube to align [temporary; alignment_shim.hpp]. A new unit
-        // is switched off and on once when the firmware has initialised its
-        // EEPROM.
+        // is no tube to align [temporary; alignment_shim_3486.hpp]. A new
+        // unit is switched off and on once when the firmware has
+        // initialised its EEPROM.
         if ((straps & 0x0E) == 0x0C && info_.option_on("alignment-shim", opt.switches)) {
             Machine* machine = &m;
-            install_monitor_alignment_shim(eeprom, [machine] {
+            install_monitor_alignment_shim(i2c.eeprom, [machine] {
                 LOG_INFO("machine", "colour unit: power cycle after the alignment was marked done");
                 machine->request_power_cycle();
             });
         }
-
-        DisplayController& disp = m.add_device<DisplayController>(bus, kDisplayLayout3486, variant.colour,
-                                                                  info_.option_on("vdo-shim", opt.switches));
-        disp.set_clock_hz(info_.clock_hz);
-        disp.set_i2c(&i2c.bus());
-        disp.set_irq([&irq](bool on) {
-            if (on) irq.raise(GateArrayInterrupts::Source::Display);
-            else irq.lower(GateArrayInterrupts::Source::Display);
-        });
-        AuxPort& aux = m.add_device<AuxPort>();
-        aux.connect(&irq);
-        disp.set_aux_port(&aux);
-        bus.map_mmio("display", DisplayController::kRegBase, 0x100, &disp);
-        m.set_display(&disp);
+        DisplayController& disp =
+            parts::display_controller(m, sys, i2c.bus, info_.clock_hz, kDisplayLayout3486, variant.colour,
+                                      info_.option_on("vdo-shim", opt.switches));
+        parts::aux_port(m, sys, disp);
 
         for (LoadedRom& r : roms) {
             if (r.verdict != LoadedRom::Verdict::KnownBad) {
@@ -285,19 +198,43 @@ public:
     }
 
 private:
-    bool is_3487_;
     ModelInfo info_;
+};
+
+std::vector<Phosphor> tubes() { return {phosphor_green(), phosphor_amber(), phosphor_paper_white()}; }
+
+// The TN5250 types are the conservative 24x80 ones: what these units
+// announce through a real controller has not been established.
+
+class Model3486 : public InfoWindow2Board {
+public:
+    Model3486()
+        : InfoWindow2Board("3486", "IBM 3486 InfoWindow II",
+                           {
+                               // The firmware's VPD suffix for these straps is BA0 [observed].
+                               {"3486-BA", "monochrome", false, false, kDefaultStraps, "IBM-5251-11", tubes()},
+                           }) {}
+};
+
+class Model3487 : public InfoWindow2Board {
+public:
+    Model3487()
+        : InfoWindow2Board("3487", "IBM 3487 InfoWindow II",
+                           {
+                               {"3487-HG", "monochrome", false, false, kStraps3487Mono, "IBM-5251-11", tubes()},
+                               {"3487-HC", "colour", true, false, kStraps3487Colour, "IBM-3179-2", {}},
+                           }) {}
 };
 
 } // namespace
 
 const Model& model_3486() {
-    static const Model3486 m(false);
+    static const Model3486 m;
     return m;
 }
 
 const Model& model_3487() {
-    static const Model3486 m(true);
+    static const Model3487 m;
     return m;
 }
 

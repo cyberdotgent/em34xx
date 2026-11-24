@@ -19,16 +19,8 @@
 //  - Clock frequency unknown; 8 MHz is a pacing placeholder only.
 #include "models/model.hpp"
 
-#include "hw/battery_ram.hpp"
-#include "hw/i2c.hpp"
-#include "hw/display_controller.hpp"
 #include "models/board_3477.hpp"
-#include "hw/i2c_eeprom.hpp"
-#include "hw/keyboard_interface.hpp"
-#include "hw/system_gate_array.hpp"
-#include "hw/twinax_engine.hpp"
-#include "input/host_keymap.hpp"
-#include "input/keyboard_ids.hpp"
+#include "models/parts.hpp"
 #include "machine/machine.hpp"
 #include "util/log.hpp"
 #include "util/strings.hpp"
@@ -38,31 +30,6 @@
 namespace em34xx {
 
 namespace {
-
-// An address range where optional hardware is absent: reads float high,
-// writes go nowhere. Mapped explicitly because the firmware probes it on
-// every boot, and probing an absent option is not an unexpected access.
-class AbsentDevice : public Device {
-public:
-    using Device::Device;
-    uint8_t mmio_read8(uint32_t) override { return 0xFF; }
-    void mmio_write8(uint32_t, uint8_t) override {}
-    uint8_t peek8(uint32_t) override { return 0xFF; }
-    std::string describe() const override { return "  absent option: reads FF, ignores writes\n"; }
-};
-
-// Owner of the two-wire bus (bit-banged through 2012F).
-class I2cBusDevice : public Device {
-public:
-    I2cBusDevice() : Device("i2c") { bus_.attach(0x8C >> 1, &monitor_ctl_); }
-    I2cBus& bus() { return bus_; }
-    void reset() override { bus_.reset(); }
-    std::string describe() const override { return bus_.describe(); }
-
-private:
-    I2cBus bus_;
-    I2cLogDevice monitor_ctl_{"monitor controller"};   // write-only device at 8C [hypothesis]
-};
 
 class Model3477 : public Model {
 public:
@@ -133,70 +100,23 @@ public:
 
     void build(Machine& m, std::vector<LoadedRom>& roms) const override {
         const TerminalOptions& opt = m.options();
-        Bus& bus = m.bus();
-
-        bus.map_ram("ram", 0x00000, 0x20000);
-        // The setup configuration and the counters live in RAM that keeps
-        // its contents across power-off [hypothesis, strong: see the notes].
-        BatteryBackedRam& nvram = m.add_device<BatteryBackedRam>("nvram", bus, 0x00000u, 0x20000u);
-        AbsentDevice& xram = m.add_device<AbsentDevice>("xram-absent");
-        bus.map_mmio("xram-absent", 0x40000, 0x40000, &xram);
-        AbsentDevice& feature = m.add_device<AbsentDevice>("feature-rom-absent");
-        bus.map_mmio("feature-rom-absent", 0xA0000, 0x20000, &feature);
-
-        uint8_t id1 = 0xBF, id2 = 0xBF;
-        std::string error;
-        if (!nvram.open(opt.nvram_path, error)) throw std::runtime_error(error);
-        if (!resolve_keyboard_id(opt, id1, id2, error)) throw std::runtime_error(error);
-        KeyboardType type = KeyboardType::Terminal122;
-        parse_keyboard_type(opt.keyboard_type, type);
-        auto kbd = std::make_unique<KeyboardInterface>(info_.clock_hz, type, id1, id2);
-        kbd->keyboard().set_shift_fkeys(opt.shift_fkeys);
-        auto keymap = std::make_shared<Keymap>();
-        if (!load_keymap(opt.keymap, opt.shift_fkeys, *keymap, error)) throw std::runtime_error(error);
-        kbd->keyboard().set_keymap(std::move(keymap));
-        KeyboardInterface* kbd_ptr = kbd.get();
-
         const ModelVariant& variant = variant_for(opt);
         const uint8_t straps = opt.straps >= 0 ? uint8_t(opt.straps) : variant.straps;
         if (variant.stub)
             LOG_WARN("system", "3477: this ROM has no colour display type; the terminal identifies as a "
                                "monochrome 3477 FE0 (model ID 24h) and only the rendering is in colour");
-        SystemGateArray& sys = m.add_device<SystemGateArray>(info_.clock_hz, straps, kLinkChannels3477, std::move(kbd));
-        bus.map_mmio("system", SystemGateArray::kBase, SystemGateArray::kSize, &sys);
-        sys.set_audio(&m.audio());
-        bus.set_interrupt_controller(&sys.interrupts());
-        m.set_keyboard(kbd_ptr);
 
-        // Twinax link engine: two station channels, structures in low RAM,
-        // events latched in the gate array's request register (channel 0 in
-        // the low byte, channel 1 in the high byte).
-        TwinaxEngine& link = m.add_device<TwinaxEngine>(bus, kLinkChannels3477, info_.clock_hz, kLinkLayout3477);
-        GateArrayInterrupts& irq = sys.interrupts();
-        link.set_raise([&irq](unsigned ch, uint8_t bits) { irq.request(uint16_t(bits << (8 * ch))); });
-        link.set_pending([&irq](unsigned ch) { return uint8_t((irq.requests() >> (8 * ch)) & 0x7F); });
-        link.set_host([&m]() { return m.twinax_host(); });
-        TwinaxRegisters& link_regs = m.add_device<TwinaxRegisters>(link);
-        sys.set_twinax_port(&link_regs);
-
-        I2cBusDevice& i2c = m.add_device<I2cBusDevice>();
-        I2cEeprom& eeprom = m.add_device<I2cEeprom>("eeprom");
-        if (!eeprom.open(opt.eeprom_path, error)) throw std::runtime_error(error);
-        eeprom.attach(i2c.bus(), 0xA0);
-        m.set_nvram(&eeprom);
-
-        DisplayController& disp = m.add_device<DisplayController>(bus, kDisplayLayout3477, variant.colour,
-                                                                  info_.option_on("vdo-shim", opt.switches));
-        disp.set_clock_hz(info_.clock_hz);
-        disp.set_i2c(&i2c.bus());
-        GateArrayInterrupts& ic = sys.interrupts();
-        disp.set_irq([&ic](bool on) {
-            if (on) ic.raise(GateArrayInterrupts::Source::Display);
-            else ic.lower(GateArrayInterrupts::Source::Display);
-        });
-        bus.map_mmio("display", DisplayController::kRegBase, 0x100, &disp);
-        m.set_display(&disp);
-        for (LoadedRom& r : roms) bus.map_rom(r.spec.file, r.spec.base, std::move(r.data));
+        // 128 KiB of RAM; the setup configuration and the counters live in
+        // it and survive power-off [hypothesis, strong: see the notes].
+        parts::battery_backed_ram(m, 0x00000, 0x20000);
+        parts::absent_option(m, "xram-absent", 0x40000, 0x40000);
+        parts::absent_option(m, "feature-rom-absent", 0xA0000, 0x20000);
+        SystemGateArray& sys = parts::system_gate_array(m, info_.clock_hz, straps, kLinkChannels3477, true);
+        parts::link_engine(m, sys, info_.clock_hz, kLinkChannels3477, kLinkLayout3477);
+        const parts::TwoWireBus i2c = parts::two_wire_bus(m);
+        parts::display_controller(m, sys, i2c.bus, info_.clock_hz, kDisplayLayout3477, variant.colour,
+                                  info_.option_on("vdo-shim", opt.switches));
+        for (LoadedRom& r : roms) m.bus().map_rom(r.spec.file, r.spec.base, std::move(r.data));
     }
 
 private:
