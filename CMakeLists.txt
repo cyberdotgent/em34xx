@@ -267,6 +267,7 @@ target_link_libraries(em34xx_machines PUBLIC em34xx_emu PRIVATE em34xx_tomlplusp
 
 em34xx_library(em34xx_host
   src/host/host_config.cpp
+  src/host/session_cycle.cpp
   src/host/twinax/twinax_link.cpp
   src/host/twinax/wsc/device_commands.cpp
   src/host/twinax/wsc/idle_host.cpp

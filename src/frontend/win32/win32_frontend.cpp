@@ -1102,9 +1102,10 @@ void Win32Frontend::toggle_connection() {
     else if (cur_.active) connect_profile(cur_.p, false);
 }
 
-// Terminal > Reboot: switch the terminal off and on. The controller keeps
-// the sessions; the terminal runs its self test, comes back on line and
-// the host's screen is repainted.
+// Terminal > Reboot: switch the terminal off and on. Its sessions end, as
+// on a real host; the terminal runs its self test and comes back on line
+// to new ones (a new sign-on). After a Disconnect, it also dials the host
+// again (Application::power_on()).
 void Win32Frontend::reboot() {
     release_keys();
     app_->power_on();

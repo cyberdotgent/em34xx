@@ -310,8 +310,51 @@ live controller:
 | bridge created (`--twinax-host tn5250` at start-up, or `connect`) | every display station's session starts connecting at once; its station is **unplugged**: nothing is ever sent to it |
 | session negotiated (telnet BINARY + EOR + terminal type) | the station is **plugged in**: it starts from Absent, so the terminal goes through its power-on / discovery handshake and comes on line; the host's sign-on screen follows |
 | host closes, connection lost or fails, `disconnect` | the station is **unplugged**: it is no longer polled and nothing answers the terminal, which shows its normal no-controller behaviour (System Available off after about 200 ms, its automatic reset after about 2.4 s) as if the cable were pulled |
-| reconnect | the full plug-in sequence again. After a host close or failure the bridge reconnects by itself after a wall-clock back-off (2 s doubling to 60 s; the host is a network peer); after `disconnect` it does not |
-| terminal stops answering while the session is up (power cycle, reset) | the session stays; the engine is told the device is gone, and when the device is discovered again the controller repaints the whole screen. The host is not told: TN5250 has no device power-off signal |
+| reconnect | the full plug-in sequence again. After a host close or failure the bridge reconnects by itself after a wall-clock back-off (2 s doubling to 60 s; the host is a network peer) |
+| a terminal that was on line leaves the line while its session is up (reset, power-off, Offline Setup, a firmware restart) | **the session is closed** and a new one is opened; the cable stays out until the new one is up. The terminal comes back to a new sign-on and nothing of the old screen or keyboard state is restored |
+
+### Session and terminal lifecycle
+
+A host session belongs to one run of the terminal, as on a real host,
+where a workstation that is switched off or reset loses its job and gets a
+new sign-on. The emulator used to keep the TN5250 session across a
+terminal reset and repaint the host's screen into the rebooted terminal;
+restoring screen, cursor and keyboard state into a fresh terminal was a
+source of state mismatches, and it is gone.
+
+- **What ends a session.** Any way the terminal leaves the line once it
+  has been on line on that session. The controller notices it on the line
+  (no response to its polls, or a power-on status), and the machine also
+  says so directly: `Machine::reset()` and power-off call
+  `LineHost::terminal_reset()`, so a reset does not depend on the
+  controller's time-outs.
+- **What does not.** Online setup (the Setup key while connected): the
+  terminal keeps answering polls. A reset before the terminal has come on
+  line (the one at power-up, a reset during the self test): the session
+  has not been used and is kept. Setup is not special-cased anywhere; only
+  presence on the line counts.
+- **Offline Setup** takes the terminal off the line, so its sessions end;
+  the station and printer addresses may change there, and the new sessions
+  are opened for whatever the terminal answers on afterwards (observed on
+  real hardware by the project owner; not exercised in the emulator).
+- **The host connection follows the terminal's life** (`HostLink`,
+  `Application`): the host a terminal was last connected to is dialled
+  again at every reset and power-up. `disconnect` (File > Disconnect)
+  takes the controller off the line only until the next connect, reset or
+  power-up. A powered-off terminal has no session: no emulated time
+  passes, so nothing is dialled until it is switched on.
+- **Closed until reset.** One session can be closed and kept closed until
+  the terminal is reset (`LineHost::disconnect_station`, monitor
+  `disconnect N`): a front end does this when the user refuses a host's
+  certificate, so that the reconnect does not ask again every few seconds.
+- **Not Twinax-specific.** The rules are `SessionCycle`
+  (`src/host/session_cycle.hpp`), which knows no line and no protocol: it
+  is given a session through four callbacks. The workstation controller's
+  display stations use it with a TN5250 client
+  (`DisplayStationPort`); a coax controller would use it with a TN3270
+  session. The reset notification and `bridges_sessions()` are on
+  `LineHost`, the interface every line's controller has, and `HostLink`
+  chooses the controller by the terminal's line.
 
 `Station::set_plugged()` is the gate: an unplugged station is never due,
 drops a late response to a message sent before it was pulled, and loses
@@ -346,8 +389,9 @@ machine lock (`Machine::swap_twinax_host`); the link device looks the host
 up on every use, and the old controller and its sessions are destroyed
 outside the lock. `connect` while connected closes the existing sessions and
 starts from scratch. `disconnect` closes all sessions and leaves no
-controller on the line; `disconnect N` closes station N's session and keeps
-its cable unplugged (no reconnect) while the other stations carry on.
+controller on the line until the next connect, reset or power-up;
+`disconnect N` closes station N's session and keeps its cable unplugged
+until the terminal is reset, while the other stations carry on.
 
 ### Tests
 
@@ -357,12 +401,16 @@ its cable unplugged (no reconnect) while the other stations carry on.
   online, that the sign-on panel lands in the station's buffer with the
   cursor in the user field, that the station's keystrokes (`a`, Enter)
   reach the server as the right Put/Get reply (`06 36 F1 11 06 35 C1`), the
-  printer stub, the repaint after device lost, and the reconnect after the
-  host hangs up.
+  printer stub, the new session after the terminal leaves the line, and
+  the reconnect after the host hangs up. A second case covers
+  `terminal_reset()`: a session not yet in use is kept, one in use is
+  closed at once.
+- `tests/test_session_cycle.cpp`: the lifecycle rules alone, with a
+  scripted session.
 - The same test pulls the cable: after the server closes, the station is
   unplugged and neither station gets another message; after the reconnect
   the full discovery runs again. `disconnect N` (`Tn5250Bridge::hold`)
-  keeps the cable pulled past the back-off.
+  keeps the cable pulled past the back-off, until a reset.
 - `tests/test_connect.cpp`: the `connect` command line.
 - Live, with a `FakeStation` in place of the terminal (a private harness):
   pub400.com shows its sign-on panel; a local OS/400 V4 system signs on,

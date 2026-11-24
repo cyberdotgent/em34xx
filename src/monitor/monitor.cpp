@@ -327,7 +327,7 @@ void Monitor::register_commands() {
     add("twinax", {}, "status|send f/a ...|recv", "inspect or drive the Twinax line", [this](A a) { return cmd_twinax(a); });
     add("connect", {}, "host[:port] [tls] [station n] [device name] [type t] [opt val]",
         "attach the TN5250 bridge: plug the controller in once the session is up", [this](A a) { return cmd_connect(a); });
-    add("disconnect", {}, "[station]", "close the TN5250 session(s): the controller leaves the line",
+    add("disconnect", {}, "[station]", "close the TN5250 session(s): the controller leaves the line until the next connect or reset",
         [this](A a) { return cmd_disconnect(a); });
     add("key", {}, "[+|-]name ...", "press and release host keys (HID names, e.g. enter f3 a 0x28)", [this](A a) { return cmd_key(a); });
     add("eeprom", {"nvram"}, "[dump|save [file]|set addr byte]", "show, dump, save or edit the EEPROM (hex)", [this](A a) { return cmd_eeprom(a); });
@@ -828,6 +828,10 @@ bool Monitor::cmd_reset(const std::vector<std::string>&) {
         emu_.wait_stopped();
     }
     emu_.with_machine([](Machine& m) { m.reset(); });
+    // The host connection follows the terminal: after `disconnect`, a reset
+    // dials the host it was connected to again (Application::reset()).
+    std::string message, error;
+    if (host_link_ && host_link_->reconnect(message, error) && !message.empty()) out(message);
     out(emu_.with_machine([&](Machine& m) { return regs_text(m) + location_line(m); }));
     return true;
 }

@@ -53,15 +53,23 @@ tn5250::TlsTrustHandler TlsTrustBroker::for_new_bridge() {
 HostLink::HostLink(Emulator& emu, AppConfig base, unsigned max_sessions, int max_printers, Tn5250HostFactory bridge,
                    std::shared_ptr<TlsTrustBroker> trust)
     : emu_(emu), base_(std::move(base)), max_sessions_(max_sessions), max_printers_(max_printers),
-      bridge_(std::move(bridge)), trust_(trust ? std::move(trust) : std::make_shared<TlsTrustBroker>()) {}
+      bridge_(std::move(bridge)), trust_(trust ? std::move(trust) : std::make_shared<TlsTrustBroker>()) {
+    // Started with a bridge on the line (--twinax-host tn5250): that is the
+    // connection to come back to.
+    if (base_.twinax.host == TwinaxHostKind::Tn5250 && base_.tn5250.configured()) {
+        last_ = base_;
+        has_last_ = true;
+    }
+}
 
 bool HostLink::connect(const AppConfig& cfg, std::string& message, std::string& error) {
     if (!bridge_) {
         error = "connect: the TN5250 bridge is not available in this build";
         return false;
     }
-    // The bridge is a Twinax controller: a terminal on another line needs
-    // its own (src/host has none yet).
+    // The controller is chosen by the terminal's line. Twinax has the
+    // workstation controller with TN5250 sessions; a terminal on another
+    // line needs its own (src/host has none yet).
     const LineKind line = emu_.with_machine([](Machine& m) { return m.line(); });
     if (line != LineKind::Twinax) {
         error = std::string("connect: there is no controller for ") + line_kind_name(line) + " terminals in this build";
@@ -82,8 +90,10 @@ bool HostLink::connect(const AppConfig& cfg, std::string& message, std::string& 
     // every use, so the next poll comes from the new controller. The old
     // one (and its sessions' threads) goes away outside the lock.
     std::unique_ptr<LineHost> old = emu_.with_machine([&](Machine& m) { return m.swap_line_host(std::move(host)); });
-    const bool replaced = old && std::string(old->kind()) == "tn5250";
+    const bool replaced = old && old->bridges_sessions();
     old.reset();
+    last_ = cfg;
+    has_last_ = true;
     std::string stations;
     for (const StationConfig& st : cfg.twinax.effective_stations())
         stations += format(" %u (%s)", st.address, station_type_name(st.type));
@@ -105,8 +115,8 @@ bool HostLink::connect(const std::vector<std::string>& args, std::string& messag
 
 bool HostLink::disconnect(std::string& error) {
     std::unique_ptr<LineHost> old = emu_.with_machine([](Machine& m) {
-        if (!m.line_host() || std::string(m.line_host()->kind()) != "tn5250") return std::unique_ptr<LineHost>();
-        return m.swap_line_host(std::make_unique<NullTwinaxHost>());
+        if (!m.line_host() || !m.line_host()->bridges_sessions()) return std::unique_ptr<LineHost>();
+        return m.swap_line_host(make_null_line_host(m.line()));
     });
     if (!old) {
         error = "disconnect: not connected";
@@ -114,6 +124,12 @@ bool HostLink::disconnect(std::string& error) {
     }
     old.reset();
     return true;
+}
+
+bool HostLink::reconnect(std::string& message, std::string& error) {
+    if (emu_.with_machine([](Machine& m) { return m.line_host() && m.line_host()->bridges_sessions(); })) return true;
+    if (!has_last_) return false;
+    return connect(last_, message, error);
 }
 
 bool HostLink::disconnect_station(unsigned address, std::string& error) {

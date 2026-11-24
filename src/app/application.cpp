@@ -354,16 +354,32 @@ int Application::finish() {
 
 // --- control API ----------------------------------------------------------------
 
+// The host connection follows the terminal's life. A reset or power-off
+// ends the sessions the terminal was using (Machine::reset() tells the
+// controller; power-off does here), and a reset or power-up dials the host
+// it was last connected to again when the user had disconnected.
+void Application::redial() {
+    std::string message, error;
+    if (host_link_ && !host_link_->reconnect(message, error) && !error.empty())
+        LOG_WARN("machine", "%s", error.c_str());
+}
+
 void Application::power_on() {
     emu_->request_stop();
     emu_->wait_stopped();
     emu_->with_machine([](Machine& m) { m.reset(); });
+    redial();
     emu_->resume();
 }
 
 void Application::power_off() {
     emu_->request_stop();
     emu_->wait_stopped();
+    // Switched off: its sessions are over. No time passes for a stopped
+    // machine, so new ones only start at the next power-up.
+    emu_->with_machine([](Machine& m) {
+        if (m.line_host()) m.line_host()->terminal_reset();
+    });
 }
 
 void Application::reset() {
@@ -373,6 +389,7 @@ void Application::reset() {
         emu_->wait_stopped();
     }
     emu_->with_machine([](Machine& m) { m.reset(); });
+    redial();
     if (was_running) emu_->resume();
 }
 
@@ -387,9 +404,13 @@ bool Application::connect_after_power_cycle(const AppConfig& cfg, std::string& m
     // vanish mid-screen ("not connected" is fine).
     std::string ignored;
     host_link_->disconnect(ignored);
-    power_on();
+    emu_->request_stop();
+    emu_->wait_stopped();
+    emu_->with_machine([](Machine& m) { m.reset(); });
     LOG_INFO("machine", "power cycle before connecting: the terminal runs its self test");
-    return host_link_->connect(cfg, message, error);
+    const bool ok = host_link_->connect(cfg, message, error);
+    emu_->resume();
+    return ok;
 }
 
 const ModelVariant& Application::variant() const { return model_->variant_for(cfg_.terminal); }

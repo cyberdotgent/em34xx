@@ -30,7 +30,7 @@ struct LineSessionStatus {
     bool printer = false;
     std::string state;        // "connecting", "ready", "failed", "disconnected"...
     bool connected = false;   // session up (the cable is plugged)
-    bool held = false;        // closed by the user, no reconnect
+    bool held = false;        // closed until the terminal is reset (a refused certificate)
     std::string peer;         // "host:port"
     bool tls = false;
     std::string error;        // last error, if any
@@ -46,9 +46,19 @@ public:
     // Emulated time in nanoseconds since machine power-on; monotonic.
     virtual void advance(uint64_t emu_ns) { (void)emu_ns; }
 
+    // Whether host sessions hang off this controller (a bridge to TN5250 or
+    // TN3270), as opposed to a test controller or none.
+    virtual bool bridges_sessions() const { return false; }
+    // The terminal was reset or switched off (Machine::reset(), power-off).
+    // A host session belongs to one run of the terminal: sessions it was
+    // using end here, and it meets new ones when it comes back, as on a
+    // real host. Called with the machine lock held.
+    virtual void terminal_reset() {}
+
     virtual std::string describe() const = 0;
     // Close the host session behind one station address and keep it closed
-    // (monitor `disconnect N`). False if this host has no such session.
+    // until the terminal is reset (a refused certificate, monitor
+    // `disconnect N`). False if this host has no such session.
     virtual bool disconnect_station(unsigned address) { (void)address; return false; }
     // The host sessions behind the stations, if this host has any.
     virtual std::vector<LineSessionStatus> session_status() const { return {}; }

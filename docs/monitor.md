@@ -67,7 +67,7 @@ stdin (when it is not a terminal), and from GDB's `monitor` command.
 | --- | --- |
 | `twinax status` | Show the controller-side state: per station the cable (plugged/unplugged), state and counters; with the TN5250 bridge also each session's host, TLS, terminal type, device name and whether the terminal is on line. `info` shows the same. |
 | `connect host[:port] [tls] [station n] [device name] [type t] [option value ...]` | Attach the TN5250 bridge (docs/twinax-bridge.md) to the Twinax line at run time. Port 23, or 992 with `tls`. Settings not given come from the configuration file and command line. `station n` uses only display station `n`; `device` and `type` set DEVNAME and the terminal type; `port`, `codepage`, `ca`, `env NAME=VALUE` and any other `name value` (or `name=value`) become `--tn5250-name value`, so every TLS option works (`tls-verify none`, `tls-pin HASH`, `tls-min 1.0`, ...). The controller is plugged into the cable once the TN5250 session is negotiated. `connect` while connected closes the current sessions and starts again from scratch. |
-| `disconnect [station]` | Without a station: close every session and take the controller off the line (no controller, as with a pulled cable). With a station: close that station's session and keep its cable unplugged. |
+| `disconnect [station]` | Without a station: close every session and take the controller off the line (no controller, as with a pulled cable) until the next `connect` or `reset`. With a station: close that station's session and keep its cable unplugged until the terminal is reset. |
 | `twinax send dd/a ...` | Queue a message of frames (`data/address`, hex/decimal). Needs `--twinax-host script`. |
 | `twinax recv` | Show messages the terminal sent. |
 

@@ -18,6 +18,7 @@ add_executable(em34xx_unit_tests
   test_3486.cpp
   test_twinax_engine.cpp
   test_wsc.cpp
+  test_session_cycle.cpp
   fake_station.cpp
 )
 target_link_libraries(em34xx_unit_tests PRIVATE em34xx_machines em34xx_host em34xx_warnings doctest::doctest)

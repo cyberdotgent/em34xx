@@ -102,14 +102,12 @@ the bridge back in without a power cycle: the terminal keeps running, as
 when a cable is plugged back in.
 
 **Terminal > Reboot** (and its toolbar button) power-cycles the terminal
-with the sessions left connected (`Application::power_on()`): the
-controller sees no response during POST, then the power-on status,
-rediscovers the station and the host's screen is repainted. The controller
-keeps its own clock across the terminal's reset (`TwinaxEngine` hands the
-host a time that never goes back); before that fix the controller's timers
-stood still after a reboot and the terminal stayed blank (observed against
-pub400.com:23: "lost (no response)", then on line again with the same
-device name).
+(`Application::power_on()`). Its sessions end, as on a real host: the
+controller is told, closes them and opens new ones, and the terminal comes
+back on line to a new sign-on (docs/twinax-bridge.md, "Session and
+terminal lifecycle"). After File > Disconnect, a reboot also dials the host
+again. The controller keeps its own clock across the terminal's reset
+(`TwinaxEngine` hands the host a time that never goes back).
 
 ## Dialogs
 
@@ -262,7 +260,7 @@ startup profile only open files in `profiles\` and do not ask.
 | Edit | Settings... | yes | startup profile, speed, default TLS minimum, ROM images, file association |
 | View | Zoom > 1x / 1.5x / 2x | | radio items; the picture area becomes the presented frame times the zoom times the DPI scale (shrunk to the work area if it does not fit); manual resizing stays possible and choosing a zoom snaps back. Saved in settings.toml |
 | Terminal | Attn, SysRq, Reset, Setup | yes (text buttons) | press the terminal's own key through the keyboard model (`Machine::terminal_key()`, set-3 position with the Shift/Alt its legend needs), so the firmware and the controller see the real key |
-| Terminal | Reboot (Power Cycle) | yes | switch the terminal off and on with the sessions left connected (see "Connecting") |
+| Terminal | Reboot (Power Cycle) | yes | switch the terminal off and on; its sessions end and it comes back to a new sign-on (see "Connecting") |
 | Help | About... | | version, user folder, TLS backend, project page, third-party notices |
 
 The window title is `<profile>[*] - IBM 3477 - em34xx`; `*` marks a

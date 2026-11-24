@@ -35,12 +35,15 @@ tn5250::Client::TransportFactory transport_for(const BridgeOptions& opt, const S
 
 DisplayStationPort::DisplayStationPort(StationConfig station, Tn5250Config cfg, const BridgeOptions& opt,
                                        Station& link)
-    : station_(std::move(station)), cfg_(std::move(cfg)), opt_(opt), link_(link) {
+    : station_(std::move(station)), cfg_(std::move(cfg)), opt_(opt), link_(link),
+      cycle_(SessionCycle::Hooks{[this] { return phase(); }, [this] { open_session(); }, [this] { close_session(); },
+                                 [this] { return client_->last_error(); }, format("station %u", station_.address)},
+             SessionCycleOptions{opt.reconnect, opt.reconnect_min_ms, opt.reconnect_max_ms}) {
     new_client();
     link_.set_plugged(false, 0);   // no cable until the session is up
     // Connect now, not on the first advance(): the link device only calls
     // in once the firmware runs its Twinax receiver.
-    start_session();
+    cycle_.tick();
 }
 
 DisplayStationPort::~DisplayStationPort() {
@@ -54,13 +57,25 @@ void DisplayStationPort::pump() {
 void DisplayStationPort::device_ready(const StationIdentity& id) {
     online_ = true;
     adapter_->device_ready(id);
-    client_->set_device_ready(true);   // repaints the whole screen after a loss
+    client_->set_device_ready(true);   // the session's screen goes to the terminal
+    cycle_.terminal_on_line();
 }
 
 void DisplayStationPort::device_lost() {
     online_ = false;
     adapter_->device_lost();
     client_->set_device_ready(false);
+    // The session the terminal was using is over (at the next tick: this is
+    // called from inside the station's own handling of the line).
+    cycle_.terminal_off_line();
+}
+
+void DisplayStationPort::terminal_reset() {
+    cycle_.terminal_reset();
+    // The station starts from "absent" whatever it was doing; tick() plugs
+    // it again while a session is up.
+    online_ = false;
+    link_.set_plugged(false, 0);
 }
 
 uint64_t DisplayStationPort::screen_generation() const { return generation_base_ + client_->generation(); }
@@ -73,7 +88,20 @@ void DisplayStationPort::operator_action(const OperatorAction& action) { adapter
 
 bool DisplayStationPort::connected() const { return client_->state() == tn5250::ConnState::Ready; }
 
+SessionPhase DisplayStationPort::phase() const {
+    switch (client_->state()) {
+    case tn5250::ConnState::Idle: return SessionPhase::Idle;
+    case tn5250::ConnState::Ready: return SessionPhase::Ready;
+    case tn5250::ConnState::Closed:
+    case tn5250::ConnState::Failed: return SessionPhase::Down;
+    default: return SessionPhase::Connecting;
+    }
+}
+
 void DisplayStationPort::new_client() {
+    // The generation base keeps screen_generation() moving forward across
+    // sessions.
+    if (client_) generation_base_ += client_->generation() + 1;
     client_ = std::make_unique<tn5250::Client>(cfg_, transport_for(opt_, station_));
     if (opt_.tls_trust) {
         const tn5250::TlsTrustHandler ask = opt_.tls_trust;
@@ -87,16 +115,15 @@ void DisplayStationPort::new_client() {
     adapter_ = std::make_unique<Tn5250DisplayAdapter>(*client_);
 }
 
-void DisplayStationPort::start_session() {
-    if (client_->state() != tn5250::ConnState::Idle) {
-        // A used client cannot be restarted: replace it. The generation
-        // base keeps screen_generation() moving forward.
-        generation_base_ += client_->generation() + 1;
-        client_->stop();
-        new_client();
-    }
-    ++starts_;
-    last_state_ = tn5250::ConnState::Connecting;
+// A used client cannot be restarted: every session gets a new one.
+void DisplayStationPort::close_session() {
+    client_->stop();
+    new_client();
+    online_ = false;
+}
+
+void DisplayStationPort::open_session() {
+    if (client_->state() != tn5250::ConnState::Idle) close_session();
     LOG_INFO("tn5250", "station %u: connecting to %s:%u%s, terminal type %s, device %s", station_.address,
              cfg_.host.c_str(), cfg_.port, cfg_.tls ? " (TLS)" : "", cfg_.terminal_type.c_str(),
              cfg_.device_name.empty() ? "(host assigned)" : cfg_.device_name.c_str());
@@ -104,50 +131,21 @@ void DisplayStationPort::start_session() {
     if (!client_->start(error)) LOG_ERROR("tn5250", "station %u: %s", station_.address, error.c_str());
 }
 
-void DisplayStationPort::hold() {
-    if (held_) return;
-    held_ = true;
-    LOG_INFO("tn5250", "station %u: disconnecting", station_.address);
-    client_->stop();
-}
+void DisplayStationPort::hold() { cycle_.stop(); }
 
 void DisplayStationPort::tick(uint64_t now_ns) {
-    using tn5250::ConnState;
-    ConnState st = client_->state();
-    if (st == ConnState::Idle && !held_) {
-        start_session();
-        st = client_->state();
-    }
-    if (st != last_state_) {
-        if (st == ConnState::Ready) {
-            LOG_INFO("tn5250", "station %u: session connected", station_.address);
-            backoff_ms_ = 0;
-        } else if ((st == ConnState::Closed || st == ConnState::Failed) && !held_) {
-            const std::string err = client_->last_error();
-            backoff_ms_ = backoff_ms_ ? std::min(backoff_ms_ * 2, opt_.reconnect_max_ms) : opt_.reconnect_min_ms;
-            retry_at_ = std::chrono::steady_clock::now() + std::chrono::milliseconds(backoff_ms_);
-            LOG_WARN("tn5250", "station %u: session %s%s%s%s", station_.address, tn5250::conn_state_name(st),
-                     err.empty() ? "" : ": ", err.c_str(),
-                     opt_.reconnect ? format("; reconnecting in %u ms", backoff_ms_).c_str() : "");
-        }
-        last_state_ = st;
-    }
     // The session is the cable.
-    link_.set_plugged(st == ConnState::Ready, now_ns);
-
-    if (!held_ && opt_.reconnect && (st == ConnState::Closed || st == ConnState::Failed) &&
-        std::chrono::steady_clock::now() >= retry_at_)
-        start_session();
+    link_.set_plugged(cycle_.tick(), now_ns);
 }
 
 std::string DisplayStationPort::describe() const {
     std::string out = format("station %u display: cable %s, session %s%s to %s:%u, TLS %s, type %s, device %s, "
                              "terminal %s, %u connection(s)",
                              station_.address, link_.plugged() ? "plugged" : "unplugged",
-                             tn5250::conn_state_name(client_->state()), held_ ? " (disconnected)" : "",
+                             tn5250::conn_state_name(client_->state()), held() ? " (closed until reset)" : "",
                              cfg_.host.c_str(), cfg_.port, cfg_.tls ? "yes" : "no", cfg_.terminal_type.c_str(),
                              cfg_.device_name.empty() ? "(host assigned)" : cfg_.device_name.c_str(),
-                             online_ ? "on line" : "not on line", starts_);
+                             online_ ? "on line" : "not on line", sessions_started());
     const std::string err = client_->last_error();
     if (!err.empty()) out += ", last error: " + err;
     return out + "\n";
@@ -227,6 +225,13 @@ void Tn5250Bridge::advance(uint64_t emu_ns) {
         sched_.station(p.first)->set_plugged(any_connected, sched_.now());
         p.second->pump();
     }
+}
+
+void Tn5250Bridge::terminal_reset() {
+    // Every station leaves the line with the terminal; sessions it used end
+    // and new ones start when the machine runs again.
+    for (auto& d : displays_) d->terminal_reset();
+    for (auto& p : printers_) sched_.station(p.first)->set_plugged(false, sched_.now());
 }
 
 bool Tn5250Bridge::hold(uint8_t address) {

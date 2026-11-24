@@ -203,3 +203,33 @@ TEST_CASE("application: connect after a power cycle resets the terminal, then co
     CHECK(app.host_link().status().find("127.0.0.1:2") != std::string::npos);
     CHECK(app.powered());
 }
+
+TEST_CASE("application: the host connection follows the terminal's reset and power") {
+    if (!roms_present()) return;
+    RunningApp r("green");
+    REQUIRE(r.ok);
+    Application& app = r.app;
+    std::string message, error;
+    // Never connected: a reset does not put a controller on the line.
+    app.reset();
+    CHECK(app.host_link().controller_kind() == "none");
+    CHECK_FALSE(app.host_link().reconnect(message, error));
+
+    REQUIRE(app.host_link().connect(Args{"connect", "127.0.0.1:1"}, message, error));
+    CHECK(app.host_link().controller_kind() == "tn5250");
+    // Disconnected by the user: no controller, until the terminal is reset.
+    REQUIRE(app.host_link().disconnect(error));
+    CHECK(app.host_link().controller_kind() == "none");
+    app.reset();
+    CHECK(app.host_link().controller_kind() == "tn5250");
+    CHECK(app.host_link().status().find("127.0.0.1:1") != std::string::npos);
+    CHECK(app.powered());
+    // The same at power-up; while it is off nothing is dialled.
+    REQUIRE(app.host_link().disconnect(error));
+    app.power_off();
+    CHECK(app.host_link().controller_kind() == "none");
+    app.power_on();
+    CHECK(app.host_link().controller_kind() == "tn5250");
+    // A bridge already on the line is left alone.
+    CHECK(app.host_link().reconnect(message, error));
+}

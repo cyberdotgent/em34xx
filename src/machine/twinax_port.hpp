@@ -13,6 +13,7 @@
 #include "machine/line_port.hpp"
 
 #include <cstdint>
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -95,5 +96,12 @@ public:
     bool to_station(TwinaxMessage&) override { return false; }
     std::string describe() const override { return "twinax: no controller attached\n"; }
 };
+
+// "No controller" for a line of this kind: what a machine has until one is
+// attached, and what is left when one is taken off.
+inline std::unique_ptr<LineHost> make_null_line_host(LineKind line) {
+    if (line == LineKind::Twinax) return std::make_unique<NullTwinaxHost>();
+    return std::make_unique<NullLineHost>(line);
+}
 
 } // namespace em34xx

@@ -94,6 +94,8 @@ public:
     void power_off();
     void reset();
     bool powered() const;
+    // After a reset or power-up: back to the host last connected to.
+    void redial();
     // Power-cycle the terminal and then put the TN5250 bridge on the line
     // with cfg (HostLink::connect): any sessions are closed first, the
     // terminal runs its power-on self test while the controller probes the

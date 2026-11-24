@@ -1,6 +1,10 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// The terminal's connection to a host: which controller is on the Twinax
-// line (none, script, the TN5250 bridge) and the TN5250 sessions behind it.
+// The terminal's connection to a host: which controller is on its line
+// (none, a test controller, a bridge to host sessions) and the sessions
+// behind it. The connection follows the terminal's life: the host a
+// terminal was last connected to is dialled again whenever it is reset or
+// powered up (reconnect()), and a reset ends the sessions it was using
+// (LineHost::terminal_reset()).
 // This is the programmatic API a GUI calls for connect / disconnect /
 // status; the monitor's `connect` and `disconnect` commands are thin
 // wrappers over it.
@@ -58,6 +62,7 @@ public:
         base_.model = name;
         max_sessions_ = max_sessions;
         max_printers_ = max_printers;
+        has_last_ = false;   // another terminal: its profile is connected anew
     }
 
     // Put the TN5250 bridge on the line with cfg's [twinax] and [tn5250]
@@ -68,9 +73,15 @@ public:
     // options...}, see config/connect_args.hpp.
     bool connect(const std::vector<std::string>& args, std::string& message, std::string& error);
 
-    // Take the TN5250 bridge off the line (no controller afterwards).
+    // Take the bridge off the line (no controller afterwards), until the
+    // next connect() or the terminal's next reset or power-up.
     bool disconnect(std::string& error);
-    // Close the session behind one station address and keep it closed.
+    // After a reset or power-up: when no bridge is on the line and the
+    // terminal was connected before, put it back with the same settings.
+    // True when a bridge is (now) on the line.
+    bool reconnect(std::string& message, std::string& error);
+    // Close the session behind one station address and keep it closed
+    // until the terminal is reset (a refused certificate).
     bool disconnect_station(unsigned address, std::string& error);
 
     // Ask `fn` when a TLS certificate is refused by the configuration
@@ -93,6 +104,9 @@ private:
     int max_printers_;
     Tn5250HostFactory bridge_;
     std::shared_ptr<TlsTrustBroker> trust_;
+    // What the terminal was last connected with (reconnect()).
+    AppConfig last_;
+    bool has_last_ = false;
 };
 
 } // namespace em34xx

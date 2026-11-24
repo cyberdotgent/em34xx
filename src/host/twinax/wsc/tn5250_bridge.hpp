@@ -21,13 +21,17 @@
 //   - Session down (host close, connection lost, failed connect,
 //     `disconnect`): the station is unplugged. Nothing polls it, so the
 //     terminal sees no controller, exactly as with a pulled cable.
-//   - Reconnecting repeats the full plug-in sequence. Unless the station
-//     is held (monitor `disconnect`), the bridge reconnects after a
-//     wall-clock back-off (the host is a real network peer), doubling from
-//     `reconnect_min_ms` to `reconnect_max_ms`.
-//   - The terminal itself going away while the session is up (no response,
-//     power cycle) does not end the session: the engine is told, and when
-//     the device returns the whole screen is repainted.
+//   - Reconnecting repeats the full plug-in sequence. The bridge reconnects
+//     after a wall-clock back-off (the host is a real network peer),
+//     doubling from `reconnect_min_ms` to `reconnect_max_ms`.
+//   - A session belongs to one run of the terminal. When a terminal that
+//     was on line leaves the line (reset, power-off, Offline Setup, a
+//     firmware restart; noticed on the line or told by the machine,
+//     LineHost::terminal_reset()), its session is closed and a new one is
+//     opened: the terminal comes back to a new sign-on, as on a real host,
+//     and nothing of the old screen or keyboard state is restored.
+//   - These rules are host/session_cycle.hpp, which is not Twinax-specific;
+//     this file only connects it to a station and a tn5250::Client.
 //
 // Printer stations are discovered, identified and polled while at least
 // one display session of the bridge is connected (the cable is shared), and
@@ -37,6 +41,7 @@
 #pragma once
 
 #include "host/host_config.hpp"
+#include "host/session_cycle.hpp"
 #include "host/twinax/twinax_link.hpp"
 #include "host/twinax/wsc/link_scheduler.hpp"
 #include "host/twinax/wsc/session_port.hpp"
@@ -95,11 +100,14 @@ public:
     bool take_alarm() override;
     void operator_action(const OperatorAction& action) override;
 
-    // Lifecycle, driven by Tn5250Bridge::advance() on the emulation thread.
+    // Lifecycle (host/session_cycle.hpp), driven by Tn5250Bridge::advance()
+    // on the emulation thread.
     void tick(uint64_t now_ns);
-    // Close the session and do not reconnect (monitor `disconnect N`).
+    // The terminal was reset or switched off: a session it used is over.
+    void terminal_reset();
+    // Close the session and keep it closed until the terminal is reset.
     void hold();
-    bool held() const { return held_; }
+    bool held() const { return cycle_.stopped(); }
 
     const StationConfig& station() const { return station_; }
     const Tn5250Config& config() const { return cfg_; }
@@ -107,12 +115,14 @@ public:
     const tn5250::Client* client() const { return client_.get(); }
     bool connected() const;       // session negotiated: the cable is plugged
     bool online() const { return online_; }
-    unsigned sessions_started() const { return starts_; }
+    unsigned sessions_started() const { return cycle_.sessions_started(); }
     std::string describe() const;
 
 private:
-    void start_session();
+    void open_session();
+    void close_session();
     void new_client();
+    SessionPhase phase() const;
 
     StationConfig station_;
     Tn5250Config cfg_;
@@ -122,11 +132,7 @@ private:
     std::unique_ptr<Tn5250DisplayAdapter> adapter_;
     uint64_t generation_base_ = 0;    // keeps the generation monotonic across sessions
     bool online_ = false;
-    bool held_ = false;
-    unsigned starts_ = 0;
-    unsigned backoff_ms_ = 0;
-    std::chrono::steady_clock::time_point retry_at_{};
-    tn5250::ConnState last_state_ = tn5250::ConnState::Idle;
+    SessionCycle cycle_;
 };
 
 // Placeholder printer session: accepts nothing, logs once.
@@ -177,14 +183,17 @@ public:
     void no_response() override { sched_.no_response(); }
     void advance(uint64_t emu_ns) override;
     std::string describe() const override;
+    bool bridges_sessions() const override { return true; }
+    void terminal_reset() override;
     bool disconnect_station(unsigned address) override { return address < 8 && hold(uint8_t(address)); }
     std::vector<TwinaxSessionStatus> session_status() const override;
 
     LinkScheduler& scheduler() { return sched_; }
     DisplayStationPort* display(uint8_t address);
     PrinterStationPort* printer(uint8_t address);
-    // Close one display station's session and keep it closed; false if the
-    // address is not a display station of this bridge.
+    // Close one display station's session and keep it closed until the
+    // terminal is reset; false if the address is not a display station of
+    // this bridge.
     bool hold(uint8_t address);
 
 private:

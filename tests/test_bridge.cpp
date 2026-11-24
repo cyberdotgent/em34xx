@@ -272,18 +272,27 @@ TEST_CASE("tn5250 bridge: sign-on screen to the station, keystrokes back to the 
     // The typed character was painted on the station as well.
     CHECK(f.cell(5, 52) == 0xC1);
 
-    // Device lost and back: the same session, the screen repainted.
+    // The terminal leaves the line while its session is up (switched off,
+    // reset, Offline Setup): that session is over. The bridge closes it and
+    // opens a new one, and the cable stays out until the new one is up.
+    Station& link = *bridge.scheduler().station(0);
     f.set_powered(false);
-    REQUIRE(b.run_until([&] { return !bridge.display(0)->online(); }));
+    REQUIRE(b.run_until([&] { return connects == 2; }));
+    CHECK_FALSE(bridge.display(0)->online());
+    CHECK_FALSE(link.plugged());
+    CHECK(bridge.display(0)->sessions_started() == 2);
+    // The terminal comes back to the new session's sign-on: nothing of the
+    // old screen (the typed character) is restored.
     f.set_powered(true);
+    server->push(negotiation());
+    server->push(framed_record(tn5250_test::signon_stream()));
     REQUIRE(b.run_until([&] { return bridge.display(0)->online() && row_text(f, 0, 35, 7) == "Sign On"; }));
-    CHECK(bridge.display(0)->sessions_started() == 1);
-    CHECK(connects == 1);
+    CHECK(f.cell(5, 52) != 0xC1);
+    CHECK(connects == 2);
 
     // The host hangs up: the cable is pulled. Neither station is polled
     // any more, so the terminal sees no controller.
-    Station& link = *bridge.scheduler().station(0);
-    CHECK(link.counters().discoveries == 2);   // power-on, then the power cycle above
+    CHECK(link.counters().discoveries == 2);   // power-on, then the new session above
     {
         std::lock_guard<std::mutex> g(server->mu);
         server->closed = true;
@@ -310,23 +319,77 @@ TEST_CASE("tn5250 bridge: sign-on screen to the station, keystrokes back to the 
         server->to_client.push_back(negotiation());
         server->to_client.push_back(framed_record(tn5250_test::signon_stream()));
     }
-    REQUIRE(b.run_until([&] { return connects == 2; }, 8000));
+    REQUIRE(b.run_until([&] { return connects == 3; }, 8000));
     REQUIRE(b.run_until([&] { return link.plugged() && link.state() == StationState::Online; }));
     CHECK(link.counters().discoveries == 3);
     CHECK(b.sent[0] > before0);
     REQUIRE(b.run_until([&] { return row_text(f, 0, 35, 7) == "Sign On"; }));
     REQUIRE(b.run_until([&] { return bridge.printer(1)->ready(); }));
-    CHECK(bridge.display(0)->sessions_started() == 2);
+    CHECK(bridge.display(0)->sessions_started() == 3);
 
-    // Monitor `disconnect 0`: the cable is pulled and stays pulled.
+    // A refused certificate, monitor `disconnect 0`: the cable is pulled and
+    // stays pulled, past the reconnect back-off...
     REQUIRE(bridge.hold(0));
     b.run_for_emulated(5'000'000);
     CHECK_FALSE(link.plugged());
     const unsigned held0 = b.sent[0];
-    b.run_until([] { return false; }, 600);   // past the reconnect back-off
+    b.run_until([] { return false; }, 600);
     CHECK(b.sent[0] == held0);
-    CHECK(connects == 2);
-    CHECK(bridge.describe().find("(disconnected)") != std::string::npos);
+    CHECK(connects == 3);
+    CHECK(bridge.describe().find("(closed until reset)") != std::string::npos);
+    CHECK(bridge.session_status()[0].held);
+    // ...until the terminal is reset: the connection follows its life.
+    bridge.terminal_reset();
+    REQUIRE(b.run_until([&] { return connects == 4; }));
+    CHECK_FALSE(bridge.session_status()[0].held);
+}
+
+TEST_CASE("tn5250 bridge: a reset ends the session the terminal was using, and only that") {
+    TwinaxConfig tw;
+    tw.host = TwinaxHostKind::Tn5250;
+    tw.stations = {StationConfig{0, StationType::Display, "", ""}};
+    Tn5250Config tn;
+    tn.host = "ibmi.example";
+    auto server = std::make_shared<ServerScript>();
+    int connects = 0;
+    BridgeOptions opt;
+    opt.transport = [&](const StationConfig&, std::string&) -> std::unique_ptr<em34xx::tn5250::Transport> {
+        ++connects;
+        return std::make_unique<ScriptTransport>(server);
+    };
+    std::string err;
+    auto host = make_tn5250_bridge(tw, tn, opt, err);
+    REQUIRE(host);
+    auto& bridge = static_cast<Tn5250Bridge&>(*host);
+    CHECK(bridge.bridges_sessions());
+    Bench b(bridge);
+    FakeStation f(0);
+    b.plug(f);
+    Station& link = *bridge.scheduler().station(0);
+
+    // A session the terminal has not been on line on is not in use: a reset
+    // (the one at power-up, a reset during the self test) keeps it.
+    REQUIRE(b.run_until([&] { return connects == 1; }));
+    bridge.terminal_reset();
+    b.run_for_emulated(50'000'000);
+    CHECK(connects == 1);
+
+    server->push(negotiation());
+    server->push(framed_record(tn5250_test::signon_stream()));
+    REQUIRE(b.run_until([&] { return bridge.display(0)->online() && row_text(f, 0, 35, 7) == "Sign On"; }));
+
+    // On line: the reset ends the session at once, without waiting for the
+    // controller to miss the terminal on the line, and a new one is opened.
+    bridge.terminal_reset();
+    CHECK_FALSE(bridge.display(0)->online());
+    CHECK_FALSE(link.plugged());
+    CHECK(link.state() == StationState::Absent);
+    f.power_on();
+    REQUIRE(b.run_until([&] { return connects == 2; }));
+    server->push(negotiation());
+    server->push(framed_record(tn5250_test::signon_stream()));
+    REQUIRE(b.run_until([&] { return bridge.display(0)->online() && row_text(f, 0, 35, 7) == "Sign On"; }));
+    CHECK(bridge.display(0)->sessions_started() == 2);
 }
 
 TEST_CASE("tn5250 bridge: per-station session settings") {

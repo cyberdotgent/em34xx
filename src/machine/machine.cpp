@@ -47,6 +47,9 @@ void Machine::reset() {
     power_cycle_pending_ = false;
     display_dirty_ = true;
     ++reset_count_;
+    // The controller on the line: the sessions this run of the terminal
+    // used are over.
+    if (line_host_) line_host_->terminal_reset();
 }
 
 bool Machine::flush_nonvolatile(std::string& error) {
