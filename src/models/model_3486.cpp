@@ -21,7 +21,7 @@
 //  - RAM from 00000; the firmware uses addresses up to about 52000 [observed],
 //    and 60000-7FFFF is an optional ROM checked only when a strap says it is
 //    fitted [observed]. 384 KiB (00000-5FFFF) is a hypothesis.
-//  - 8088-class CPU: no 80186-only opcode in the reachable code, 8086 code
+//  - NEC V20 CPU; no 80186-only opcode in the reachable code, 8086 code
 //    generation (repeated single-bit shifts), no port I/O [observed].
 // The 3486's own chip, 54G0011, holds only half of its firmware. Loaded with
 // --allow-bad-rom, its four 64 KiB blocks are mapped at the segments they
@@ -103,7 +103,8 @@ public:
         info_.name = is_3487 ? "3487" : "3486";
         info_.description = is_3487 ? "IBM 3487 InfoWindow II" : "IBM 3486 InfoWindow II";
         info_.status = ModelStatus::Bringup;
-        info_.cpu = CpuLevel::I8088;
+        // NEC V20 (D70108L-8) on the logic board [observed].
+        info_.cpu = CpuLevel::NecV20;
         info_.address_bits = 20;
         // 30.000 MHz master oscillator on the logic board (observed); the
         // CPU clock is assumed to be a quarter of it (hypothesis).
@@ -156,9 +157,10 @@ public:
             "BA0) on model 3486 and 4A (3487 HG0/HA0) on model 3487 (observed decoder, hypothesis for the units)",
             "display test: retrace of 1/140 frame and 20128 bit 3 as sync polarity (hypotheses that satisfy "
             "the test's windows); its required values come from the temporary signature shim",
-            "CPU: NEC V20 (D70108L-8) on the logic board (observed); the firmware uses no 80186-only "
-            "opcode and no port I/O (observed), so it is emulated as an 8088 for now; V20-specific "
-            "behaviour (undocumented opcodes, timing) is not modelled",
+            "CPU: NEC V20 (D70108L-8) on the logic board (observed), emulated as one: its instruction "
+            "timing and edge-case behaviour follow NEC's documentation (src/cpu/i86.cpp); the firmware uses "
+            "no 80186-only opcode and no port I/O (observed); NEC's own 0F-prefixed instructions are not "
+            "implemented",
             "clock: single 30.000 MHz oscillator (observed); CPU at 7.5 MHz = 30/4 (hypothesis)",
             "system gate array at 20000 and display controller at 20100, 3477-compatible register use "
             "(observed); of the new registers 2000B/2000D/2000F/2001A/2001B (third Twinax channel) and "

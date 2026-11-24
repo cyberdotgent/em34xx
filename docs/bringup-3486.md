@@ -35,12 +35,29 @@ suffixes (hypothesis: a 3477-compatibility identity).
   shift-by-immediate), and there is no port I/O. All hardware is memory
   mapped, as on the 3477.
 - **The CPU is an NEC V20** (D70108L-8, 8 MHz part), U12, PLCC-44 (observed,
-  board photo). It runs 8088 code, but differs from an Intel 8088 in some
-  undocumented opcodes, AAM/AAD, its `0F` extended-instruction prefix and
-  timing. None of that is modelled yet; the firmware doesn't need it so far.
+  board photo), and the model runs on a V20 core (`CpuLevel::NecV20`,
+  `src/cpu/i86.cpp`):
+  - behaviour that differs from the 8088 and the 80186 (documented, NEC
+    "16-bit V Series Instruction" manual and the uPD70108 data sheet;
+    cross-checked against the SingleStepTests V20 vectors): the 80186
+    instructions, shift counts not masked, no invalid-opcode exception,
+    `D6` as an XLAT alias, AAD always base 10, IDIV refusing the most
+    negative quotient;
+  - timing (documented, same sources): 2 clocks for any effective address
+    (8088: 5-12), MUL 21-30, DIV 19-25, one clock per bit of a shift count,
+    INT 50, a taken conditional jump 14. The core's timing is a model, not
+    cycle-exact, for either chip;
+  - not implemented: NEC's own instructions behind the `0F` prefix,
+    REPC/REPNC and BRKEM. The firmware has not been seen to use them.
+- With the V20 core the unit passes POST on all four tube codes (`42`,
+  `4A`, `48`, `4C`) and goes on line (observed). The retrace length the
+  display test accepts (1/140 of the frame) was fitted under 8088 timing and
+  still passes; it has not been re-fitted.
 - Clock: the only oscillator is a **30.000 MHz** module (Y1, IBM 0666269;
-  observed). A CPU clock of 7.5 MHz (30/4) is a hypothesis that fits the
-  delay-loop estimate of about 7 MHz; the model uses it for pacing.
+  observed). A CPU clock of 7.5 MHz (30/4) is a hypothesis. It was said to
+  fit a delay-loop estimate of about 7 MHz, but that estimate counted
+  clocks as an 8088 does; on a V20 the same loops take fewer clocks, so the
+  estimate no longer supports the figure and needs redoing (open).
 
 ## Logic board (observed, photo of a 3486 board, IBM 9325)
 

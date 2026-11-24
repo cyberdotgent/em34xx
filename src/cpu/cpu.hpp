@@ -23,6 +23,11 @@ enum class CpuLevel {
     I80186,
     I80188,
     I80286,
+    // NEC V20 (uPD70108): 8-bit bus, the 80186 instruction set and NEC's own
+    // additions, its own edge-case behaviour and faster instruction timing.
+    // Not ordered with the Intel levels: use the chip's properties, never a
+    // comparison of levels.
+    NecV20,
 };
 
 const char* cpu_level_name(CpuLevel level);

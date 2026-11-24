@@ -30,6 +30,7 @@ const char* cpu_level_name(CpuLevel level) {
     case CpuLevel::I80186: return "80186";
     case CpuLevel::I80188: return "80188";
     case CpuLevel::I80286: return "80286";
+    case CpuLevel::NecV20: return "V20";
     }
     return "?";
 }
@@ -40,19 +41,64 @@ bool parse_cpu_level(const std::string& text, CpuLevel& out) {
     else if (text == "80186" || text == "186") out = CpuLevel::I80186;
     else if (text == "80188" || text == "188") out = CpuLevel::I80188;
     else if (text == "80286" || text == "286") out = CpuLevel::I80286;
+    else if (text == "V20" || text == "v20") out = CpuLevel::NecV20;
     else return false;
     return true;
 }
 
-I86::I86(CpuBus& bus, CpuLevel level) : bus_(bus), level_(level) {
-    addr_mask_ = level == CpuLevel::I80286 ? 0xFFFFFFu : 0xFFFFFu;
-    bus8_ = level == CpuLevel::I8088 || level == CpuLevel::I80188;
+// The chips. Intel timing figures are those this core has always used (an
+// approximation of the 8088: see step()). The V20's follow NEC's "16-bit V
+// Series Instruction" user's manual (U11301E), table 2-8, V20 column, and
+// the uPD70108 data sheet [documented]: effective addresses take 2 clocks
+// in any mode; MUL 21-22 / 29-30, IMUL 33-39 / 41-47, DIV 19 / 25, IDIV
+// 29-34 / 38-43 (the middle of each range is used); shifts by a count take
+// one clock per bit; INT 50; a taken conditional jump 14 against 4. Its
+// behaviour: shift counts are not masked, PUSH SP pushes the decremented
+// value, undefined opcodes do not trap, a divide error returns to the next
+// instruction, IDIV does not accept the most negative quotient, D6 is an
+// XLAT alias and AAD always uses base 10 [documented, and observed in the
+// SingleStepTests V20 vectors]. Not implemented: NEC's own instructions
+// behind the 0F prefix, REPC/REPNC (64/65) and BRKEM.
+I86::Chip I86::chip_for(CpuLevel level) {
+    //              bus8   mask       186    mask5  trap   pushsp repneg idivfr fhigh  nec
+    const Chip i8088 = {true, 0xFFFFFu, false, false, false, false, true, false, true, false,
+                        5, 4, 70, 118, 70, 118, 85, 150, 85, 150, 20, 12, 80, 60, 25};
+    Chip c = i8088;
+    switch (level) {
+    case CpuLevel::I8088: break;
+    case CpuLevel::I8086: c.bus8 = false; break;
+    case CpuLevel::I80186:
+    case CpuLevel::I80188:
+    case CpuLevel::I80286:
+        c.bus8 = level == CpuLevel::I80188;
+        c.set186 = true;
+        c.mask_shift_count = true;
+        c.trap_invalid = true;
+        c.rep_negates_quotient = false;
+        c.idiv_full_range = true;
+        if (level == CpuLevel::I80286) {
+            c.addr_mask = 0xFFFFFFu;
+            c.push_sp_original = true;
+            c.flags_high_ones = false;
+        }
+        break;
+    case CpuLevel::NecV20:
+        c = Chip{true, 0xFFFFFu, true, false, false, false, false, false, true, true,
+                 2, 1, 22, 30, 36, 44, 19, 25, 32, 41, 10, 10, 13, 5, 25};
+        break;
+    }
+    return c;
+}
+
+I86::I86(CpuBus& bus, CpuLevel level) : bus_(bus), chip_(chip_for(level)), level_(level) {
+    addr_mask_ = chip_.addr_mask;
+    bus8_ = chip_.bus8;
     reset();
 }
 
 uint16_t I86::normalise_flags(uint16_t f) const {
     f = uint16_t((f & 0x0FD5u) | 0x0002u);
-    if (level_ < CpuLevel::I80286) f |= 0xF000u;
+    if (chip_.flags_high_ones) f |= 0xF000u;
     return f;
 }
 
@@ -183,7 +229,7 @@ void I86::decode_modrm() {
     else if (mod_ == 2) off = uint16_t(off + fetch16());
     ea_off_ = off;
     ea_seg_ = default_seg(r_.seg[seg]);
-    step_cycles_ += 5;
+    step_cycles_ += chip_.ea;
 }
 
 uint16_t I86::rm_read(bool w) {
@@ -258,9 +304,9 @@ uint16_t I86::inc_dec(bool w, uint16_t v, bool dec) {
 uint16_t I86::shift(unsigned op, bool w, uint16_t v, unsigned count) {
     const uint32_t mask = w ? 0xFFFFu : 0xFFu;
     const uint32_t sign = w ? 0x8000u : 0x80u;
-    if (is_186_or_later()) count &= 0x1F;
+    if (chip_.mask_shift_count) count &= 0x1F;
     if (count == 0) return v;
-    step_cycles_ += 4 * count;
+    step_cycles_ += chip_.shift_per_count * count;
 
     uint32_t x = v & mask;
     bool cf = flag(FLAG_CF);
@@ -311,8 +357,8 @@ uint16_t I86::shift(unsigned op, bool w, uint16_t v, unsigned count) {
 
 void I86::multiply(bool w, bool is_signed) {
     uint16_t src = rm_read(w);
-    const bool negate = rep_ != 0 && is_signed && !is_186_or_later();
-    step_cycles_ += w ? 118 : 70;
+    const bool negate = rep_ != 0 && is_signed && chip_.rep_negates_quotient;
+    step_cycles_ += is_signed ? (w ? chip_.imul16 : chip_.imul8) : (w ? chip_.mul16 : chip_.mul8);
     if (!w) {
         uint8_t al = uint8_t(r_.gpr[AX]);
         uint16_t res;
@@ -353,8 +399,8 @@ void I86::multiply(bool w, bool is_signed) {
 // Returns false if a divide error was raised.
 bool I86::divide(bool w, bool is_signed) {
     uint16_t src = rm_read(w);
-    const bool negate = rep_ != 0 && is_signed && !is_186_or_later();
-    step_cycles_ += w ? 150 : 85;
+    const bool negate = rep_ != 0 && is_signed && chip_.rep_negates_quotient;
+    step_cycles_ += is_signed ? (w ? chip_.idiv16 : chip_.idiv8) : (w ? chip_.div16 : chip_.div8);
     if (!w) {
         uint16_t dividend = r_.gpr[AX];
         uint8_t divisor = uint8_t(src);
@@ -365,7 +411,7 @@ bool I86::divide(bool w, bool is_signed) {
             int32_t q = a / b;
             int32_t rem = a % b;
             if (negate) q = -q;
-            const int32_t qmin = is_186_or_later() ? -128 : -127;
+            const int32_t qmin = chip_.idiv_full_range ? -128 : -127;
             if (q > 127 || q < qmin) { interrupt(0); return false; }
             r_.gpr[AX] = uint16_t((uint8_t(rem) << 8) | uint8_t(q));
         } else {
@@ -384,7 +430,7 @@ bool I86::divide(bool w, bool is_signed) {
             int64_t q = a / b;
             int64_t rem = a % b;
             if (negate) q = -q;
-            const int64_t qmin = is_186_or_later() ? -32768 : -32767;
+            const int64_t qmin = chip_.idiv_full_range ? -32768 : -32767;
             if (q > 32767 || q < qmin) { interrupt(0); return false; }
             r_.gpr[AX] = uint16_t(q);
             r_.gpr[DX] = uint16_t(rem);
@@ -488,7 +534,7 @@ void I86::bcd(uint8_t op) {
 // Control flow
 
 void I86::interrupt(uint8_t vector) {
-    step_cycles_ += 20;
+    step_cycles_ += chip_.interrupt;
     push(normalise_flags(r_.flags));
     set_flag(FLAG_IF, false);
     set_flag(FLAG_TF, false);
@@ -519,7 +565,10 @@ bool I86::condition(unsigned cc) const {
 }
 
 void I86::invalid_opcode() {
-    // The 80186 and later raise #UD (vector 6) with the faulting IP.
+    // The 80186 and later raise #UD (vector 6) with the faulting IP. The
+    // V20 has no such exception: the opcode does nothing here (what each
+    // undefined opcode really does on it is not modelled).
+    if (!chip_.trap_invalid) return;
     r_.ip = start_ip_;
     interrupt(6);
 }
@@ -644,7 +693,7 @@ uint32_t I86::step() {
             seg_override_ = (op >> 3) & 3;
         } else if (op == 0xF2 || op == 0xF3) {
             rep_ = op;
-        } else if (op == 0xF0 || (op == 0xF1 && !is_186_or_later())) {
+        } else if (op == 0xF0 || (op == 0xF1 && !chip_.trap_invalid)) {
             // LOCK: no effect on a single-processor bus.
         } else {
             break;
@@ -707,7 +756,13 @@ void I86::execute(uint8_t op) {
         if (op == 0x17) inhibit_irq_ = true;
         break;
     case 0x0F: // POP CS (8086 only)
-        if (is_186_or_later()) invalid_opcode();
+        if (chip_.nec) {
+            // NEC's prefix for its own instructions (bit and BCD-string
+            // operations, BRKEM): not implemented. The second byte is
+            // skipped so that the fault is visible in a trace, not a jump
+            // into data.
+            (void)fetch8();
+        } else if (is_186_or_later()) invalid_opcode();
         else r_.seg[CS] = pop();
         break;
     case 0x27: case 0x2F: case 0x37: case 0x3F:
@@ -727,7 +782,7 @@ void I86::execute(uint8_t op) {
         push(r_.gpr[op & 7]);
         break;
     case 0x54: // PUSH SP: the 8086 pushes the already-decremented value.
-        if (level_ >= CpuLevel::I80286) {
+        if (chip_.push_sp_original) {
             push(r_.gpr[SP]);
         } else {
             r_.gpr[SP] = uint16_t(r_.gpr[SP] - 2);
@@ -753,7 +808,7 @@ void I86::execute(uint8_t op) {
         int8_t disp = int8_t(fetch8());
         if (condition(op & 0x0F)) {
             r_.ip = uint16_t(r_.ip + disp);
-            step_cycles_ += 12;
+            step_cycles_ += chip_.jump_taken;
         }
         break;
     }
@@ -960,22 +1015,26 @@ void I86::execute(uint8_t op) {
         al = uint8_t(al % base);
         r_.gpr[AX] = uint16_t((ah << 8) | al);
         set_szp(false, al);
-        step_cycles_ += 80;
+        step_cycles_ += chip_.aam;
         break;
     }
     case 0xD5: { // AAD
         uint8_t base = fetch8();
+        if (chip_.nec) base = 10;   // the V20 ignores the operand
         uint8_t al = uint8_t(r_.gpr[AX]);
         uint8_t ah = uint8_t(r_.gpr[AX] >> 8);
         uint8_t res = uint8_t(alu(0, false, al, uint8_t(ah * base)));
         r_.gpr[AX] = res;
-        step_cycles_ += 60;
+        step_cycles_ += chip_.aad;
         break;
     }
-    case 0xD6: // SALC (undocumented)
-        if (is_186_or_later()) invalid_opcode();
-        else set_reg8(0, flag(FLAG_CF) ? 0xFF : 0x00);
-        break;
+    case 0xD6: // SALC (undocumented); an alias of XLAT on the V20
+        if (!chip_.nec) {
+            if (is_186_or_later()) invalid_opcode();
+            else set_reg8(0, flag(FLAG_CF) ? 0xFF : 0x00);
+            break;
+        }
+        [[fallthrough]];
     case 0xD7: { // XLAT
         uint16_t seg = default_seg(r_.seg[DS]);
         set_reg8(0, rd8(seg, uint16_t(r_.gpr[BX] + (r_.gpr[AX] & 0xFF))));
@@ -1138,7 +1197,7 @@ void I86::execute_186(uint8_t op) {
         bool overflow = p != int32_t(int16_t(uint16_t(p)));
         set_flag(FLAG_CF, overflow);
         set_flag(FLAG_OF, overflow);
-        step_cycles_ += 25;
+        step_cycles_ += chip_.imul_imm;
         break;
     }
     case 0x6C: case 0x6D: case 0x6E: case 0x6F:

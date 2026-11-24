@@ -66,3 +66,20 @@ without further changes.
   (`Application::set_phosphor()`); changing the variant is changing the unit
   (`Application::set_model()`): the machine is rebuilt and powered on and
   the sessions reconnect with the new terminal type.
+
+## CPU
+
+The CPU is a property of the model (`ModelInfo::cpu`) and the core behaves
+as that chip (`I86::chip_for()` in `src/cpu/i86.cpp`: instruction set,
+edge cases and the timing model's figures per chip).
+
+| Model | CPU | Core |
+| --- | --- | --- |
+| 3477 | AMD N8088-2 (documented) | 8088 |
+| 3486, 3487 | NEC V20, D70108L-8 (observed) | V20 |
+| 3489 | 80286 | not implemented (no protected-mode core; the model is a placeholder) |
+
+An 8086 would behave as the 8088 does here apart from its bus width. The
+8088 core is checked against the SingleStepTests 8088 vectors
+(`tools/fetch-test-vectors.sh`); that project also publishes V20 and 80286
+sets, which are not wired in yet.

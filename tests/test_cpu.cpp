@@ -5,6 +5,8 @@
 #include "cpu/i86_disasm.hpp"
 
 #include <doctest/doctest.h>
+#include <initializer_list>
+#include <string>
 
 #include <algorithm>
 #include <vector>
@@ -142,6 +144,78 @@ TEST_CASE("80186 extensions are level dependent") {
         CHECK(cpu.regs().gpr[SP] == 0x200);
         CHECK(cpu.regs().ip == 0x102);  // SF clear: not taken
     }
+}
+
+TEST_CASE("NEC V20: the 80186 instructions, its own edge cases and faster timing") {
+    RamBus bus;
+    auto at = [&](I86& cpu, std::initializer_list<uint8_t> code) {
+        bus.load(0x100, code);
+        cpu.regs().seg[CS] = 0;
+        cpu.regs().seg[DS] = 0;
+        cpu.regs().seg[SS] = 0;
+        cpu.regs().ip = 0x100;
+        cpu.regs().gpr[SP] = 0x200;
+    };
+    I86 v20(bus, CpuLevel::NecV20), i88(bus, CpuLevel::I8088), i188(bus, CpuLevel::I80188);
+    CHECK(std::string(cpu_level_name(CpuLevel::NecV20)) == "V20");
+    CHECK(v20.is_186_or_later());
+    CHECK((v20.normalise_flags(0) & 0xF000) == 0xF000);
+
+    // PUSH imm16 (an 80186 instruction).
+    at(v20, {0x68, 0x34, 0x12});
+    v20.step();
+    CHECK(v20.regs().gpr[SP] == 0x1FE);
+    CHECK(bus.mem[0x1FE] == 0x34);
+
+    // PUSH SP pushes the decremented value, as on the 8088.
+    at(v20, {0x54});
+    v20.step();
+    CHECK(bus.mem[0x1FE] == 0xFE);
+    CHECK(bus.mem[0x1FF] == 0x01);
+
+    // Shift counts are not masked: SHL AX by 33 clears it (the 80188 shifts by 1).
+    for (I86* cpu : {&v20, &i188}) {
+        at(*cpu, {0xC1, 0xE0, 0x21});   // shl ax, 33
+        cpu->regs().gpr[AX] = 0x0003;
+        cpu->step();
+    }
+    CHECK(v20.regs().gpr[AX] == 0x0000);
+    CHECK(i188.regs().gpr[AX] == 0x0006);
+
+    // AAD ignores its operand (always base 10).
+    for (I86* cpu : {&v20, &i88}) {
+        at(*cpu, {0xD5, 0x10});   // aad 16
+        cpu->regs().gpr[AX] = 0x0203;
+        cpu->step();
+    }
+    CHECK(v20.regs().gpr[AX] == 23);
+    CHECK(i88.regs().gpr[AX] == 0x23);
+
+    // D6 is an alias of XLAT, not SALC.
+    at(v20, {0xD6});
+    bus.mem[0x305] = 0x5A;
+    v20.regs().gpr[BX] = 0x300;
+    v20.regs().gpr[AX] = 0x0005;
+    v20.step();
+    CHECK((v20.regs().gpr[AX] & 0xFF) == 0x5A);
+
+    // An undefined opcode does not trap: the 80188 takes vector 6, the V20 goes on.
+    at(v20, {0xF1, 0x90});
+    v20.step();
+    CHECK(v20.regs().seg[CS] == 0);
+    CHECK(v20.regs().gpr[SP] == 0x200);
+
+    // A memory operand and a multiply cost fewer clocks than on the 8088.
+    uint32_t clocks[2];
+    int k = 0;
+    for (I86* cpu : {&v20, &i88}) {
+        at(*cpu, {0xF7, 0xA7, 0x00, 0x03});   // mul word [bx+0300]
+        cpu->regs().gpr[BX] = 0;
+        cpu->regs().gpr[AX] = 7;
+        clocks[k++] = cpu->step();
+    }
+    CHECK(clocks[0] < clocks[1]);
+    CHECK(clocks[1] - clocks[0] == (118 - 30) + (5 - 2));
 }
 
 TEST_CASE("disassembler") {

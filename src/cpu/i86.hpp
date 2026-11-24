@@ -21,7 +21,9 @@ public:
     I86(CpuBus& bus, CpuLevel level);
 
     CpuLevel level() const override { return level_; }
-    bool is_186_or_later() const { return level_ >= CpuLevel::I80186; }
+    // Whether the chip has the 80186 instructions (PUSHA, shifts by an
+    // immediate count, ENTER/LEAVE, ...).
+    bool is_186_or_later() const { return chip_.set186; }
 
     // Reset: CS=FFFF, IP=0000, flags cleared, queue flushed.
     void reset() override;
@@ -60,6 +62,31 @@ public:
 
     // Flags are stored normalised to what PUSHF would push.
     uint16_t normalise_flags(uint16_t f) const override;
+
+    // What differs between the chips this core is: behaviour first, then
+    // the instruction timing model's figures (clocks added on top of the
+    // bus cycles an instruction makes). Every chip states all of them.
+    struct Chip {
+        bool bus8;                  // 8-bit data bus (8088, 80188, V20)
+        uint32_t addr_mask;
+        bool set186;                // has the 80186 instructions
+        bool mask_shift_count;      // shift/rotate counts are taken mod 32
+        bool trap_invalid;          // undefined opcodes raise vector 6
+        bool push_sp_original;      // PUSH SP pushes the value before the decrement
+        bool rep_negates_quotient;  // a REP prefix on IDIV/IMUL inverts the sign
+        bool idiv_full_range;       // IDIV accepts -128 / -32768 as a quotient
+        bool flags_high_ones;       // FLAGS bits 12-15 read as 1
+        bool nec;                   // D6 is XLAT, AAD ignores its operand, 0F is NEC's prefix
+        uint32_t ea;                // effective-address calculation
+        uint32_t shift_per_count;
+        uint32_t mul8, mul16, imul8, imul16;
+        uint32_t div8, div16, idiv8, idiv16;
+        uint32_t interrupt;         // on top of the pushes and the vector fetch
+        uint32_t jump_taken;        // a conditional jump that is taken
+        uint32_t aam, aad;
+        uint32_t imul_imm;
+    };
+    static Chip chip_for(CpuLevel level);
 
 private:
     // --- bus helpers -------------------------------------------------
@@ -113,6 +140,7 @@ private:
     void invalid_opcode();
 
     CpuBus& bus_;
+    Chip chip_;
     CpuLevel level_;
     uint32_t addr_mask_ = 0xFFFFF;
     bool bus8_ = true;
