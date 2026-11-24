@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-#include "host/wsc/keyboard_map.hpp"
+#include "host/twinax/wsc/keyboard_map.hpp"
 
 #include <cstddef>
 

@@ -5,7 +5,7 @@
 #include "fake_station.hpp"
 #include "tn5250_test_util.hpp"
 
-#include "host/wsc/tn5250_bridge.hpp"
+#include "host/twinax/wsc/tn5250_bridge.hpp"
 #include "tn5250/record.hpp"
 #include "tn5250/telnet.hpp"
 #include "tn5250/transport.hpp"

@@ -37,10 +37,10 @@
 #pragma once
 
 #include "host/host_config.hpp"
-#include "host/twinax_link.hpp"
-#include "host/wsc/link_scheduler.hpp"
-#include "host/wsc/session_port.hpp"
-#include "host/wsc/tn5250_adapter.hpp"
+#include "host/twinax/twinax_link.hpp"
+#include "host/twinax/wsc/link_scheduler.hpp"
+#include "host/twinax/wsc/session_port.hpp"
+#include "host/twinax/wsc/tn5250_adapter.hpp"
 #include "tn5250/client.hpp"
 #include "tn5250/session_api.hpp"
 

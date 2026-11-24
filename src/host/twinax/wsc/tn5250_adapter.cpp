@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-#include "host/wsc/tn5250_adapter.hpp"
+#include "host/twinax/wsc/tn5250_adapter.hpp"
 
 namespace em34xx {
 namespace wsc {

@@ -2,12 +2,12 @@
 // Virtual workstation controller (src/host/wsc) against fake stations.
 #include "fake_station.hpp"
 
-#include "host/wsc/device_commands.hpp"
-#include "host/wsc/idle_host.hpp"
-#include "host/wsc/keyboard_map.hpp"
-#include "host/wsc/link_scheduler.hpp"
-#include "host/wsc/screen_writer.hpp"
-#include "host/wsc/tn5250_adapter.hpp"
+#include "host/twinax/wsc/device_commands.hpp"
+#include "host/twinax/wsc/idle_host.hpp"
+#include "host/twinax/wsc/keyboard_map.hpp"
+#include "host/twinax/wsc/link_scheduler.hpp"
+#include "host/twinax/wsc/screen_writer.hpp"
+#include "host/twinax/wsc/tn5250_adapter.hpp"
 
 #include <doctest/doctest.h>
 

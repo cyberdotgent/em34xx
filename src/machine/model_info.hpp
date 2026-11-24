@@ -5,6 +5,7 @@
 #pragma once
 
 #include "cpu/cpu.hpp"
+#include "machine/line_port.hpp"
 #include "rom/romset.hpp"
 
 #include <cstdint>
@@ -72,6 +73,7 @@ struct ModelInfo {
     CpuLevel cpu = CpuLevel::I8088;
     unsigned address_bits = 20;
     uint64_t clock_hz = 0;       // nominal CPU clock, used for pacing
+    LineKind line = LineKind::Twinax;   // what the unit hangs on (machine/line_port.hpp)
     unsigned max_sessions = 1;   // twinax station addresses (sessions) the unit can answer on;
                                  // never more than TwinaxConfig::kMaxStationsPerBus (7)
     unsigned max_printer_sessions = 0;  // of those, how many may be printer sessions

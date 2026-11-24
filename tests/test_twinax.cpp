@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "config/config.hpp"
-#include "host/twinax_link.hpp"
+#include "host/twinax/twinax_link.hpp"
 
 #include <cstdio>
 #include <filesystem>

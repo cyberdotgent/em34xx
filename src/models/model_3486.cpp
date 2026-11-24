@@ -79,6 +79,7 @@ protected:
         // 30.000 MHz master oscillator on the logic board (observed); the
         // CPU clock is assumed to be a quarter of it (hypothesis).
         info_.clock_hz = 7500000;
+        info_.line = LineKind::Twinax;
         info_.max_sessions = 2;
         info_.max_printer_sessions = 1;
         info_.options = {

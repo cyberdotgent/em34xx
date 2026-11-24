@@ -154,14 +154,26 @@ public:
     void set_audio_sink(AudioSink* s) { audio_.target = s; }
     AudioSink& audio() { return audio_; }
     NonVolatileStore* nvram() const { return nvram_; }
-    void set_twinax_host(std::unique_ptr<TwinaxHost> host) { twinax_ = std::move(host); }
+    // The controller on the machine's line (ModelInfo::line). A host for
+    // another kind of line is refused (false; the machine keeps its own).
+    bool set_line_host(std::unique_ptr<LineHost> host) {
+        if (!host || host->line() != line_) return false;
+        line_host_ = std::move(host);
+        return true;
+    }
     // Replaces the controller on the line and returns the old one, so the
-    // caller can destroy it outside the machine lock.
-    std::unique_ptr<TwinaxHost> swap_twinax_host(std::unique_ptr<TwinaxHost> host) {
-        twinax_.swap(host);
+    // caller can destroy it outside the machine lock. A host for another
+    // kind of line is handed back unused.
+    std::unique_ptr<LineHost> swap_line_host(std::unique_ptr<LineHost> host) {
+        if (host && host->line() == line_) line_host_.swap(host);
         return host;
     }
-    TwinaxHost* twinax_host() const { return twinax_.get(); }
+    LineHost* line_host() const { return line_host_.get(); }
+    LineKind line() const { return line_; }
+    // The same as its Twinax interface; null on a machine with another line.
+    TwinaxHost* twinax_host() const {
+        return line_ == LineKind::Twinax ? static_cast<TwinaxHost*>(line_host_.get()) : nullptr;
+    }
 
     // The display device's raw frame; present/display_profile.hpp applies
     // the display subtype (render_presented).
@@ -197,7 +209,8 @@ private:
     KeyboardSink* keyboard_ = nullptr;
     Tube tube_;
     NonVolatileStore* nvram_ = nullptr;
-    std::unique_ptr<TwinaxHost> twinax_;
+    LineKind line_;   // the model's (ModelInfo::line)
+    std::unique_ptr<LineHost> line_host_;
     bool display_dirty_ = true;
     uint64_t reset_count_ = 0;
     bool power_cycle_pending_ = false;

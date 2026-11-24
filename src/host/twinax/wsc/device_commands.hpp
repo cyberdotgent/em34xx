@@ -6,7 +6,7 @@
 // Oct 1989, ch. 2 and 16 [doc].
 #pragma once
 
-#include "host/twinax_link.hpp"
+#include "host/twinax/twinax_link.hpp"
 
 #include <cstdint>
 #include <vector>

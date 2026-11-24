@@ -267,14 +267,14 @@ target_link_libraries(em34xx_machines PUBLIC em34xx_emu PRIVATE em34xx_tomlplusp
 
 em34xx_library(em34xx_host
   src/host/host_config.cpp
-  src/host/twinax_link.cpp
-  src/host/wsc/device_commands.cpp
-  src/host/wsc/idle_host.cpp
-  src/host/wsc/keyboard_map.cpp
-  src/host/wsc/link_scheduler.cpp
-  src/host/wsc/screen_writer.cpp
-  src/host/wsc/station.cpp
-  src/host/wsc/tn5250_adapter.cpp
+  src/host/twinax/twinax_link.cpp
+  src/host/twinax/wsc/device_commands.cpp
+  src/host/twinax/wsc/idle_host.cpp
+  src/host/twinax/wsc/keyboard_map.cpp
+  src/host/twinax/wsc/link_scheduler.cpp
+  src/host/twinax/wsc/screen_writer.cpp
+  src/host/twinax/wsc/station.cpp
+  src/host/twinax/wsc/tn5250_adapter.cpp
 )
 target_link_libraries(em34xx_host PUBLIC em34xx_emu)
 
@@ -301,7 +301,7 @@ elseif(EM34XX_TLS_BACKEND STREQUAL "apple")
 endif()
 
 # --- TN5250 bridge: the workstation controller with TN5250 sessions --------
-em34xx_library(em34xx_bridge src/host/wsc/tn5250_bridge.cpp)
+em34xx_library(em34xx_bridge src/host/twinax/wsc/tn5250_bridge.cpp)
 target_link_libraries(em34xx_bridge PUBLIC em34xx_tn5250 em34xx_host)
 
 em34xx_library(em34xx_present

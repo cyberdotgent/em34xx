@@ -42,6 +42,7 @@ public:
         // 59.8185 MHz crystal (documented, MAME board notes); CPU at
         // crystal/8 (hypothesis).
         info_.clock_hz = 7477312;
+        info_.line = LineKind::Twinax;
         info_.max_sessions = 2;
         info_.max_printer_sessions = 1;   // display + printer [doc PAI 14.0 via 3197; obs]
         const std::vector<Phosphor> tubes = {phosphor_green(), phosphor_amber(), phosphor_paper_white()};

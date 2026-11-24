@@ -6,8 +6,8 @@
 // cadence, a pending step, or a probe of an absent address).
 #pragma once
 
-#include "host/twinax_link.hpp"
-#include "host/wsc/station.hpp"
+#include "host/twinax/twinax_link.hpp"
+#include "host/twinax/wsc/station.hpp"
 
 #include <memory>
 #include <string>

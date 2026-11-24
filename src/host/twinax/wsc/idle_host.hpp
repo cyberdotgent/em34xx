@@ -8,9 +8,9 @@
 #pragma once
 
 #include "host/host_config.hpp"
-#include "host/twinax_link.hpp"
-#include "host/wsc/link_scheduler.hpp"
-#include "host/wsc/session_port.hpp"
+#include "host/twinax/twinax_link.hpp"
+#include "host/twinax/wsc/link_scheduler.hpp"
+#include "host/twinax/wsc/session_port.hpp"
 
 #include <memory>
 #include <string>

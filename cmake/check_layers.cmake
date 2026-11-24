@@ -41,7 +41,7 @@ foreach(f IN LISTS sources)
     continue()   # executables' main files at the top of src/
   endif()
   string(REGEX MATCH "^[^/]+" dir "${f}")
-  if(f MATCHES "^host/wsc/tn5250_bridge\\.")
+  if(f MATCHES "^host/twinax/wsc/tn5250_bridge\\.")
     set(dir bridge)   # em34xx_bridge: the controller plus the TN5250 client
   endif()
   if(NOT DEFINED allowed_${dir})

@@ -11,7 +11,7 @@
 #pragma once
 
 #include "host/host_config.hpp"
-#include "host/twinax_link.hpp"
+#include "host/twinax/twinax_link.hpp"
 
 #include <cstdint>
 #include <deque>

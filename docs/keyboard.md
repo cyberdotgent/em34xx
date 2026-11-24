@@ -499,7 +499,7 @@ The terminal keeps some keys for **local functions** and never sends them
 | 122-key | `01` Setup; `09` Record; Alt+`09` Pause; `0A` Play; `62` Rule; `03` Print when local print is configured; Alt+`11` Quit; Alt+`6F` Jump; Alt+`67` change screen format; Alt+`47`/`4F` split-screen Back/Fwd |
 | Enhanced | Shift+Esc Setup; Alt+F4 Record; Alt+F5 Play; Shift+Pause Pause; Alt+Left Ctrl Quit; Alt+PgDn Rule; Alt+PgUp Jump; Alt+Insert change screen format; Alt+F9/F10 Back/Fwd; Print Screen when local print is configured |
 
-### 122-key typewriter table (`src/host/wsc/keyboard_map.cpp`)
+### 122-key typewriter table (`src/host/twinax/wsc/keyboard_map.cpp`)
 
 The controller decodes the fig. 105 stream back to key positions (tracking
 `57`/`56` shift, `54` Shift Lock and the `6F` CMD prefix, which sets the

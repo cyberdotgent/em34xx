@@ -93,3 +93,41 @@ set with `--set NAME=on|off` or `[emulator.options]` in the configuration
 file; `--no-vdo-shim`, `--no-alignment-shim` and the `[emulator]` keys
 `vdo_shim` / `alignment_shim` remain as shorthands. A switch the running
 model does not declare is ignored with a warning.
+
+## How a model is put together
+
+- `src/hw/`: the hardware the terminal families share, under neutral names
+  (`DisplayController`, `SystemGateArray`, `KeyboardInterface`,
+  `TwinaxEngine`, `I2cEeprom`, `BatteryBackedRam`, `AuxPort`). Where boards
+  differ, the part takes a description with **no defaults**
+  (`DisplayLayout`, `TwinaxEngineLayout`, the number of link channels), so
+  a model cannot inherit another board's value by leaving one out.
+- `src/models/board_*.hpp`: one board's descriptions and straps.
+- `src/models/parts.*`: the parts a terminal is built from; each call
+  creates the hardware, maps it and connects it.
+- `src/models/model_*.cpp`: one class per terminal. It states the facts
+  (`ModelInfo`: CPU, clock, line, sessions, variants, options, ROMs, notes)
+  and its `build()` is the list of parts. The 3486 and 3487 are two classes
+  over `InfoWindow2Board`, which holds what they share.
+
+Adding a terminal on an existing board is a new class with its variants.
+A new board is a `board_*.hpp`, plus new parts only for hardware the others
+do not have.
+
+## Line and controller
+
+A model states the line it hangs on (`ModelInfo::line`,
+`machine/line_port.hpp`): `Twinax` for every model so far. The machine holds
+a `LineHost` and only accepts one for its own line. Each kind of line has
+its own host interface on top of that: `TwinaxHost` exchanges Twinax frames
+with the link engine, and its controllers are in `src/host/twinax/` (the
+workstation controller, and the bridge that puts TN5250 sessions behind
+it).
+
+`Coax` exists as a line kind with no host interface and no controller yet.
+A coax terminal would add a `CoaxHost`, the line side of its engine in
+`src/hw`, and a controller under `src/host/coax/` that wraps TN3270 the way
+the workstation controller wraps TN5250. Nothing about coax hardware is
+assumed in the code: the Twinax engine has not been split into a shared
+core and a line front end, because what the two would share is not known
+until a coax terminal's firmware has been looked at.

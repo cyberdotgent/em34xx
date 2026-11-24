@@ -18,7 +18,7 @@
 
 #include "config/config.hpp"
 #include "frontend/frontend.hpp"
-#include "host/twinax_link.hpp"
+#include "host/twinax/twinax_link.hpp"
 
 #include <atomic>
 #include <memory>

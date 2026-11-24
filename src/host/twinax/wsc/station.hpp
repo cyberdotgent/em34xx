@@ -13,10 +13,10 @@
 #pragma once
 
 #include "host/host_config.hpp"
-#include "host/twinax_link.hpp"
-#include "host/wsc/keyboard_map.hpp"
-#include "host/wsc/screen_writer.hpp"
-#include "host/wsc/session_port.hpp"
+#include "host/twinax/twinax_link.hpp"
+#include "host/twinax/wsc/keyboard_map.hpp"
+#include "host/twinax/wsc/screen_writer.hpp"
+#include "host/twinax/wsc/session_port.hpp"
 
 #include <cstdint>
 #include <deque>

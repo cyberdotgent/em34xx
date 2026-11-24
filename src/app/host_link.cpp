@@ -60,6 +60,13 @@ bool HostLink::connect(const AppConfig& cfg, std::string& message, std::string& 
         error = "connect: the TN5250 bridge is not available in this build";
         return false;
     }
+    // The bridge is a Twinax controller: a terminal on another line needs
+    // its own (src/host has none yet).
+    const LineKind line = emu_.with_machine([](Machine& m) { return m.line(); });
+    if (line != LineKind::Twinax) {
+        error = std::string("connect: there is no controller for ") + line_kind_name(line) + " terminals in this build";
+        return false;
+    }
     error = cfg.twinax.validate(max_sessions_, max_printers_);
     if (error.empty()) error = cfg.tn5250.validate();
     if (!error.empty()) {
@@ -74,7 +81,7 @@ bool HostLink::connect(const AppConfig& cfg, std::string& message, std::string& 
     // Swap under the machine lock; the link device looks the host up on
     // every use, so the next poll comes from the new controller. The old
     // one (and its sessions' threads) goes away outside the lock.
-    std::unique_ptr<TwinaxHost> old = emu_.with_machine([&](Machine& m) { return m.swap_twinax_host(std::move(host)); });
+    std::unique_ptr<LineHost> old = emu_.with_machine([&](Machine& m) { return m.swap_line_host(std::move(host)); });
     const bool replaced = old && std::string(old->kind()) == "tn5250";
     old.reset();
     std::string stations;
@@ -97,9 +104,9 @@ bool HostLink::connect(const std::vector<std::string>& args, std::string& messag
 }
 
 bool HostLink::disconnect(std::string& error) {
-    std::unique_ptr<TwinaxHost> old = emu_.with_machine([](Machine& m) {
-        if (!m.twinax_host() || std::string(m.twinax_host()->kind()) != "tn5250") return std::unique_ptr<TwinaxHost>();
-        return m.swap_twinax_host(std::make_unique<NullTwinaxHost>());
+    std::unique_ptr<LineHost> old = emu_.with_machine([](Machine& m) {
+        if (!m.line_host() || std::string(m.line_host()->kind()) != "tn5250") return std::unique_ptr<LineHost>();
+        return m.swap_line_host(std::make_unique<NullTwinaxHost>());
     });
     if (!old) {
         error = "disconnect: not connected";
@@ -111,17 +118,17 @@ bool HostLink::disconnect(std::string& error) {
 
 bool HostLink::disconnect_station(unsigned address, std::string& error) {
     const bool ok = emu_.with_machine(
-        [&](Machine& m) { return m.twinax_host() && m.twinax_host()->disconnect_station(address); });
+        [&](Machine& m) { return m.line_host() && m.line_host()->disconnect_station(address); });
     if (!ok) error = format("disconnect: no TN5250 session on station %u", address);
     return ok;
 }
 
 std::string HostLink::controller_kind() const {
-    return emu_.with_machine([](Machine& m) { return std::string(m.twinax_host() ? m.twinax_host()->kind() : "none"); });
+    return emu_.with_machine([](Machine& m) { return std::string(m.line_host() ? m.line_host()->kind() : "none"); });
 }
 
 std::string HostLink::status() const {
-    return emu_.with_machine([](Machine& m) { return m.twinax_host() ? m.twinax_host()->describe() : std::string(); });
+    return emu_.with_machine([](Machine& m) { return m.line_host() ? m.line_host()->describe() : std::string(); });
 }
 
 } // namespace em34xx
@@ -130,7 +137,7 @@ namespace em34xx {
 
 std::vector<TwinaxSessionStatus> HostLink::sessions() const {
     return emu_.with_machine([](Machine& m) {
-        return m.twinax_host() ? m.twinax_host()->session_status() : std::vector<TwinaxSessionStatus>();
+        return m.line_host() ? m.line_host()->session_status() : std::vector<LineSessionStatus>();
     });
 }
 

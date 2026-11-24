@@ -3,7 +3,7 @@
 #include "em34xx_version.h"
 
 #include "app/host_link.hpp"
-#include "host/wsc/tn5250_bridge.hpp"
+#include "host/twinax/wsc/tn5250_bridge.hpp"
 #include "machine/emulator.hpp"
 #include "models/model.hpp"
 #include "util/log.hpp"
@@ -246,7 +246,7 @@ bool Application::build_machine() {
     if (!error.empty()) return fail(error);
 
     // The TN5250 bridge: the virtual workstation controller with one TN5250
-    // session per display station (src/host/wsc/tn5250_bridge.hpp).
+    // session per display station (src/host/twinax/wsc/tn5250_bridge.hpp).
     bridge_variant_ = std::make_shared<std::atomic<const ModelVariant*>>(&model_->variant_for(cfg_.terminal));
     auto bridge_variant = bridge_variant_;
     // The front end's TLS trust handler (HostLink::set_tls_trust_handler)
@@ -258,14 +258,22 @@ bool Application::build_machine() {
         bo.tls_trust = trust->for_new_bridge();
         return wsc::make_tn5250_bridge(tw, tn, std::move(bo), err);
     };
-    std::unique_ptr<TwinaxHost> host = make_twinax_host(cfg_.twinax, cfg_.tn5250, error, bridge);
-    if (!host) return fail(error);
+    // The controller for the model's line. Only Twinax has one.
+    std::unique_ptr<LineHost> host;
+    if (info.line == LineKind::Twinax) {
+        host = make_twinax_host(cfg_.twinax, cfg_.tn5250, error, bridge);
+        if (!host) return fail(error);
+    } else if (cfg_.twinax.host != TwinaxHostKind::None) {
+        return fail(std::string("there is no controller for ") + line_kind_name(info.line) + " terminals in this build");
+    } else {
+        host = std::make_unique<NullLineHost>(info.line);
+    }
     if (cfg_.twinax.host == TwinaxHostKind::Tn5250)
         for (const StationConfig& st : cfg_.twinax.effective_stations())
             if (st.type == StationType::Display)
                 LOG_INFO("tn5250", "station %u: terminal type %s", st.address,
                          station_terminal_type(cfg_.tn5250, st, model_->variant_for(cfg_.terminal).tn5250_type).c_str());
-    machine->set_twinax_host(std::move(host));
+    machine->set_line_host(std::move(host));
     machine->reset();
     uint8_t kbd_id1 = 0, kbd_id2 = 0;
     resolve_keyboard_id(cfg_.terminal, kbd_id1, kbd_id2, error);   // checked in configure()
@@ -444,9 +452,15 @@ bool Application::rebuild(const Model& model, const TerminalOptions& options, st
     }
     // Any other controller (a script host, nothing) moves to the new
     // machine; the TN5250 bridge was taken off above.
-    std::unique_ptr<TwinaxHost> host =
-        emu_->with_machine([](Machine& m) { return m.swap_twinax_host(std::make_unique<NullTwinaxHost>()); });
-    machine->set_twinax_host(host ? std::move(host) : std::make_unique<NullTwinaxHost>());
+    // (Between machines on the same kind of line; one for another line
+    // stays behind and is destroyed with the old machine.)
+    std::unique_ptr<LineHost> host = emu_->with_machine([](Machine& m) {
+        std::unique_ptr<LineHost> silent;
+        if (m.line() == LineKind::Twinax) silent = std::make_unique<NullTwinaxHost>();
+        else silent = std::make_unique<NullLineHost>(m.line());
+        return m.swap_line_host(std::move(silent));
+    });
+    if (host) machine->set_line_host(std::move(host));
     machine->reset();
     std::unique_ptr<Machine> old = emu_->replace_machine(std::move(machine));
     old.reset();

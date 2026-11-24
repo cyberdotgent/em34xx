@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-#include "host/wsc/station.hpp"
+#include "host/twinax/wsc/station.hpp"
 
-#include "host/wsc/device_commands.hpp"
+#include "host/twinax/wsc/device_commands.hpp"
 #include "util/log.hpp"
 #include "util/strings.hpp"
 

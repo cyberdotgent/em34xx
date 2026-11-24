@@ -845,7 +845,7 @@ bool Monitor::cmd_info(const std::vector<std::string>&) {
         t += format("executed  %llu instructions, %llu cycles\n", (unsigned long long)m.cpu().instructions(),
                     (unsigned long long)m.cpu().cycles());
         t += format("speed     %s\n", emu_.speed_percent() ? format("%u%%", emu_.speed_percent()).c_str() : "unthrottled");
-        t += m.twinax_host() ? m.twinax_host()->describe() : std::string();
+        t += m.line_host() ? m.line_host()->describe() : std::string();
         if (m.nvram()) t += "eeprom    " + m.nvram()->nv_status() + "\n";
         return t;
     }));
@@ -951,7 +951,7 @@ bool Monitor::cmd_disconnect(const std::vector<std::string>& a) {
 bool Monitor::cmd_twinax(const std::vector<std::string>& a) {
     const std::string sub = a.size() > 1 ? to_lower(a[1]) : "status";
     if (sub == "status") {
-        out(emu_.with_machine([](Machine& m) { return m.twinax_host()->describe(); }));
+        out(emu_.with_machine([](Machine& m) { return m.line_host()->describe(); }));
         return true;
     }
     ScriptTwinaxHost* script = emu_.with_machine([](Machine& m) {

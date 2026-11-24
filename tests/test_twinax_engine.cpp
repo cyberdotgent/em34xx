@@ -4,7 +4,7 @@
 // these tests from the opcode set documented in docs/bringup-3477.md.
 #include "bus/bus.hpp"
 #include "hw/twinax_engine.hpp"
-#include "host/twinax_link.hpp"
+#include "host/twinax/twinax_link.hpp"
 
 #include "models/board_3477.hpp"
 #include "models/board_3486.hpp"

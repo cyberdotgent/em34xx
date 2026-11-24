@@ -4,8 +4,8 @@
 // command steps.
 #pragma once
 
-#include "host/wsc/device_commands.hpp"
-#include "host/wsc/session_port.hpp"
+#include "host/twinax/wsc/device_commands.hpp"
+#include "host/twinax/wsc/session_port.hpp"
 
 #include <cstdint>
 #include <functional>

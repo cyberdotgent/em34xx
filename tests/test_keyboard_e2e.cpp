@@ -7,7 +7,7 @@
 // are those of PAI fig. 105 (docs/keyboard.md, "5250 scan codes on the
 // cable"). The table is written position -> code, the inverse of the
 // controller's decoder, so the two are checked against each other.
-#include "host/wsc/keyboard_map.hpp"
+#include "host/twinax/wsc/keyboard_map.hpp"
 #include "input/host_keymap.hpp"
 #include "input/set3_keyboard.hpp"
 

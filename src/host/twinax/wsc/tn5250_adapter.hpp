@@ -3,7 +3,7 @@
 // src/tn5250/session_api.hpp) to a station's DisplaySessionPort.
 #pragma once
 
-#include "host/wsc/session_port.hpp"
+#include "host/twinax/wsc/session_port.hpp"
 #include "tn5250/session_api.hpp"
 
 namespace em34xx {

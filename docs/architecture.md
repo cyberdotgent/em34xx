@@ -29,10 +29,10 @@ an `#include` crosses the layering.
 ```
 em34xx_emu        util, cpu, bus, rom, machine   (Machine, Emulator, Cpu, interfaces)
   ^-- em34xx_net        net                      sockets
-  ^-- em34xx_machines   devices, models, input   terminal hardware, model registry
+  ^-- em34xx_machines   hw, models, input        terminal hardware, model registry
   ^-- em34xx_host       host (minus the bridge)  Twinax hosts, workstation controller
   |     ^-- em34xx_tn5250   tn5250 (+ net)       TN5250 client, TLS
-  |     ^-- em34xx_bridge   host/wsc/tn5250_bridge  controller + TN5250 sessions
+  |     ^-- em34xx_bridge   host/twinax/wsc/tn5250_bridge  controller + TN5250 sessions
   ^-- em34xx_present    present                  CRT rendering, display profiles
 em34xx_runtime    config, app                    Application, HostLink  (-> machines, bridge, present)
   ^-- em34xx_devtools   monitor, gdb, devtools   monitor, replxx console, GDB stub, probes
@@ -249,11 +249,11 @@ display changes, raster fetches and CRT render cost.
 
 ## Twinax / TN5250
 
-`src/host/twinax_link.hpp` fixes the unit both sides exchange: the 16-bit
+`src/host/twinax/twinax_link.hpp` fixes the unit both sides exchange: the 16-bit
 5250 workstation frame (sync, data LSB-first, 3-bit station address with 7 as
 end-of-message, even parity, fill). The model's link device, still unknown,
 will turn firmware register accesses into frames. A `TwinaxHost` plays the
 controller. The TN5250 client (`src/tn5250`, see `docs/tn5250.md`) keeps
 the 5250 shadow screen and does the operator field editing; the virtual
-workstation controller (`src/host/wsc`) drives the station from it through
+workstation controller (`src/host/twinax/wsc`) drives the station from it through
 `tn5250::DisplaySession`.

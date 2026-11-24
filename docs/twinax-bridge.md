@@ -26,12 +26,12 @@ emulated terminal's behaviour) or **[hyp]**.
                           shadow screen, format table, field editing, AIDs
                               |  tn5250::DisplaySession (session_api.hpp)
                               v
-                      (c) station controller    one per station address  src/host/wsc/
+                      (c) station controller    one per station address  src/host/twinax/wsc/
                           identification, device mirror, screen diff,
                           scan code -> operator action
                       (d) link scheduler        one per cable
                           poll cadence, half-duplex line, recovery
-                              |  TwinaxHost (src/host/twinax_link.hpp)
+                              |  TwinaxHost (src/host/twinax/twinax_link.hpp)
                               v
                       terminal link device      emulated Twinax hardware     src/devices/
                               |
@@ -234,7 +234,7 @@ codes on the cable"). National layouts are not typed in yet.
 
 `--twinax-host wsc` runs the same controller (link scheduler and one
 station state machine per configured address) with a local screen in place
-of the TN5250 session (`src/host/wsc/idle_host.*`). Discovery,
+of the TN5250 session (`src/host/twinax/wsc/idle_host.*`). Discovery,
 identification, initialisation and polling are exactly those of the bridge;
 each display station then shows a blank 24x80 screen with the keyboard
 unlocked, typed characters are echoed at the cursor and an AID key clears
@@ -278,7 +278,7 @@ and device name.
 
 ### How it is wired
 
-`wsc::Tn5250Bridge` (src/host/wsc/tn5250_bridge.hpp, library
+`wsc::Tn5250Bridge` (src/host/twinax/wsc/tn5250_bridge.hpp, library
 `em34xx_bridge`) is the `TwinaxHost`. `make_twinax_host()` validates the
 configuration and calls the factory `main()` hands it, so the core library
 does not depend on the TN5250 client. The bridge holds the

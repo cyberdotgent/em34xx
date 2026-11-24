@@ -73,6 +73,33 @@ struct RunningApp {
 
 } // namespace
 
+TEST_CASE("machine: the line host must be for the model's line") {
+    static ModelInfo twinax, coax;
+    twinax.cpu = coax.cpu = CpuLevel::I8088;
+    twinax.address_bits = coax.address_bits = 20;
+    twinax.line = LineKind::Twinax;
+    coax.line = LineKind::Coax;
+
+    Machine t(twinax);
+    REQUIRE(t.twinax_host());
+    CHECK(std::string(t.line_host()->kind()) == "none");
+    CHECK(t.line_host()->line() == LineKind::Twinax);
+    CHECK_FALSE(t.set_line_host(std::make_unique<NullLineHost>(LineKind::Coax)));
+    CHECK(t.set_line_host(std::make_unique<NullTwinaxHost>()));
+
+    // A terminal on another line has no Twinax interface, and a Twinax
+    // controller offered to it is handed back unused.
+    Machine c(coax);
+    CHECK(c.twinax_host() == nullptr);
+    REQUIRE(c.line_host());
+    CHECK(c.line_host()->line() == LineKind::Coax);
+    CHECK_FALSE(c.set_line_host(std::make_unique<NullTwinaxHost>()));
+    std::unique_ptr<LineHost> back = c.swap_line_host(std::make_unique<NullTwinaxHost>());
+    REQUIRE(back);
+    CHECK(back->line() == LineKind::Twinax);
+    CHECK(c.line_host()->line() == LineKind::Coax);
+}
+
 TEST_CASE("emulator: replace_machine swaps a stopped machine and reports a new picture") {
     static ModelInfo info;
     info.name = "test";

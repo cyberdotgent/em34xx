@@ -7,7 +7,7 @@
 #pragma once
 
 #include "config/config.hpp"
-#include "host/twinax_link.hpp"
+#include "host/twinax/twinax_link.hpp"
 #include "tn5250/tls_trust.hpp"
 
 #include <memory>

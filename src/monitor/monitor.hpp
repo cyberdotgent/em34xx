@@ -8,7 +8,7 @@
 #pragma once
 
 #include "present/crt_render.hpp"
-#include "host/twinax_link.hpp"
+#include "host/twinax/twinax_link.hpp"
 
 #include <cstdint>
 #include <functional>

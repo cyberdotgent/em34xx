@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Interface between the TN5250 side of the bridge and its consumer.
 //
-// The consumer is the virtual workstation controller (src/host/wsc/), which
+// The consumer is the virtual workstation controller (src/host/twinax/wsc/), which
 // paints the emulated terminal from the shadow screen and feeds operator
 // keystrokes back in. Nothing here knows about Twinax, device commands or
 // scan codes: the shadow is the 5250 presentation space as the IBM 5494

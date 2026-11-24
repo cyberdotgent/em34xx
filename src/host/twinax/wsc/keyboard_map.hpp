@@ -17,7 +17,7 @@
 // OperatorAction::Kind::Unmapped with the raw scan code.
 #pragma once
 
-#include "host/wsc/session_port.hpp"
+#include "host/twinax/wsc/session_port.hpp"
 
 #include <cstdint>
 
