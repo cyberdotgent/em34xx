@@ -289,7 +289,7 @@ whenever the EEPROM holds the firmware's "initialised" mark (`00` = `AA`),
 the model makes byte `30` `AA`; when that happens while the firmware runs
 (a new unit's first power-on) it switches the unit off and on once, so the
 first start runs the self test twice and then goes on line (observed:
-`--model 3487 --display color` with a saved setup and no EEPROM file goes
+`--model 3487-HC` with a saved setup and no EEPROM file goes
 on line under `--twinax-host wsc`). The alignment values stay the
 firmware's own; the emulator ships none. `--no-alignment-shim`
 (`[emulator] alignment_shim = false`) switches it off; the unit then shows
@@ -350,13 +350,13 @@ procedure once it is understood.
     scaled to the line shown.
 - Not compared with a real tube: 132 columns, colour.
 
-## Display subtype and straps
+## Variants and straps
 
-Without `--straps`, the model picks the strap code from `--display`:
-`color` -> `4C` (3487 HC0, type 6), `paperwhite` -> `48` (3487 HW0,
-type 5); `green` and `amber` -> `42` (3486, type 2) on model 3486 and
-`4A` (3487 HG0/HA0, types 3/4) on model 3487. Changing the subtype of a
-running terminal power-cycles it when the straps change. Colour cells are drawn with the 5250
+Without `--straps`, the strap code is the variant's (docs/models.md):
+`3486-BA` -> `42` (type 2), `3487-HG` -> `4A` (HG0/HA0, types 3/4),
+`3487-HC` -> `4C` (HC0, type 6). The phosphor of a monochrome variant does
+not change it; the firmware's paper-white type (`48`, HW0, type 5) is
+reachable only with `--straps 48`. Colour cells are drawn with the 5250
 colour decoding of the 3477 model (hypothesis); only the single-colour
 setup screen has been seen so far, so the colours are unverified.
 

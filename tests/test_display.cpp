@@ -3,6 +3,7 @@
 #include "present/crt_render.hpp"
 #include "present/display_profile.hpp"
 
+#include "machine/model_info.hpp"
 #include <doctest/doctest.h>
 
 using namespace em34xx;
@@ -26,12 +27,8 @@ TEST_CASE("monochrome rendering maps luminance onto the phosphor") {
     Framebuffer fb;
     fb.resize(3, 1);
     fb.pixels = {0xFFFFFFFFu, 0xFF000000u, 0xFFFF0000u};
-    Framebuffer colour = fb;
-    apply_display_subtype(DisplaySubtype::Color, colour);
-    CHECK(colour.pixels == fb.pixels);
-
-    apply_display_subtype(DisplaySubtype::Amber, fb);
-    CHECK(fb.pixels[0] == phosphor_color(DisplaySubtype::Amber));  // full white -> full phosphor
+    apply_phosphor(phosphor_amber().rgb, fb);
+    CHECK(fb.pixels[0] == phosphor_amber().rgb);                   // full white -> full phosphor
     CHECK(fb.pixels[1] == 0xFF000000u);                            // black stays black
     // Pure red has luma ~30%: dimmer amber, same hue.
     const uint32_t r = (fb.pixels[2] >> 16) & 0xFF, g = (fb.pixels[2] >> 8) & 0xFF, b = fb.pixels[2] & 0xFF;
@@ -46,7 +43,7 @@ TEST_CASE("display and keyboard options from the command line") {
     std::string err;
     const char* argv[] = {"em34xx", "--amber", "--keyboard", "enhanced", "--keyboard-layout", "be", "--keyboard-id", "7f"};
     REQUIRE(parse_command_line(8, const_cast<char**>(argv), cfg, err));
-    CHECK(cfg.terminal.display == DisplaySubtype::Amber);
+    CHECK(cfg.legacy_display == "amber");   // the model turns it into a phosphor
     CHECK(cfg.terminal.keyboard_type == "enhanced");
     CHECK(cfg.terminal.keyboard_layout == "be");
     CHECK(cfg.terminal.keyboard_id == 0x7F);
@@ -54,7 +51,13 @@ TEST_CASE("display and keyboard options from the command line") {
     AppConfig c2;
     const char* argv2[] = {"em34xx", "--display", "colour"};
     REQUIRE(parse_command_line(3, const_cast<char**>(argv2), c2, err));
-    CHECK(c2.terminal.display == DisplaySubtype::Color);
+    CHECK(c2.legacy_display == "color");
+
+    AppConfig c3;
+    const char* argv3[] = {"em34xx", "--model", "3487-HG", "--phosphor", "paperwhite"};
+    REQUIRE(parse_command_line(5, const_cast<char**>(argv3), c3, err));
+    CHECK(c3.model == "3487-HG");
+    CHECK(c3.terminal.phosphor == "paperwhite");
 }
 
 TEST_CASE("keyboard ID resolution") {

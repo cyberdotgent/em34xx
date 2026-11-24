@@ -309,7 +309,6 @@ BEGIN
     IDS_ASSOC_DONE       ".em34xx files now open with em34xxw."
     IDS_SAVE_CHANGES     "Save the changes to the profile \"%s\"?"
     IDS_DELETE_CONFIRM   "Delete the profile \"%s\"?"
-    IDS_CRT_RESET_CONFIRM "Changing the CRT type to %s restarts the terminal and reconnects the sessions. Continue?"
     IDS_FILTER_ROMS      "ROM images (*.bin;*.rom)|*.bin;*.rom|All files (*.*)|*.*|"
     IDS_FILE_TYPE_NAME   "em34xx connection profile"
     IDS_ROMS_NONE        "No terminal can run yet. Import the ROM images of at least one terminal model to continue; the others can follow later."

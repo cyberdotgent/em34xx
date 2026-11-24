@@ -5,12 +5,19 @@
 // with or without TLS. It never holds a password. Format
 // (docs/frontend-win32.md):
 //
-//   format = 2
-//   model = "3477"                 terminal emulation type (runnable_models())
+//   format = 3
+//   model = "3477-FG"              terminal type: a model's variant
+//                                  (ModelVariant::id). A bare model name
+//                                  ("3477") is its first variant
 //
 //   [display]
-//   subtype = "green"              CRT type: green, amber, paperwhite, color
+//   phosphor = "green"             tube of a monochrome variant (Phosphor::id);
+//                                  absent = the variant's first
 //   crt = true                     CRT scan-line rendering
+//
+// Formats 1 and 2 had `model = "3477"` and `display.subtype` (green, amber,
+// paperwhite, color), which are read as the model's monochrome variant
+// with that phosphor, or its colour variant (select_legacy_display).
 //
 //   [tls]                          for the sessions with tls = true
 //   verify = "system"              "system" (verify normally), "none" (accept
@@ -65,11 +72,12 @@ struct ProfileSession {
 };
 
 struct Profile {
-    static constexpr int kFormat = 2;
+    static constexpr int kFormat = 3;
     static constexpr size_t kSessions = 2;
 
-    std::string model = "3477";
-    DisplaySubtype display = DisplaySubtype::Green;
+    std::string model = "3477";    // model name, without the variant
+    std::string variant;           // ModelVariant::id; "" = the model's first
+    std::string phosphor;          // Phosphor::id; "" = the variant's first
     bool crt = true;               // CRT scan-line rendering
     ProfileTlsMode tls_mode = ProfileTlsMode::System;
     std::string tls_cert_sha256;
@@ -77,6 +85,11 @@ struct Profile {
     std::array<ProfileSession, kSessions> sessions;
 
     // Whether any used session connects with TLS.
+    // Fill in `variant` and `phosphor` with what "" stands for (and drop a
+    // phosphor the variant does not have), so that two profiles for the same
+    // unit compare equal. Nothing changes for a model this build does not
+    // know.
+    void normalize();
     bool any_tls() const;
     // Empty when the profile can be connected; else what is wrong.
     std::string validate() const;

@@ -83,20 +83,8 @@ int dlu_x(HWND dlg, int dlu) {
 
 } // namespace
 
-const char* subtype_label(DisplaySubtype d) {
-    switch (d) {
-    case DisplaySubtype::Green: return "Green";
-    case DisplaySubtype::Amber: return "Amber";
-    case DisplaySubtype::PaperWhite: return "Paper white";
-    case DisplaySubtype::Color: return "Colour";
-    }
-    return "?";
-}
-
 namespace {
 
-const DisplaySubtype kSubtypes[] = {DisplaySubtype::Green, DisplaySubtype::Amber, DisplaySubtype::PaperWhite,
-                                    DisplaySubtype::Color};
 const unsigned kSpeeds[] = {25, 50, 100, 200, 400, 0};
 const TlsVersion kTlsVersions[] = {TlsVersion::Ssl3, TlsVersion::Tls1_0, TlsVersion::Tls1_1, TlsVersion::Tls1_2,
                                    TlsVersion::Tls1_3};
@@ -577,37 +565,76 @@ bool tls_settings_dialog(HWND owner, Profile& p, const AppSettings& s) {
 
 namespace {
 
+// One entry of the terminal type list: a variant of a model.
+struct TerminalChoice {
+    const Model* model;
+    const ModelVariant* variant;
+    bool ready;   // the model has its ROM images
+};
+
 struct ProfileDlg {
     Profile p;
     ProfileEditMode mode;
     const AppSettings* s;
     const UserDirs* dirs;
     std::string title;
-    std::vector<const Model*> models;   // the terminal type list, in order
-    std::vector<bool> ready;            // whether each has its ROM images
-    int model_sel = 0;                  // the selection to fall back to
+    std::vector<TerminalChoice> choices;   // the terminal type list, in order
+    int model_sel = 0;                     // the selection to fall back to
 };
 
-// The terminal type list: every model that can be emulated. One without
-// its ROM images says so (and is drawn grey, profile_draw_model).
+// The terminal type list: every variant of every model that can be
+// emulated. One whose model lacks its ROM images says so (and is drawn
+// grey, profile_draw_model).
 void profile_fill_models(HWND dlg, ProfileDlg& d, const std::string& select) {
     SendDlgItemMessageW(dlg, IDC_PE_MODEL, CB_RESETCONTENT, 0, 0);
-    d.models = runnable_models();
-    d.ready.assign(d.models.size(), false);
+    d.choices.clear();
     int sel = 0;
-    for (size_t i = 0; i < d.models.size(); ++i) {
-        d.ready[i] = model_roms_ready(*d.models[i], d.dirs->roms());
-        combo_add(dlg, IDC_PE_MODEL,
-                  "IBM " + d.models[i]->info().name + (d.ready[i] ? "" : " (ROM images needed)"));
-        if (d.models[i]->info().name == select) sel = int(i);
+    for (const Model* m : runnable_models()) {
+        const bool ready = model_roms_ready(*m, d.dirs->roms());
+        for (const ModelVariant& v : m->info().variants) {
+            combo_add(dlg, IDC_PE_MODEL,
+                      "IBM " + v.id + " (" + v.description + (ready ? ")" : ", ROM images needed)"));
+            if (v.id == select) sel = int(d.choices.size());
+            d.choices.push_back(TerminalChoice{m, &v, ready});
+        }
     }
     combo_set_sel(dlg, IDC_PE_MODEL, sel);
     d.model_sel = sel;
 }
 
+// The CRT type list: the tubes the selected variant can be shown with. A
+// colour unit has one tube, and the list says so.
+void profile_fill_phosphors(HWND dlg, ProfileDlg& d, const std::string& select) {
+    SendDlgItemMessageW(dlg, IDC_PE_SUBTYPE, CB_RESETCONTENT, 0, 0);
+    const int sel = combo_sel(dlg, IDC_PE_MODEL);
+    const ModelVariant* v = sel >= 0 && size_t(sel) < d.choices.size() ? d.choices[size_t(sel)].variant : nullptr;
+    if (!v || v->phosphors.empty()) {
+        combo_add(dlg, IDC_PE_SUBTYPE, v ? "Colour" : "");
+        combo_set_sel(dlg, IDC_PE_SUBTYPE, 0);
+        EnableWindow(GetDlgItem(dlg, IDC_PE_SUBTYPE), FALSE);
+        return;
+    }
+    int at = 0;
+    for (size_t k = 0; k < v->phosphors.size(); ++k) {
+        combo_add(dlg, IDC_PE_SUBTYPE, v->phosphors[k].label);
+        if (v->phosphors[k].id == select) at = int(k);
+    }
+    combo_set_sel(dlg, IDC_PE_SUBTYPE, at);
+    EnableWindow(GetDlgItem(dlg, IDC_PE_SUBTYPE), TRUE);
+}
+
+// The phosphor selected in the CRT type list ("" for a colour unit).
+std::string profile_phosphor(HWND dlg, const ProfileDlg& d) {
+    const int sel = combo_sel(dlg, IDC_PE_MODEL);
+    if (sel < 0 || size_t(sel) >= d.choices.size()) return {};
+    const std::vector<Phosphor>& tubes = d.choices[size_t(sel)].variant->phosphors;
+    const int st = combo_sel(dlg, IDC_PE_SUBTYPE);
+    return st >= 0 && size_t(st) < tubes.size() ? tubes[size_t(st)].id : std::string();
+}
+
 void profile_draw_model(const ProfileDlg& d, const DRAWITEMSTRUCT& di) {
     const bool selected = (di.itemState & ODS_SELECTED) != 0;
-    const bool ready = di.itemID == UINT(-1) || di.itemID >= d.ready.size() || d.ready[di.itemID];
+    const bool ready = di.itemID == UINT(-1) || di.itemID >= d.choices.size() || d.choices[di.itemID].ready;
     const bool disabled = (di.itemState & ODS_DISABLED) != 0;
     FillRect(di.hDC, &di.rcItem, GetSysColorBrush(selected ? COLOR_HIGHLIGHT : COLOR_WINDOW));
     if (di.itemID != UINT(-1)) {
@@ -650,9 +677,11 @@ bool checked(HWND dlg, int id) { return IsDlgButtonChecked(dlg, id) == BST_CHECK
 // Read the fields into d.p; false (with a message) when a port is invalid.
 bool profile_read(HWND dlg, ProfileDlg& d, bool quiet) {
     const int m = combo_sel(dlg, IDC_PE_MODEL);
-    if (m >= 0 && size_t(m) < d.models.size()) d.p.model = d.models[size_t(m)]->info().name;
-    const int st = combo_sel(dlg, IDC_PE_SUBTYPE);
-    if (st >= 0 && st < 4) d.p.display = kSubtypes[st];
+    if (m >= 0 && size_t(m) < d.choices.size()) {
+        d.p.model = d.choices[size_t(m)].model->info().name;
+        d.p.variant = d.choices[size_t(m)].variant->id;
+        d.p.phosphor = profile_phosphor(dlg, d);
+    }
     d.p.crt = checked(dlg, IDC_PE_CRT);
     for (size_t i = 0; i < 2; ++i) {
         ProfileSession& s = d.p.sessions[i];
@@ -695,11 +724,9 @@ INT_PTR CALLBACK profile_proc(HWND dlg, UINT msg, WPARAM wp, LPARAM lp) {
             const LRESULT height = SendDlgItemMessageW(dlg, IDC_PE_SUBTYPE, CB_GETITEMHEIGHT, WPARAM(part), 0);
             if (height != CB_ERR) SendDlgItemMessageW(dlg, IDC_PE_MODEL, CB_SETITEMHEIGHT, WPARAM(part), height);
         }
-        profile_fill_models(dlg, *d, d->p.model);
-        for (size_t k = 0; k < 4; ++k) {
-            combo_add(dlg, IDC_PE_SUBTYPE, subtype_label(kSubtypes[k]));
-            if (kSubtypes[k] == d->p.display) combo_set_sel(dlg, IDC_PE_SUBTYPE, int(k));
-        }
+        d->p.normalize();
+        profile_fill_models(dlg, *d, d->p.variant);
+        profile_fill_phosphors(dlg, *d, d->p.phosphor);
         CheckDlgButton(dlg, IDC_PE_CRT, d->p.crt ? BST_CHECKED : BST_UNCHECKED);
         for (size_t s = 0; s < 2; ++s) {
             const ProfileSession& ps = d->p.sessions[s];
@@ -729,17 +756,26 @@ INT_PTR CALLBACK profile_proc(HWND dlg, UINT msg, WPARAM wp, LPARAM lp) {
             // import them, and go back to the previous choice when they are
             // still not there.
             const int sel = combo_sel(dlg, IDC_PE_MODEL);
-            if (sel < 0 || size_t(sel) >= d->models.size()) return TRUE;
-            const Model* m = d->models[size_t(sel)];
-            if (d->ready[size_t(sel)]) {
+            if (sel < 0 || size_t(sel) >= d->choices.size()) return TRUE;
+            // The tube carries over when the new variant has it too.
+            const std::string tube = d->p.phosphor;
+            const TerminalChoice choice = d->choices[size_t(sel)];
+            if (choice.ready) {
                 d->model_sel = sel;
+                profile_fill_phosphors(dlg, *d, tube);
+                d->p.phosphor = profile_phosphor(dlg, *d);
                 return TRUE;
             }
-            const std::string back = d->models[size_t(d->model_sel)]->info().name;
-            const bool ok = ensure_model_roms(dlg, *d->dirs, *m, "");
-            profile_fill_models(dlg, *d, ok ? m->info().name : back);   // an import can ready several models
+            const std::string back = d->choices[size_t(d->model_sel)].variant->id;
+            const bool ok = ensure_model_roms(dlg, *d->dirs, *choice.model, "");
+            profile_fill_models(dlg, *d, ok ? choice.variant->id : back);   // an import can ready several models
+            profile_fill_phosphors(dlg, *d, tube);
+            d->p.phosphor = profile_phosphor(dlg, *d);
             return TRUE;
         }
+        case IDC_PE_SUBTYPE:
+            if (HIWORD(wp) == CBN_SELCHANGE) d->p.phosphor = profile_phosphor(dlg, *d);
+            return TRUE;
         case IDC_PE_TLS1:
         case IDC_PE_TLS2: {
             // Switch the session's conventional port along with TLS.
@@ -778,7 +814,7 @@ INT_PTR CALLBACK profile_proc(HWND dlg, UINT msg, WPARAM wp, LPARAM lp) {
 
 bool profile_editor_dialog(HWND owner, Profile& p, ProfileEditMode mode, const AppSettings& s,
                            const UserDirs& dirs, const std::string& title) {
-    ProfileDlg d{p, mode, &s, &dirs, title, {}, {}, 0};
+    ProfileDlg d{p, mode, &s, &dirs, title, {}, 0};
     if (DialogBoxParamW(instance(), MAKEINTRESOURCEW(IDD_PROFILE), owner, guarded_dialog<profile_proc>,
                         reinterpret_cast<LPARAM>(&d)) != IDOK)
         return false;

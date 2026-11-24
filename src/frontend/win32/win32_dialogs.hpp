@@ -36,9 +36,6 @@ bool ensure_model_roms(HWND owner, const UserDirs& dirs, const Model& model, con
 // Edit > Settings (application-wide: speed, default TLS minimum, files).
 bool settings_dialog(HWND owner, const UserDirs& dirs, AppSettings& s);
 
-// The CRT type as the profile editor shows it ("Paper white", "Colour").
-const char* subtype_label(DisplaySubtype d);
-
 enum class ProfileEditMode {
     Connect,   // OK button says "Connect"
     Save,      // OK button says "Save"

@@ -123,7 +123,12 @@ public:
 
 // Strap byte for a display subtype (register 2000A). Hypothesis; see
 // docs/bringup-3477.md.
-uint8_t ibm3477_default_straps(DisplaySubtype d);
+// Straps of the monochrome 3477 this ROM can be (display type 4, FE0).
+constexpr uint8_t kIbm3477MonoStraps = 0x0C;
+// Paper-white as the firmware knows it (display type 5, FW0): its own cell
+// heights and monitor-control setting. Not selected by any variant (the
+// tube is a phosphor of the monochrome unit); reachable with --straps 0E.
+constexpr uint8_t kIbm3477PaperWhiteStraps = 0x0E;
 
 class Ibm3477System : public Device {
 public:

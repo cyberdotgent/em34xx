@@ -28,7 +28,7 @@ namespace {
 // The caller normally resolves the type per station (station_terminal_type);
 // an empty one here means a colour 3477.
 std::string effective_type(const Tn5250Config& cfg) {
-    return cfg.terminal_type.empty() ? derived_terminal_type("3477", DisplaySubtype::Color) : cfg.terminal_type;
+    return cfg.terminal_type.empty() ? std::string("IBM-3477-FC") : cfg.terminal_type;
 }
 } // namespace
 

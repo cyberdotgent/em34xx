@@ -283,7 +283,7 @@ TEST_CASE("settings: defaults, round trip, tolerance") {
 TEST_CASE("profile: TOML round trip and validation") {
     Profile p;
     p.model = "3477";
-    p.display = DisplaySubtype::Amber;
+    p.phosphor = "amber";
     p.crt = false;
     p.tls_mode = ProfileTlsMode::Fingerprint;
     p.tls_cert_sha256 = format_sha256_fingerprint(digest(1));
@@ -297,12 +297,14 @@ TEST_CASE("profile: TOML round trip and validation") {
     std::string err;
     REQUIRE(parse_profile(text, "rt.em34xx", back, err));
     CHECK(back == p);
-    CHECK(back.display == DisplaySubtype::Amber);
+    CHECK(back.variant == "3477-FG");
+    CHECK(back.phosphor == "amber");
+    CHECK(text.find("model = '3477-FG'") != std::string::npos);
     CHECK_FALSE(back.crt);
     CHECK(back.sessions[0].tls);
     CHECK_FALSE(back.sessions[1].tls);
     Profile changed = p;
-    changed.display = DisplaySubtype::Color;
+    changed.variant = "3477-FC";
     CHECK(changed != p);
     changed = p;
     changed.sessions[1].tls = true;
@@ -351,9 +353,26 @@ TEST_CASE("profile: TOML round trip and validation") {
                           "v1", back, err));
     CHECK(back.sessions[0].tls);
     CHECK(back.sessions[1].tls);
-    CHECK(back.display == DisplaySubtype::Green);
+    CHECK(back.variant == "3477-FG");
+    CHECK(back.phosphor == "green");
     CHECK(back.crt);
-    CHECK(profile_to_toml(back).find("format = 2") != std::string::npos);
+    CHECK(profile_to_toml(back).find("format = 3") != std::string::npos);
+    // Format 2: a display subtype. Monochrome ones are a phosphor of the
+    // model's monochrome variant; colour is its colour variant.
+    REQUIRE(parse_profile("format = 2\nmodel = \"3487\"\n[display]\nsubtype = \"paperwhite\"\n"
+                          "[[session]]\nhost = \"a\"\n", "v2", back, err));
+    CHECK(back.model == "3487");
+    CHECK(back.variant == "3487-HG");
+    CHECK(back.phosphor == "paperwhite");
+    REQUIRE(parse_profile("format = 2\nmodel = \"3487\"\n[display]\nsubtype = \"color\"\n"
+                          "[[session]]\nhost = \"a\"\n", "v2c", back, err));
+    CHECK(back.variant == "3487-HC");
+    CHECK(back.phosphor.empty());
+    // A profile that names no variant or phosphor equals one that names the defaults.
+    Profile bare, full;
+    full.variant = "3477-FG";
+    full.phosphor = "green";
+    CHECK(bare == full);
 }
 
 TEST_CASE("profile: the connect configuration and trusting a certificate") {

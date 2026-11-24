@@ -158,7 +158,7 @@ struct DisplayRig {
     TerminalOptions opts;
     Ibm3477Display disp;
 
-    explicit DisplayRig(const Ibm3477DisplayLayout& layout) : disp(bus, opts, layout) {
+    explicit DisplayRig(const Ibm3477DisplayLayout& layout) : disp(bus, opts, layout, false) {
         bus.map_ram("ram", 0, 0x20000);
         bus.map_mmio("display", 0x20100, 0x100, &disp);
         disp.set_clock_hz(kClock);
@@ -327,19 +327,29 @@ TEST_CASE("3486 and 3487 models: one board, straps from the display subtype") {
     CHECK(m3487->info().roms[0].file == m3486->info().roms[0].file);
     CHECK(m3487->info().roms[0].sha256 == m3486->info().roms[0].sha256);
 
-    // A tube change restarts the terminal whenever it changes the straps,
-    // also between two monochrome tubes; green and amber share a code.
-    TerminalOptions o;
-    o.display = DisplaySubtype::Green;
-    for (const Model* m : {m3486, m3487}) {
-        CHECK(m->display_change_needs_power_cycle(o, DisplaySubtype::PaperWhite));
-        CHECK(m->display_change_needs_power_cycle(o, DisplaySubtype::Color));
-        CHECK_FALSE(m->display_change_needs_power_cycle(o, DisplaySubtype::Amber));
-    }
-    // Explicit straps are kept: only the colour/monochrome change restarts.
-    o.straps = 0x4A;
-    CHECK_FALSE(m3487->display_change_needs_power_cycle(o, DisplaySubtype::PaperWhite));
-    CHECK(m3487->display_change_needs_power_cycle(o, DisplaySubtype::Color));
+    // One monochrome unit whatever its tube; only the 3487 has a colour one.
+    REQUIRE(m3486->info().variants.size() == 1);
+    CHECK(m3486->default_variant().id == "3486-BA");
+    CHECK(m3486->default_variant().straps == 0x42);
+    CHECK(m3486->default_variant().phosphors.size() == 3);
+    CHECK(m3486->variant_with_colour(true) == nullptr);
+    REQUIRE(m3487->info().variants.size() == 2);
+    CHECK(m3487->default_variant().id == "3487-HG");
+    CHECK(m3487->default_variant().straps == 0x4A);
+    REQUIRE(m3487->find_variant("hc"));
+    CHECK(m3487->find_variant("3487-HC")->straps == 0x4C);
+    CHECK(m3487->find_variant("HC")->colour);
+    CHECK(m3487->find_variant("HC")->phosphors.empty());
+    // Paper-white is a phosphor of the monochrome unit, not straps of its own.
+    std::string variant, phosphor;
+    select_legacy_display(*m3487, DisplaySubtype::PaperWhite, variant, phosphor);
+    CHECK(variant == "3487-HG");
+    CHECK(phosphor == "paperwhite");
+    select_legacy_display(*m3487, DisplaySubtype::Color, variant, phosphor);
+    CHECK(variant == "3487-HC");
+    CHECK(phosphor.empty());
+    select_legacy_display(*m3486, DisplaySubtype::Color, variant, phosphor);
+    CHECK(variant == "3486-BA");   // no colour 3486: its only variant
 }
 
 TEST_CASE("interrupt controller state shown per board") {

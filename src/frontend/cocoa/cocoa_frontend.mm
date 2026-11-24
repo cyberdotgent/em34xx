@@ -860,7 +860,7 @@ static NSToolbarItemIdentifier const kTbTermKeys = @"termkeys";
     if (!_app) return;
     const std::string override_title = _fe->title(), note = _fe->status();
     _win.title = _cur.active ? ns([self profileName]) : @"em34xx";
-    std::string sub = override_title.empty() ? "IBM " + _modelName : override_title;
+    std::string sub = override_title.empty() ? "IBM " + _app->variant().id : override_title;
     if (!note.empty()) sub += " — " + note;
     if (@available(macOS 11.0, *)) _win.subtitle = ns(sub);
     _win.documentEdited = _cur.active && _cur.modified;
@@ -1075,13 +1075,6 @@ static NSToolbarItemIdentifier const kTbTermKeys = @"termkeys";
 
 // --- profiles and connections --------------------------------------------------------
 
-- (DisplaySubtype)currentDisplay {
-    return _emu->with_machine([](Machine& m) { return m.options().display; });
-}
-
-// Apply the profile's terminal settings (display subtype, scan lines).
-// `rebuilt`: the change was visible to the firmware or the host, so the
-// machine was rebuilt and is powering on (its sessions closed).
 // The model a profile names, when it can run now: a model of this build
 // with its ROM images (the user is told which are missing and may import
 // them). Null, after an alert, otherwise.
@@ -1099,13 +1092,18 @@ static NSToolbarItemIdentifier const kTbTermKeys = @"termkeys";
 // Restart the emulator as the profile's model when it is another one:
 // 0 = the same model, 1 = switched, -1 = not possible (after an alert).
 - (int)switchModel:(const Profile&)p {
-    if (p.model == _modelName) return 0;
+    // The same unit: the model and its variant (a profile that names none
+    // means the model's first).
+    Profile want = p;
+    want.normalize();
+    if (want.model == _modelName && want.variant == _app->variant().id) return 0;
     const Model* model = [self profileModel:p what:"This connection"];
     if (!model) return -1;
     // The new terminal as the profile describes it, with its own
     // battery-backed RAM file (its setup); the keyboard stays.
     TerminalOptions options = _emu->with_machine([](Machine& m) { return m.options(); });
-    options.display = p.display;
+    options.variant = want.variant;
+    options.phosphor = want.phosphor;
     options.nvram_path = [self dirs].nvram_file(model->info().name);
     options.eeprom_path = [self dirs].eeprom_file(model->info().name);
     std::string error;
@@ -1116,7 +1114,7 @@ static NSToolbarItemIdentifier const kTbTermKeys = @"termkeys";
         ok = _app->set_model(*model, options, error);
     }
     if (!ok) {
-        error_alert(_win, "Cannot start the IBM " + model->info().name, error);
+        error_alert(_win, "Cannot start the IBM " + want.variant, error);
         return -1;
     }
     _modelName = model->info().name;
@@ -1135,18 +1133,13 @@ static NSToolbarItemIdentifier const kTbTermKeys = @"termkeys";
         _app->set_crt(_crtParams);
         _crt.invalidate();
     }
-    if ([self currentDisplay] != p.display) {
-        rebuilt = _app->display_change_needs_power_cycle(p.display);
-        std::optional<TrustDrain> drain;   // the rebuild closes the sessions
-        if (rebuilt) {
-            drain.emplace(*_trust);
-            [self releaseKeys];
-        }
+    // The tube of a monochrome unit: the picture only, the terminal keeps
+    // running. (Another variant is another unit: switchModel.)
+    Profile want = p;
+    want.normalize();
+    if (!want.phosphor.empty() && want.variant == _app->variant().id) {
         std::string error;
-        const bool ok = _app->set_display_subtype(p.display, error);
-        drain.reset();
-        if (!ok) {
-            rebuilt = false;
+        if (!_app->set_phosphor(want.phosphor, error)) {
             error_alert(_win, "Cannot change the CRT type", error);
             return false;
         }
@@ -1214,35 +1207,38 @@ static NSToolbarItemIdentifier const kTbTermKeys = @"termkeys";
                                    "Connection Settings: " + [self profileName]))
             return;
         if (p == _cur.p) return;
-        const Profile old = _cur.p;
-        // Another terminal type: it needs its ROM images and a restart;
-        // refused or not possible, the terminal stays and the other changes
-        // apply.
-        if (p.model != _modelName &&
+        Profile old = _cur.p;
+        old.normalize();
+        p.normalize();
+        // Another terminal type (model or variant): it needs its ROM images
+        // and a restart; refused or not possible, the terminal stays and
+        // the other changes apply. The CRT type of a monochrome unit
+        // changes at once.
+        if ((p.model != _modelName || p.variant != _app->variant().id) &&
             (![self profileModel:p what:"This connection"] ||
-             !ask(_win, "Change the terminal type to IBM " + p.model + "?",
+             !ask(_win, "Change the terminal type to IBM " + p.variant + "?",
                   "This restarts the emulator as that terminal and reconnects the sessions.", "Restart",
-                  "Keep the IBM " + _modelName, NSAlertStyleWarning)))
-            p.model = _modelName;
-        if (p.model == _modelName && p.display != [self currentDisplay] &&
-            _app->display_change_needs_power_cycle(p.display)) {
-            std::string label = subtype_label(p.display);
-            if (!label.empty()) label[0] = char(std::tolower(static_cast<unsigned char>(label[0])));
-            if (!ask(_win, "Change the CRT type to " + label + "?",
-                     "This restarts the terminal and reconnects the sessions.", "Restart", "Keep the CRT Type",
-                     NSAlertStyleWarning))
-                p.display = old.display;   // keep the rest of the changes
+                  "Keep the IBM " + _app->variant().id, NSAlertStyleWarning))) {
+            p.model = old.model;
+            p.variant = old.variant;
+            p.phosphor = old.phosphor;
+            p.normalize();
         }
         Profile same_terminal = old;
         same_terminal.model = p.model;
-        same_terminal.display = p.display;
+        same_terminal.variant = p.variant;
+        same_terminal.phosphor = p.phosphor;
         same_terminal.crt = p.crt;
         const bool connection_changed = same_terminal != p;
         const bool was_connected = [self connected];
         const int switched = [self switchModel:p];
-        if (switched < 0) p.model = _modelName;
+        if (switched < 0) {
+            p.model = old.model;
+            p.variant = old.variant;
+            p.phosphor = old.phosphor;
+        }
         bool rebuilt = false;
-        if (![self applyTerminalSettings:p rebuilt:rebuilt]) p.display = [self currentDisplay];
+        if (![self applyTerminalSettings:p rebuilt:rebuilt]) p.phosphor = _app->config().terminal.phosphor;
         rebuilt = rebuilt || switched > 0;
         if (p != old) {
             _cur.p = p;
@@ -1808,7 +1804,12 @@ void CocoaFrontend::changed() {
         return nil;
     }
     _model = choice.model;
-    start.model = _model->info().name;
+    if (start.model != _model->info().name) {
+        // Not the profile's model: this one's first variant and tube.
+        start.model = _model->info().name;
+        start.variant.clear();
+        start.phosphor.clear();
+    }
 
     // The global keymap, when there is one and it loads; else the built-in
     // Mac map (docs/keyboard.md).
@@ -1838,11 +1839,13 @@ void CocoaFrontend::changed() {
     const char* log_env = std::getenv("EM34XX_LOG");
     std::vector<std::string> args = {"em34xx",
                                      "--model",
-                                     model->info().name,
+                                     // The profile's variant of the model that starts;
+                                     // without one, the model's first.
+                                     start.model == model->info().name && !start.variant.empty()
+                                         ? start.variant
+                                         : model->info().name,
                                      "--rom-dir",
                                      L.dirs->roms(),
-                                     "--display",
-                                     display_subtype_name(start.display),
                                      "--speed",
                                      std::to_string(L.settings.speed_percent),
                                      "--keymap",
@@ -1874,6 +1877,10 @@ void CocoaFrontend::changed() {
         args.push_back(log_file);
     }
     if (!start.crt) args.push_back("--no-crt");
+    if (start.model == model->info().name && !start.phosphor.empty()) {
+        args.push_back("--phosphor");
+        args.push_back(start.phosphor);
+    }
 
     auto fe = std::make_unique<CocoaFrontend>();
     CocoaFrontend* fe_ptr = fe.get();

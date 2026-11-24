@@ -55,8 +55,9 @@ namespace em34xx {
 namespace wsc {
 
 struct BridgeOptions {
-    std::string model = "3477";                     // for the derived terminal type
-    DisplaySubtype display = DisplaySubtype::Color;
+    // The emulated unit's own TN5250 terminal type (ModelVariant::tn5250_type),
+    // for stations that name none.
+    std::string terminal_type = "IBM-3477-FC";
     WscTiming timing;
     bool reconnect = true;                          // reconnect after the session ends
     unsigned reconnect_min_ms = 2000;               // wall clock
@@ -75,7 +76,7 @@ struct BridgeOptions {
 // type (station_terminal_type), and its host / port / pinned certificate
 // when it overrides them (a session to another system).
 Tn5250Config station_session_config(const Tn5250Config& tn5250, const StationConfig& station, bool first_display,
-                                    const std::string& model, DisplaySubtype display);
+                                    const std::string& unit_type);
 
 // A display station's DisplaySessionPort: owns the tn5250::Client (a fresh
 // one per connection) and forwards to it through a Tn5250DisplayAdapter. It

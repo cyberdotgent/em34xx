@@ -289,7 +289,6 @@ private:
     enum class ModelSwitch { Same, Switched, Failed };
     // Restart the emulator as the profile's model when it is another one.
     ModelSwitch switch_model(const Profile& p);
-    DisplaySubtype current_display();
     // Apply the profile's terminal settings, then connect: after a power
     // cycle (as switching the terminal on) or, with power_cycle false, by
     // plugging the controller in with the terminal running.
@@ -779,7 +778,7 @@ void Win32Frontend::update_title() {
     if (!prof.empty()) t = prof + " - ";
     {
         std::lock_guard<std::mutex> g(text_mu_);
-        t += title_.empty() ? "IBM " + model_name_ + " - em34xx" : title_;
+        t += title_.empty() ? "IBM " + app_->variant().id + " - em34xx" : title_;
         if (!status_note_.empty()) t += " - " + status_note_;
     }
     SetWindowTextW(hwnd_.load(), widen(t).c_str());
@@ -892,10 +891,6 @@ void Win32Frontend::update_ui_state() {
 // ---------------------------------------------------------------------------
 // Profiles and connections
 
-DisplaySubtype Win32Frontend::current_display() {
-    return emu_->with_machine([](Machine& m) { return m.options().display; });
-}
-
 const Model* Win32Frontend::profile_model(const Profile& p, const std::string& what) {
     HWND h = hwnd_.load();
     const Model* model = nullptr;
@@ -909,14 +904,19 @@ const Model* Win32Frontend::profile_model(const Profile& p, const std::string& w
 }
 
 Win32Frontend::ModelSwitch Win32Frontend::switch_model(const Profile& p) {
-    if (p.model == model_name_) return ModelSwitch::Same;
+    // The same unit: the model and its variant (a profile that names none
+    // means the model's first).
+    Profile want = p;
+    want.normalize();
+    if (want.model == model_name_ && want.variant == app_->variant().id) return ModelSwitch::Same;
     HWND h = hwnd_.load();
     const Model* model = profile_model(p, "This connection");
     if (!model) return ModelSwitch::Failed;
     // The new terminal as the profile describes it, with its own
     // battery-backed RAM file (its setup); the keyboard stays.
     TerminalOptions options = emu_->with_machine([](Machine& m) { return m.options(); });
-    options.display = p.display;
+    options.variant = want.variant;
+    options.phosphor = want.phosphor;
     options.nvram_path = runtime_path(dirs().nvram_file(model->info().name));
     options.eeprom_path = runtime_path(dirs().eeprom_file(model->info().name));
     std::string error;
@@ -927,7 +927,7 @@ Win32Frontend::ModelSwitch Win32Frontend::switch_model(const Profile& p) {
         ok = app_->set_model(*model, options, error);
     }
     if (!ok) {
-        error_box(h, "Cannot start the IBM " + model->info().name + ": " + error);
+        error_box(h, "Cannot start the IBM " + want.variant + ": " + error);
         return ModelSwitch::Failed;
     }
     model_name_ = model->info().name;
@@ -947,18 +947,13 @@ bool Win32Frontend::apply_terminal_settings(const Profile& p, bool& rebuilt) {
         app_->set_crt(crt_params_);
         crt_.invalidate();
     }
-    if (current_display() != p.display) {
-        rebuilt = app_->display_change_needs_power_cycle(p.display);
-        std::optional<TrustDrain> drain;   // the rebuild closes the sessions
-        if (rebuilt) {
-            drain.emplace(*trust_);
-            release_keys();
-        }
+    // The tube of a monochrome unit: the picture only, the terminal keeps
+    // running. (Another variant is another unit: switch_model.)
+    Profile want = p;
+    want.normalize();
+    if (!want.phosphor.empty() && want.variant == app_->variant().id) {
         std::string error;
-        const bool ok = app_->set_display_subtype(p.display, error);
-        drain.reset();
-        if (!ok) {
-            rebuilt = false;
+        if (!app_->set_phosphor(want.phosphor, error)) {
             error_box(h, std::string("Cannot change the CRT type: ") + error);
             return false;
         }
@@ -1018,6 +1013,8 @@ void Win32Frontend::new_connection() {
     release_keys();
     Profile p;
     p.model = model_name_;
+    p.variant = app_->variant().id;
+    p.phosphor = app_->config().terminal.phosphor;
     if (!profile_editor_dialog(hwnd_.load(), p, ProfileEditMode::Connect, settings(), dirs(), "New Connection"))
         return;
     if (!profile_model(p, "This connection")) return;
@@ -1047,30 +1044,35 @@ void Win32Frontend::edit_connection() {
         "Connection Settings: " + (cur_.untitled ? narrow(load_string(IDS_UNTITLED)) : cur_.name);
     if (!profile_editor_dialog(h, p, ProfileEditMode::Apply, settings(), dirs(), title)) return;
     if (p == cur_.p) return;
-    const Profile old = cur_.p;
-    // Another terminal type: it needs its ROM images and a restart; refused
-    // or not possible, the terminal stays and the other changes apply.
-    if (p.model != model_name_ &&
+    Profile old = cur_.p;
+    old.normalize();
+    p.normalize();
+    // Another terminal type (model or variant): it needs its ROM images and
+    // a restart; refused or not possible, the terminal stays and the other
+    // changes apply. The CRT type of a monochrome unit changes at once.
+    if ((p.model != model_name_ || p.variant != app_->variant().id) &&
         (!profile_model(p, "This connection") ||
-         message_box(h, string_with(IDS_MODEL_RESET_CONFIRM, p.model), MB_YESNO | MB_ICONQUESTION) != IDYES))
-        p.model = model_name_;
-    if (p.model == model_name_ && p.display != current_display() &&
-        app_->display_change_needs_power_cycle(p.display)) {
-        std::string label = subtype_label(p.display);
-        if (!label.empty()) label[0] = char(std::tolower(static_cast<unsigned char>(label[0])));
-        if (message_box(h, string_with(IDS_CRT_RESET_CONFIRM, label), MB_YESNO | MB_ICONQUESTION) != IDYES)
-            p.display = old.display;   // keep the rest of the changes
+         message_box(h, string_with(IDS_MODEL_RESET_CONFIRM, p.variant), MB_YESNO | MB_ICONQUESTION) != IDYES)) {
+        p.model = old.model;
+        p.variant = old.variant;
+        p.phosphor = old.phosphor;
+        p.normalize();
     }
     Profile same_terminal = old;
     same_terminal.model = p.model;
-    same_terminal.display = p.display;
+    same_terminal.variant = p.variant;
+    same_terminal.phosphor = p.phosphor;
     same_terminal.crt = p.crt;
     const bool connection_changed = same_terminal != p;
     const bool was_connected = connected();
     const ModelSwitch switched = switch_model(p);
-    if (switched == ModelSwitch::Failed) p.model = model_name_;
+    if (switched == ModelSwitch::Failed) {
+        p.model = old.model;
+        p.variant = old.variant;
+        p.phosphor = old.phosphor;
+    }
     bool rebuilt = false;
-    if (!apply_terminal_settings(p, rebuilt)) p.display = current_display();
+    if (!apply_terminal_settings(p, rebuilt)) p.phosphor = app_->config().terminal.phosphor;
     rebuilt = rebuilt || switched == ModelSwitch::Switched;
     if (p != old) {
         cur_.p = p;
@@ -1734,11 +1736,11 @@ bool win32_prepare(Win32Launch& launch) {
 
     launch.args = {"em34xxw",
                    "--model",
-                   model->info().name,
+                   // The profile's variant of the model that starts; without
+                   // one, the model's first.
+                   start.model == model->info().name && !start.variant.empty() ? start.variant : model->info().name,
                    "--rom-dir",
                    runtime_path(launch.dirs->roms()),
-                   "--display",
-                   display_subtype_name(start.display),
                    "--speed",
                    std::to_string(launch.settings.speed_percent),
                    "--keymap",
@@ -1757,6 +1759,10 @@ bool win32_prepare(Win32Launch& launch) {
                    "--log-file",
                    runtime_path(launch.dirs->root() + "\\em34xxw.log")};
     if (!start.crt) launch.args.push_back("--no-crt");
+    if (start.model == model->info().name && !start.phosphor.empty()) {
+        launch.args.push_back("--phosphor");
+        launch.args.push_back(start.phosphor);
+    }
     return true;
 }
 

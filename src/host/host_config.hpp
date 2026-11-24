@@ -7,7 +7,6 @@
 // hardware, never through ROM patches.
 #pragma once
 
-#include "machine/display_subtype.hpp"
 
 #include <cstdint>
 #include <map>
@@ -81,14 +80,6 @@ enum class StationType {
 
 const char* station_type_name(StationType type);
 
-// The TN5250 terminal type (RFC 1205 "IBM-tttt-mm") the emulated terminal
-// presents: 3477 colour -> IBM-3477-FC, 3477 green/amber/paper-white ->
-// IBM-3477-FG. The 5250 engine derives its Query Reply (screen sizes,
-// colour) from this type, so it follows what the model supports.
-// TODO(3486/3487/3489): their own types. The 3486 and 3487 run now but
-// still get the conservative 24x80 IBM-3179-2 (colour) / IBM-5251-11
-// (mono), so 27x132 is not offered to the host for them.
-std::string derived_terminal_type(const std::string& model, DisplaySubtype display);
 bool parse_station_type(const std::string& text, StationType& out);
 
 // One station address the controller drives. A terminal can answer on
@@ -117,9 +108,12 @@ struct StationConfig {
 };
 
 // Terminal type for one station: its `profile`, else tn5250.terminal_type
-// (--tn5250-type), else derived_terminal_type(model, display).
+// (--tn5250-type), else `unit_type`: the RFC 1205 type ("IBM-tttt-mm") of
+// the emulated unit (ModelVariant::tn5250_type). The 5250 engine derives
+// its Query Reply (screen sizes, colour) from the type, so it follows what
+// the unit supports.
 std::string station_terminal_type(const Tn5250Config& tn5250, const StationConfig& station,
-                                  const std::string& model, DisplaySubtype display);
+                                  const std::string& unit_type);
 
 // Apply a station's TLS overrides (tls, tls_min_version, tls_max_version,
 // tls_cert_sha256) to the session configuration built from [tn5250].

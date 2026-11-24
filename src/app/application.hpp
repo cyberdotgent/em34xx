@@ -30,6 +30,7 @@ class Application;
 class Emulator;
 class HostLink;
 class Model;
+struct ModelVariant;
 struct StopEvent;
 
 // Developer tooling plugged into the application (src/devtools/dev_tools.hpp).
@@ -98,23 +99,21 @@ public:
     // terminal runs its power-on self test while the controller probes the
     // line, and the sessions come up once it answers.
     bool connect_after_power_cycle(const AppConfig& cfg, std::string& message, std::string& error);
-    // The display subtype (CRT type). Whether a change to `to` is visible to
-    // the firmware or the host (Model::display_change_needs_power_cycle):
-    // then set_display_subtype() rebuilds and power-cycles the machine and
-    // closes the TN5250 sessions (the caller reconnects); otherwise only the
-    // picture changes, at once, without a reset.
-    bool display_change_needs_power_cycle(DisplaySubtype to) const;
-    // False (with error) when the machine cannot be rebuilt; the old one
-    // then keeps running unchanged.
-    bool set_display_subtype(DisplaySubtype to, std::string& error);
+    // The tube of a monochrome variant (Phosphor::id): only the picture
+    // changes, at once; the terminal keeps running. False (with error) for
+    // a phosphor the running variant does not offer.
+    bool set_phosphor(const std::string& id, std::string& error);
+    // The variant the terminal runs as.
+    const ModelVariant& variant() const;
     // Rebuild the machine with new terminal options (as at start-up, from
     // the ROM files) and power it on. A TN5250 bridge on the line is taken
     // off (its sessions close); another controller moves to the new
     // machine. Battery-backed RAM is written first and read back by the new
     // machine. False (with error): the old machine keeps running.
     bool rebuild_machine(const TerminalOptions& options, std::string& error);
-    // The same with another terminal model (one that can run: its ROMs are
-    // read from the ROM folder now): model() changes, and so do the type
+    // The same with another terminal model or variant (TerminalOptions::
+    // variant; one that can run: its ROMs are read from the ROM folder
+    // now): model() and variant() change, and so do the type
     // new TN5250 sessions announce and the session limits. `options` are
     // the new terminal's (its own battery-backed RAM file, for one). False
     // (with error): the old terminal keeps running.
@@ -148,16 +147,15 @@ private:
     bool rebuild(const Model& model, const TerminalOptions& options, std::string& error);
     bool fail(const std::string& message, int code = 2);
     int final_status() const;
+    bool select_variant(const ModelVariant* named, std::string& error);
 
     AppConfig cfg_;
     const Model* model_ = nullptr;
     std::unique_ptr<Emulator> emu_;
     std::unique_ptr<HostLink> host_link_;
-    // The display subtype new TN5250 bridges announce (terminal type); the
-    // bridge factory reads it, set_display_subtype() changes it.
-    std::shared_ptr<std::atomic<DisplaySubtype>> bridge_display_;
-    // The model they are bridges for (set_model() changes it).
-    std::shared_ptr<std::atomic<const Model*>> bridge_model_;
+    // The variant new TN5250 bridges announce (its terminal type); the
+    // bridge factory reads it, rebuild() changes it.
+    std::shared_ptr<std::atomic<const ModelVariant*>> bridge_variant_;
     // Declared after the emulator so they are destroyed first.
     std::unique_ptr<Frontend> frontend_;
     std::unique_ptr<AppTooling> tooling_;

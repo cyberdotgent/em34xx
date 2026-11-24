@@ -5,19 +5,7 @@
 
 namespace em34xx {
 
-uint32_t phosphor_color(DisplaySubtype s) {
-    switch (s) {
-    case DisplaySubtype::Green: return 0xFF66FFB0u;       // mint green, measured on a real 3486 tube
-    case DisplaySubtype::Amber: return 0xFFFFB000u;       // P134-like amber
-    case DisplaySubtype::PaperWhite: return 0xFFE8E8DCu;  // P4-like, slightly warm
-    case DisplaySubtype::Color: return 0xFFFFFFFFu;
-    }
-    return 0xFFFFFFFFu;
-}
-
-void apply_display_subtype(DisplaySubtype s, Framebuffer& fb) {
-    if (!is_monochrome(s)) return;
-    const uint32_t p = phosphor_color(s);
+void apply_phosphor(uint32_t p, Framebuffer& fb) {
     const uint32_t pr = (p >> 16) & 0xFF, pg = (p >> 8) & 0xFF, pb = p & 0xFF;
     for (uint32_t& px : fb.pixels) {
         const uint32_t r = (px >> 16) & 0xFF, g = (px >> 8) & 0xFF, b = px & 0xFF;
@@ -29,7 +17,7 @@ void apply_display_subtype(DisplaySubtype s, Framebuffer& fb) {
 
 void render_presented(Machine& m, Framebuffer& fb) {
     m.render(fb);
-    apply_display_subtype(m.options().display, fb);
+    if (!m.tube().colour) apply_phosphor(m.tube().phosphor, fb);
 }
 
 } // namespace em34xx

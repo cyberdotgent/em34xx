@@ -8,6 +8,7 @@
 #include "devices/ibm3477/keyboard_if.hpp"
 #include "devices/ibm3477/system.hpp"
 
+#include "models/model.hpp"
 #include <doctest/doctest.h>
 
 #include <cstdio>
@@ -270,11 +271,48 @@ TEST_CASE("3477 alarm tone and speaker gate reach the audio sink") {
     CHECK(rec.events == want);
 }
 
-TEST_CASE("3477 straps follow the display subtype") {
-    CHECK(ibm3477_default_straps(DisplaySubtype::Green) == 0x0C);
-    CHECK(ibm3477_default_straps(DisplaySubtype::Amber) == 0x0C);
-    CHECK(ibm3477_default_straps(DisplaySubtype::PaperWhite) == 0x0E);
-    CHECK(ibm3477_default_straps(DisplaySubtype::Color) == 0x0C);
+TEST_CASE("3477 variants: one monochrome unit and the colour stand-in") {
+    const Model& m = model_3477();
+    REQUIRE(m.info().variants.size() == 2);
+    const ModelVariant& mono = m.default_variant();
+    CHECK(mono.id == "3477-FG");
+    CHECK_FALSE(mono.colour);
+    CHECK(mono.straps == kIbm3477MonoStraps);
+    CHECK(mono.tn5250_type == "IBM-3477-FG");
+    REQUIRE(mono.phosphors.size() == 3);
+    CHECK(mono.phosphor("")->id == "green");
+    CHECK(mono.phosphor("Amber")->id == "amber");
+    CHECK(mono.phosphor("plaid")->id == "green");
+    const ModelVariant* colour = m.find_variant("3477-fc");
+    REQUIRE(colour);
+    CHECK(colour->colour);
+    CHECK(colour->stub);                              // until the colour ROM is emulated
+    CHECK(colour->straps == kIbm3477MonoStraps);      // identifies as the monochrome unit
+    CHECK(colour->tn5250_type == "IBM-3477-FC");
+    CHECK(colour->phosphor("green") == nullptr);
+
+    const Model* found = nullptr;
+    const ModelVariant* v = nullptr;
+    REQUIRE(find_model_variant("IBM-3477", found, v));
+    CHECK(found == &m);
+    CHECK(v == &mono);
+    REQUIRE(find_model_variant("3477-FC", found, v));
+    CHECK(v == colour);
+    CHECK_FALSE(find_model_variant("3477-XX", found, v));
+    CHECK(find_model("3477-fg") == &m);
+
+    TerminalOptions o;
+    CHECK(&m.variant_for(o) == &mono);
+    o.variant = "3477-FC";
+    CHECK(&m.variant_for(o) == colour);
+    // The tube is a phosphor of the monochrome unit, whatever older
+    // versions called it.
+    std::string variant, phosphor;
+    select_legacy_display(m, DisplaySubtype::PaperWhite, variant, phosphor);
+    CHECK(variant == "3477-FG");
+    CHECK(phosphor == "paperwhite");
+    select_legacy_display(m, DisplaySubtype::Color, variant, phosphor);
+    CHECK(variant == "3477-FC");
 }
 
 TEST_CASE("3477 keyboard interface: power-on, reset and ID handshake") {

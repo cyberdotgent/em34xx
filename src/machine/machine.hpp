@@ -45,7 +45,12 @@ const char* stop_reason_name(StopEvent::Reason r);
 // the firmware through hardware (monitor sense lines, keyboard ID) once that
 // hardware is understood.
 struct TerminalOptions {
-    DisplaySubtype display = DisplaySubtype::Green;
+    // Which of the model's variants to build ("3477-FG"); "" = its first
+    // (Model::variant_for).
+    std::string variant;
+    // The tube a monochrome variant is shown with (Phosphor::id); "" = the
+    // variant's first. Only the picture depends on it.
+    std::string phosphor;
     std::string keyboard_type = "122";   // see src/input/keyboard_ids.hpp
     std::string keyboard_layout = "us";
     int keyboard_id = -1;                // explicit ID byte override, -1 = from layout
@@ -132,6 +137,18 @@ public:
         display_dirty_ = true;
     }
     void set_keyboard(KeyboardSink* k) { keyboard_ = k; }
+    // What the tube shows: in colour, or the display's brightness in the
+    // colour of a phosphor (render_presented). Set when the machine is
+    // built; the phosphor may change while it runs.
+    struct Tube {
+        bool colour = false;
+        uint32_t phosphor = 0xFFFFFFFFu;   // 0xFFRRGGBB
+    };
+    void set_tube(const Tube& t) {
+        tube_ = t;
+        display_dirty_ = true;
+    }
+    const Tube& tube() const { return tube_; }
     void set_nvram(NonVolatileStore* n) { nvram_ = n; }
     // Where the machine's sound goes; null = nowhere. Devices hold audio(),
     // which forwards to the sink set here, so it can change at any time
@@ -180,6 +197,7 @@ private:
     TerminalOptions options_;
     DisplaySource* display_ = nullptr;
     KeyboardSink* keyboard_ = nullptr;
+    Tube tube_;
     NonVolatileStore* nvram_ = nullptr;
     std::unique_ptr<TwinaxHost> twinax_;
     bool display_dirty_ = true;

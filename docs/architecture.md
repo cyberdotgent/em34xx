@@ -82,9 +82,9 @@ per session (`sessions()`), the TLS trust handler; the monitor's
 `power_off()`, `reset()`, `set_speed_percent()`, `set_crt()`, `config()`;
 `connect_after_power_cycle()` (close the sessions, reset, connect: the
 terminal runs its POST while the controller probes the line) and
-`set_display_subtype()` (picture only, or, when
-`Model::display_change_needs_power_cycle()` says the firmware or the host
-would see it, `rebuild_machine()`: a new `Machine` built from the ROM files
+`set_phosphor()` (the tube of a monochrome variant: picture only) and
+`set_model()` / `rebuild_machine()` (another model or variant,
+docs/models.md: a new `Machine` built from the ROM files
 with the new `TerminalOptions`, swapped in with `Emulator::replace_machine()`,
 battery RAM written first so the new machine reads it back).
 `last_error()` holds the reason `start()` failed, for front ends without a
@@ -111,7 +111,7 @@ What it uses:
   `InvalidateRect` on Win32, `dispatch_async` + `setNeedsDisplay:` on Cocoa,
   a user event on SDL). Then, under `Emulator::with_machine`,
   `render_presented()` (`present/display_profile.hpp`) gives the raw frame
-  with the display subtype applied; `crt_fit()` and a `CrtRenderer`
+  as its tube shows it (colour, or a phosphor); `crt_fit()` and a `CrtRenderer`
   (`present/crt_render.hpp`; it recomputes only the rows a changed raster
   line reaches) turn it into the tube image at the window's pixel size.
   Redraw also on resize/expose. The generation moves after almost every

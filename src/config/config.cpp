@@ -79,9 +79,14 @@ bool load_config_file(const std::string& path, AppConfig& cfg, std::string& erro
     if (auto* t = root["display"].as_table()) {
         get(*t, "crt", cfg.crt);
         if (auto v = (*t)["crt_beam"].value<double>()) cfg.crt_beam = *v;
-        if (get(*t, "subtype", s) && !parse_display_subtype(s, cfg.terminal.display)) {
-            error = path + ": display.subtype must be green, amber, paperwhite or color";
-            return false;
+        get(*t, "phosphor", cfg.terminal.phosphor);
+        DisplaySubtype legacy;
+        if (get(*t, "subtype", s) && !s.empty()) {
+            if (!parse_display_subtype(s, legacy)) {
+                error = path + ": display.subtype must be green, amber, paperwhite or color";
+                return false;
+            }
+            cfg.legacy_display = display_subtype_name(legacy);
         }
     }
     if (auto* t = root["keyboard"].as_table()) {
@@ -187,15 +192,20 @@ std::string usage_text(const char* argv0) {
     std::string u = format("usage: %s [options]\n", argv0);
     u += R"(
 Machine:
-  -m, --model NAME          terminal model (default 3477; see --list-models)
+  -m, --model NAME          terminal model or one of its variants, e.g. 3477,
+                            3487-HC (default 3477; see --list-models)
   -r, --rom-dir DIR         directory holding ROM images (default ./roms)
       --allow-bad-rom       load ROM dumps that are known to be defective
       --unmapped POLICY     unexpected accesses: stop (default), log, ignore
       --speed PCT           percent of nominal clock; 0 = unthrottled
   -c, --config FILE         TOML configuration file
 
-Unit options (one ROM serves all of these):
-      --display SUBTYPE     green (default), amber, paperwhite (white), color
+Unit options:
+      --phosphor NAME       the tube of a monochrome variant: green (default),
+                            amber, paperwhite. Only the picture changes
+      --display SUBTYPE     as in older versions: green, amber, paperwhite
+                            (white) = that phosphor on the model's monochrome
+                            variant; color = its colour variant
       --green, --amber, --paperwhite, --color   shorthands for --display
       --no-crt              sharp pixels instead of CRT scan-line rendering
       --keyboard TYPE       122 (terminal, default) or enhanced
@@ -331,15 +341,18 @@ bool parse_command_line(int argc, char** argv, AppConfig& cfg, std::string& erro
             cfg.speed_percent = unsigned(n);
         } else if (a == "--display" || a == "--subtype") {
             if (!need(v)) return false;
-            if (!parse_display_subtype(v, cfg.terminal.display)) {
+            DisplaySubtype legacy;
+            if (!parse_display_subtype(v, legacy)) {
                 error = "--display must be green, amber, paperwhite or color";
                 return false;
             }
-        } else if (a == "--no-crt") cfg.crt = false;
-        else if (a == "--green") cfg.terminal.display = DisplaySubtype::Green;
-        else if (a == "--amber") cfg.terminal.display = DisplaySubtype::Amber;
-        else if (a == "--paperwhite" || a == "--white") cfg.terminal.display = DisplaySubtype::PaperWhite;
-        else if (a == "--color" || a == "--colour") cfg.terminal.display = DisplaySubtype::Color;
+            cfg.legacy_display = display_subtype_name(legacy);
+        } else if (a == "--phosphor") { if (!need(cfg.terminal.phosphor)) return false; }
+        else if (a == "--no-crt") cfg.crt = false;
+        else if (a == "--green") cfg.legacy_display = "green";
+        else if (a == "--amber") cfg.legacy_display = "amber";
+        else if (a == "--paperwhite" || a == "--white") cfg.legacy_display = "paperwhite";
+        else if (a == "--color" || a == "--colour") cfg.legacy_display = "color";
         else if (a == "--keyboard") { if (!need(cfg.terminal.keyboard_type)) return false; }
         else if (a == "--keyboard-layout") { if (!need(cfg.terminal.keyboard_layout)) return false; }
         else if (a == "--keyboard-id") {
@@ -451,7 +464,8 @@ std::string config_to_toml(const AppConfig& cfg) {
             {"vdo_shim", cfg.terminal.vdo_shim},
             {"alignment_shim", cfg.terminal.alignment_shim},
         }},
-        {"display", toml::table{{"subtype", display_subtype_name(cfg.terminal.display)},
+        {"display", toml::table{{"phosphor", cfg.terminal.phosphor},
+                                {"subtype", cfg.legacy_display},
                                 {"crt", cfg.crt},
                                 {"crt_beam", cfg.crt_beam}}},
         {"keyboard", toml::table{

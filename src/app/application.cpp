@@ -25,6 +25,12 @@ void list_models() {
         const ModelInfo& i = m->info();
         std::printf("%-6s %-16s %-6s %s\n", i.name.c_str(), model_status_name(i.status), cpu_level_name(i.cpu),
                     i.description.c_str());
+        for (const ModelVariant& v : i.variants) {
+            std::string tubes;
+            for (const Phosphor& p : v.phosphors) tubes += (tubes.empty() ? "" : ", ") + p.id;
+            std::printf("         %-8s %s%s%s%s\n", v.id.c_str(), v.description.c_str(), tubes.empty() ? "" : "; phosphor ",
+                        tubes.c_str(), &v == &i.variants.front() ? " (default)" : "");
+        }
     }
 }
 
@@ -122,8 +128,9 @@ bool Application::configure(int argc, char** argv) {
     if (!cfg_.log_spec.empty() && !log_configure(cfg_.log_spec, error)) return fail(error);
     if (!cfg_.log_file.empty() && !log_open_file(cfg_.log_file, error)) return fail(error);
 
-    model_ = find_model(cfg_.model);
-    if (!model_) return fail("unknown model '" + cfg_.model + "' (see --list-models)");
+    const ModelVariant* named = nullptr;
+    if (!find_model_variant(cfg_.model, model_, named))
+        return fail("unknown model or variant '" + cfg_.model + "' (see --list-models)");
     if (cfg_.check_roms) {
         exit_code_ = check_roms(*model_, cfg_);
         return false;
@@ -132,8 +139,66 @@ bool Application::configure(int argc, char** argv) {
     if (!error.empty()) return fail(error);
     if (model_->info().status == ModelStatus::RomIncomplete && !cfg_.allow_bad_rom)
         return fail("model " + model_->info().name + " has no complete ROM dump yet; use --allow-bad-rom to try anyway");
+    if (!select_variant(named, error)) return fail(error);
     return true;
 }
+
+// The variant and phosphor to run: the variant named with the model
+// ("3487-HC"), else what --display of older versions means for this model,
+// else the model's first; and the phosphor asked for, which the variant must
+// offer.
+bool Application::select_variant(const ModelVariant* named, std::string& error) {
+    const std::string model = model_->info().name;
+    if (!named) {
+        error = "model " + model + " has no variant to run";
+        return false;
+    }
+    const bool explicit_variant = to_lower(cfg_.model).find(to_lower(named->id)) != std::string::npos;
+    const ModelVariant* v = named;
+    if (!cfg_.legacy_display.empty()) {
+        const bool colour = cfg_.legacy_display == "color";
+        if (!explicit_variant) {
+            v = model_->variant_with_colour(colour);
+            if (!v) {
+                error = "model " + model + " has no " + (colour ? "colour" : "monochrome") + " variant (see --list-models)";
+                return false;
+            }
+        }
+        if (!colour && cfg_.terminal.phosphor.empty()) cfg_.terminal.phosphor = cfg_.legacy_display;
+    }
+    if (v->colour) {
+        cfg_.terminal.phosphor.clear();
+    } else {
+        const Phosphor* p = v->phosphor(cfg_.terminal.phosphor);
+        if (!cfg_.terminal.phosphor.empty() && to_lower(p->id) != to_lower(cfg_.terminal.phosphor)) {
+            std::string list;
+            for (const Phosphor& o : v->phosphors) list += (list.empty() ? "" : ", ") + o.id;
+            error = v->id + " has no phosphor '" + cfg_.terminal.phosphor + "' (" + list + ")";
+            return false;
+        }
+        cfg_.terminal.phosphor = p->id;
+    }
+    cfg_.terminal.variant = v->id;
+    cfg_.model = model;
+    return true;
+}
+
+namespace {
+// What the tube of a unit built with these options shows.
+Machine::Tube tube_for(const Model& model, const TerminalOptions& options) {
+    const ModelVariant& v = model.variant_for(options);
+    Machine::Tube t;
+    t.colour = v.colour;
+    if (const Phosphor* p = v.phosphor(options.phosphor)) t.phosphor = p->rgb;
+    return t;
+}
+
+std::string tube_name(const Model& model, const TerminalOptions& options) {
+    const ModelVariant& v = model.variant_for(options);
+    const Phosphor* p = v.phosphor(options.phosphor);
+    return p ? p->id : "colour";
+}
+} // namespace
 
 // ROMs and a machine built with these terminal options, reset; no Twinax
 // host yet.
@@ -148,6 +213,7 @@ std::unique_ptr<Machine> Application::make_machine(const Model& model, const Ter
 
     auto machine = std::make_unique<Machine>(info);
     machine->set_options(options);
+    machine->set_tube(tube_for(model, options));
     try {
         model.build(*machine, roms);
     } catch (const std::exception& e) {
@@ -170,18 +236,14 @@ bool Application::build_machine() {
 
     // The TN5250 bridge: the virtual workstation controller with one TN5250
     // session per display station (src/host/wsc/tn5250_bridge.hpp).
-    bridge_model_ = std::make_shared<std::atomic<const Model*>>(model_);
-    auto bridge_model = bridge_model_;
-    bridge_display_ = std::make_shared<std::atomic<DisplaySubtype>>(cfg_.terminal.display);
-    auto display = bridge_display_;
+    bridge_variant_ = std::make_shared<std::atomic<const ModelVariant*>>(&model_->variant_for(cfg_.terminal));
+    auto bridge_variant = bridge_variant_;
     // The front end's TLS trust handler (HostLink::set_tls_trust_handler)
     // reaches each new bridge through the broker.
     auto trust = std::make_shared<TlsTrustBroker>();
-    Tn5250HostFactory bridge = [bridge_model, display, trust](const TwinaxConfig& tw, const Tn5250Config& tn,
-                                                            std::string& err) {
+    Tn5250HostFactory bridge = [bridge_variant, trust](const TwinaxConfig& tw, const Tn5250Config& tn, std::string& err) {
         wsc::BridgeOptions bo;
-        bo.model = bridge_model->load()->info().name;
-        bo.display = display->load();
+        bo.terminal_type = bridge_variant->load()->tn5250_type;
         bo.tls_trust = trust->for_new_bridge();
         return wsc::make_tn5250_bridge(tw, tn, std::move(bo), err);
     };
@@ -191,14 +253,15 @@ bool Application::build_machine() {
         for (const StationConfig& st : cfg_.twinax.effective_stations())
             if (st.type == StationType::Display)
                 LOG_INFO("tn5250", "station %u: terminal type %s", st.address,
-                         station_terminal_type(cfg_.tn5250, st, info.name, cfg_.terminal.display).c_str());
+                         station_terminal_type(cfg_.tn5250, st, model_->variant_for(cfg_.terminal).tn5250_type).c_str());
     machine->set_twinax_host(std::move(host));
     machine->reset();
     uint8_t kbd_id1 = 0, kbd_id2 = 0;
     resolve_keyboard_id(cfg_.terminal, kbd_id1, kbd_id2, error);   // checked in configure()
     LOG_INFO("machine", "%s ready, CPU %s, reset vector at %06X", info.description.c_str(), cpu_level_name(info.cpu),
              machine->cpu().pc_linear());
-    LOG_INFO("machine", "display %s, keyboard %s/%s, ID %02X %02X%s", display_subtype_name(cfg_.terminal.display),
+    LOG_INFO("machine", "variant %s, display %s, keyboard %s/%s, ID %02X %02X%s", cfg_.terminal.variant.c_str(),
+             tube_name(*model_, cfg_.terminal).c_str(),
              cfg_.terminal.keyboard_type.c_str(), cfg_.terminal.keyboard_layout.c_str(), kbd_id1, kbd_id2,
              cfg_.terminal.keyboard_id >= 0 ? " (override)" : "");
 
@@ -218,7 +281,7 @@ FrontendOptions Application::frontend_options() const {
     fo.crt.enabled = cfg_.crt;
     fo.crt.beam_sigma = cfg_.crt_beam;
     if (model_)
-        fo.title = "em34xx: IBM " + model_->info().name + " (" + display_subtype_name(cfg_.terminal.display) + ")";
+        fo.title = "em34xx: IBM " + model_->variant_for(cfg_.terminal).id + " (" + tube_name(*model_, cfg_.terminal) + ")";
     return fo;
 }
 
@@ -305,34 +368,32 @@ bool Application::connect_after_power_cycle(const AppConfig& cfg, std::string& m
     return host_link_->connect(cfg, message, error);
 }
 
-bool Application::display_change_needs_power_cycle(DisplaySubtype to) const {
-    if (!emu_ || !model_) return false;
-    const TerminalOptions current = emu_->with_machine([](Machine& m) { return m.options(); });
-    return model_->display_change_needs_power_cycle(current, to);
-}
+const ModelVariant& Application::variant() const { return model_->variant_for(cfg_.terminal); }
 
-bool Application::set_display_subtype(DisplaySubtype to, std::string& error) {
+bool Application::set_phosphor(const std::string& id, std::string& error) {
     if (!emu_) {
         error = "no machine";
         return false;
     }
-    TerminalOptions options = emu_->with_machine([](Machine& m) { return m.options(); });
-    if (options.display == to) return true;
-    if (model_->display_change_needs_power_cycle(options, to)) {
-        options.display = to;
-        return rebuild_machine(options, error);
+    const ModelVariant& v = variant();
+    const Phosphor* p = v.phosphor(id);
+    if (!p || to_lower(p->id) != to_lower(id)) {
+        error = v.id + " has no phosphor '" + id + "'";
+        return false;
     }
-    // Only the picture: the presentation (render_presented) reads the
-    // subtype from the machine's options; mark the picture changed.
-    emu_->with_machine([to](Machine& m) {
+    if (cfg_.terminal.phosphor == p->id) return true;
+    // Only the picture: the presentation (render_presented) reads the tube
+    // from the machine.
+    cfg_.terminal.phosphor = p->id;
+    const Machine::Tube tube = tube_for(*model_, cfg_.terminal);
+    const std::string phosphor = p->id;
+    emu_->with_machine([&](Machine& m) {
         TerminalOptions o = m.options();
-        o.display = to;
+        o.phosphor = phosphor;
         m.set_options(o);
-        m.mark_display_changed();
+        m.set_tube(tube);
     });
-    cfg_.terminal.display = to;
-    if (bridge_display_) bridge_display_->store(to);
-    LOG_INFO("machine", "display %s (picture only, no reset)", display_subtype_name(to));
+    LOG_INFO("machine", "phosphor %s (picture only, no reset)", p->id.c_str());
     return true;
 }
 
@@ -379,17 +440,21 @@ bool Application::rebuild(const Model& model, const TerminalOptions& options, st
     std::unique_ptr<Machine> old = emu_->replace_machine(std::move(machine));
     old.reset();
     cfg_.terminal = options;
-    if (bridge_display_) bridge_display_->store(options.display);
+    // The options name the variant and phosphor that were built.
+    const ModelVariant& variant = model.variant_for(options);
+    cfg_.terminal.variant = variant.id;
+    const Phosphor* phosphor = variant.phosphor(options.phosphor);
+    cfg_.terminal.phosphor = phosphor ? phosphor->id : std::string();
+    if (bridge_variant_) bridge_variant_->store(&variant);
     if (&model != model_) {
         // Another terminal: new sessions announce its type, and its limits
         // apply to the next connection.
         model_ = &model;
         cfg_.model = model.info().name;
-        if (bridge_model_) bridge_model_->store(model_);
         host_link_->set_model(model.info().name, model.info().max_sessions, int(model.info().max_printer_sessions));
     }
-    LOG_INFO("machine", "rebuilt as IBM %s with display %s; power on", model.info().name.c_str(),
-             display_subtype_name(options.display));
+    LOG_INFO("machine", "rebuilt as IBM %s with display %s; power on", variant.id.c_str(),
+             tube_name(model, cfg_.terminal).c_str());
     emu_->resume();
     return true;
 }

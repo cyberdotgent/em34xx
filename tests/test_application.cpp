@@ -73,23 +73,6 @@ struct RunningApp {
 
 } // namespace
 
-TEST_CASE("3477: which display subtype changes need a power cycle") {
-    const Model& m = model_3477();
-    TerminalOptions o;
-    o.display = DisplaySubtype::Green;
-    CHECK_FALSE(m.display_change_needs_power_cycle(o, DisplaySubtype::Green));
-    CHECK_FALSE(m.display_change_needs_power_cycle(o, DisplaySubtype::Amber));   // same straps: picture only
-    CHECK(m.display_change_needs_power_cycle(o, DisplaySubtype::PaperWhite));    // straps 0C -> 0E
-    CHECK(m.display_change_needs_power_cycle(o, DisplaySubtype::Color));         // device type
-    o.display = DisplaySubtype::Color;
-    CHECK(m.display_change_needs_power_cycle(o, DisplaySubtype::Amber));
-    // Explicit straps do not follow the subtype.
-    o.display = DisplaySubtype::Green;
-    o.straps = 0x0C;
-    CHECK_FALSE(m.display_change_needs_power_cycle(o, DisplaySubtype::PaperWhite));
-    CHECK(m.display_change_needs_power_cycle(o, DisplaySubtype::Color));
-}
-
 TEST_CASE("emulator: replace_machine swaps a stopped machine and reports a new picture") {
     static ModelInfo info;
     info.name = "test";
@@ -115,25 +98,33 @@ TEST_CASE("emulator: replace_machine swaps a stopped machine and reports a new p
     emu.shutdown();
 }
 
-TEST_CASE("application: green -> amber changes the picture only, without a reset") {
+TEST_CASE("application: the phosphor changes the picture only, without a reset") {
     if (!roms_present()) return;   // the ROM images are never committed
     RunningApp r("green");
     REQUIRE(r.ok);
     Application& app = r.app;
+    CHECK(app.variant().id == "3477-FG");
+    CHECK(app.config().terminal.phosphor == "green");
     run_at_least(app, 200000);
-    CHECK_FALSE(app.display_change_needs_power_cycle(DisplaySubtype::Amber));
     const uint64_t before = instructions(app);
     std::string error;
-    REQUIRE(app.set_display_subtype(DisplaySubtype::Amber, error));
-    CHECK(instructions(app) >= before);   // the same machine, still running
-    CHECK(app.emulator().with_machine([](Machine& m) { return m.options().display; }) == DisplaySubtype::Amber);
-    CHECK(app.config().terminal.display == DisplaySubtype::Amber);
+    // Paper-white too: it is a tube of the same unit, not other straps.
+    for (const Phosphor* p : {&phosphor_amber(), &phosphor_paper_white()}) {
+        REQUIRE(app.set_phosphor(p->id, error));
+        CHECK(instructions(app) >= before);   // the same machine, still running
+        CHECK(app.emulator().with_machine([](Machine& m) { return m.tube().phosphor; }) == p->rgb);
+        CHECK_FALSE(app.emulator().with_machine([](Machine& m) { return m.tube().colour; }));
+        CHECK(app.config().terminal.phosphor == p->id);
+        CHECK(app.emulator().with_machine([](Machine& m) { return m.bus().peek8(0x2000A); }) == 0x0C);
+    }
     CHECK(app.powered());
+    CHECK_FALSE(app.set_phosphor("magenta", error));
+    CHECK(app.config().terminal.phosphor == "paperwhite");
 }
 
-TEST_CASE("application: mono -> colour rebuilds and power-cycles; new sessions announce colour") {
+TEST_CASE("application: another variant rebuilds and power-cycles; new sessions announce it") {
     if (!roms_present()) return;
-    RunningApp r("green");
+    RunningApp r("amber");
     REQUIRE(r.ok);
     Application& app = r.app;
     // A session to a port nobody listens on: connect() succeeds, the
@@ -143,12 +134,14 @@ TEST_CASE("application: mono -> colour rebuilds and power-cycles; new sessions a
     CHECK(app.host_link().status().find("IBM-3477-FG") != std::string::npos);
     run_at_least(app, 400000);
     const uint64_t before = instructions(app);
-    REQUIRE(app.display_change_needs_power_cycle(DisplaySubtype::Color));
-    REQUIRE(app.set_display_subtype(DisplaySubtype::Color, error));
+    TerminalOptions options = app.config().terminal;
+    options.variant = "3477-FC";
+    REQUIRE(app.set_model(app.model(), options, error));
     CHECK(instructions(app) < before);   // a new machine, from the reset vector
     CHECK(app.host_link().controller_kind() == "none");   // the sessions were closed
-    CHECK(app.emulator().with_machine([](Machine& m) { return m.options().display; }) == DisplaySubtype::Color);
-    CHECK(app.config().terminal.display == DisplaySubtype::Color);
+    CHECK(app.variant().id == "3477-FC");
+    CHECK(app.config().terminal.phosphor.empty());
+    CHECK(app.emulator().with_machine([](Machine& m) { return m.tube().colour; }));
     CHECK(app.powered());
     // POST runs on the new machine.
     run_at_least(app, 200000);
@@ -156,9 +149,12 @@ TEST_CASE("application: mono -> colour rebuilds and power-cycles; new sessions a
     // The reconnect announces the colour device type.
     REQUIRE(app.host_link().connect(Args{"connect", "127.0.0.1:1"}, message, error));
     CHECK(app.host_link().status().find("IBM-3477-FC") != std::string::npos);
-    // Back to monochrome; paper-white changes the straps, so it rebuilds too.
-    REQUIRE(app.set_display_subtype(DisplaySubtype::PaperWhite, error));
-    CHECK(app.emulator().with_machine([](Machine& m) { return m.bus().peek8(0x2000A); }) == 0x0E);
+    // Back to the monochrome unit: its first phosphor.
+    options.variant = "3477-FG";
+    REQUIRE(app.set_model(app.model(), options, error));
+    CHECK(app.variant().id == "3477-FG");
+    CHECK(app.config().terminal.phosphor == "amber");
+    CHECK_FALSE(app.emulator().with_machine([](Machine& m) { return m.tube().colour; }));
 }
 
 TEST_CASE("application: connect after a power cycle resets the terminal, then connects") {

@@ -108,8 +108,9 @@ CellLook decode_attr(uint8_t attr, bool colour) {
 
 } // namespace
 
-Ibm3477Display::Ibm3477Display(Bus& bus, const TerminalOptions& opts, const Ibm3477DisplayLayout& layout)
-    : Device("display"), bus_(bus), opts_(opts), layout_(layout), vdo_shim_(opts.vdo_shim) {
+Ibm3477Display::Ibm3477Display(Bus& bus, const TerminalOptions& opts, const Ibm3477DisplayLayout& layout,
+                               bool colour)
+    : Device("display"), bus_(bus), opts_(opts), colour_(colour), layout_(layout), vdo_shim_(opts.vdo_shim) {
     if (!layout_.retrace_divisor) layout_.retrace_divisor = 90;
     // Display change tracking (Machine::take_display_change): the cell
     // windows (offsets from 8000 are 16-bit [hyp], so 8000-17FFF), the
@@ -297,7 +298,7 @@ uint8_t Ibm3477Display::mem(uint32_t addr) const {
 
 void Ibm3477Display::draw_row(Framebuffer& fb, uint32_t addr, int y0, int cols, int cell_w,
                               int cell_h, int cursor_col, bool blink_phase) {
-    const bool colour = opts_.display == DisplaySubtype::Color;
+    const bool colour = colour_;
     const int ul_top = std::min<int>(regs_[kRegLineTop], cell_h - 1);
     const int ul_bottom = std::min<int>(std::max<int>(regs_[kRegLineBottom], ul_top), cell_h - 1);
     for (int c = 0; c < cols; ++c) {
@@ -377,7 +378,7 @@ void Ibm3477Display::render(Framebuffer& fb) {
     // the field underlines and has their thickness).
     if (g.status_rows > 0 && g.rows > 0 && (regs_[kRegControl] & kCtlStatusRule)) {
         const uint32_t colour =
-            opts_.display == DisplaySubtype::Color ? kGreen : kGreyNormal;
+            colour_ ? kGreen : kGreyNormal;
         const int ul_top = std::min<int>(regs_[kRegLineTop], g.cell_h - 1);
         const int ul_bottom = std::min<int>(std::max<int>(regs_[kRegLineBottom], ul_top), g.cell_h - 1);
         for (int line = ul_top; line <= ul_bottom; ++line)

@@ -47,18 +47,16 @@ void show_settings_window(const UserDirs& dirs, AppSettings& settings,
 // Refill the startup profile list (profiles were added or renamed).
 void refresh_settings_window();
 
-// The CRT type as the profile editor shows it ("Paper white", "Colour").
-const char* subtype_label(DisplaySubtype d);
-
 enum class ProfileEditMode {
     Connect,   // default button says "Connect"
     Save,      // "Save"
     Apply,     // "OK" (File > Connection Settings)
 };
 
-// The terminal type list shows every model that can be emulated; those
-// whose ROM images are not in the ROM folder are disabled (grey) and say
-// so, and "Import ROM Images…" below them opens the ROM dialog.
+// The terminal type list shows every variant of every model that can be
+// emulated; those whose ROM images are not in the ROM folder are disabled
+// (grey) and say so, and "Import ROM Images…" below them opens the ROM
+// dialog. The CRT type list shows the tubes of the selected variant.
 bool profile_editor_dialog(NSWindow* parent, Profile& p, ProfileEditMode mode, const AppSettings& s,
                            const UserDirs& dirs, const std::string& title);
 

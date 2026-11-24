@@ -21,8 +21,12 @@ struct AppConfig {
     UnmappedPolicy unmapped = UnmappedPolicy::Stop;
     unsigned speed_percent = 100;   // 0 = unthrottled
 
-    // Unit options: display subtype and keyboard (same ROM for all of them)
+    // Unit options: variant, phosphor and keyboard
     TerminalOptions terminal;
+    // --display / [display] subtype of older versions: "green", "amber",
+    // "paperwhite" or "color"; "" = not given. Application::configure()
+    // turns it into the model's variant and phosphor (select_legacy_display).
+    std::string legacy_display;
 
     // Front end
     bool crt = true;              // CRT scan-line presentation

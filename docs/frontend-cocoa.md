@@ -146,7 +146,7 @@ Shared between the terminals of one app:
    Cancel leaves the terminal idle and not connected.
 
 Each terminal's `Application` gets the command line em34xxw builds
-(`--model`, `--rom-dir`, `--display`, `--speed`, `--keymap`, `--nvram`,
+(`--model`, `--rom-dir`, `--phosphor`, `--speed`, `--keymap`, `--nvram`,
 `--unmapped log`, `--log info`, `--no-crt`), and the first one
 `--log-file`. `EM34XX_LOG` replaces `info` (e.g.
 `info,tn5250=debug,ui=debug`; `ui=debug` logs where each profile opens).

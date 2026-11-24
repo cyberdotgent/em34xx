@@ -11,16 +11,17 @@ headless = false
 scale = 1                # window size factor; the image is shown at the tube's 4:3
 start_stopped = false
 # straps = 0x0C          # override the configuration strap byte (2000A);
-                         # default derived from [display] subtype
+                         # default: the variant's (docs/models.md)
 # eeprom = "3477.eeprom" # I2C EEPROM image (monitor alignment), created
                          # on the first write; unset = ephemeral
 # nvram = "3477.nvram"   # battery-backed RAM image (the setup
                          # configuration); loaded at power-on, saved at exit;
                          # unset = cleared at every power-on (Offline Setup)
 
-# The same ROM serves every display subtype and language.
+# The tube of a monochrome variant (the variant is part of `model`, e.g.
+# model = "3487-HC"; docs/models.md). Only the picture depends on it.
 [display]
-subtype = "green"        # green | amber | paperwhite | color
+phosphor = "green"       # green | amber | paperwhite
 crt = true               # scan-line CRT rendering (false: sharp pixels)
 crt_beam = 0.30          # beam width in line pitches; larger = softer, smaller gaps
 
@@ -54,7 +55,7 @@ station_address = 0      # 0..6
 host = ""
 port = 23
 device_name = ""
-terminal_type = ""       # "" = derive from the model and [display] subtype
+terminal_type = ""       # "" = the variant's own type
                          # (3477: colour IBM-3477-FC, mono IBM-3477-FG);
                          # a [[twinax.station]] profile overrides it per station
 tls = false              # TLS from the first byte; servers listen on port 992

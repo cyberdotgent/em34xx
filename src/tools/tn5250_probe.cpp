@@ -62,7 +62,7 @@ int main(int argc, char** argv) {
             return argv[++i];
         };
         if (a == "--ttype") cfg.terminal_type = next();
-        else if (a == "--mono") cfg.terminal_type = derived_terminal_type("3477", DisplaySubtype::Green);
+        else if (a == "--mono") cfg.terminal_type = "IBM-3477-FG";
         else if (a == "--devname") cfg.device_name = next();
         else if (a == "--codepage") cfg.codepage = next();
         else if (a == "--timeout") timeout = std::atoi(next().c_str());

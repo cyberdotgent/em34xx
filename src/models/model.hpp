@@ -30,15 +30,30 @@ public:
     virtual std::string can_build() const;
     // Map memory and devices. ROM images have already been verified.
     virtual void build(Machine& m, std::vector<LoadedRom>& roms) const = 0;
-    // Whether changing a unit with `current` options to display subtype `to`
-    // is visible to the firmware or the host (straps, device type), so the
-    // machine must be rebuilt and power-cycled; false when only the picture
-    // changes (the phosphor colour). Default: monochrome <-> colour.
-    virtual bool display_change_needs_power_cycle(const TerminalOptions& current, DisplaySubtype to) const;
+
+    // The variant the options select (TerminalOptions::variant), or the
+    // model's first when they name none or one it does not have.
+    const ModelVariant& variant_for(const TerminalOptions& options) const;
+    // By id ("3477-FG"; the suffix alone, "FG", also matches); null when
+    // the model has no such variant.
+    const ModelVariant* find_variant(const std::string& id) const;
+    const ModelVariant& default_variant() const { return info().variants.front(); }
+    // The first variant that is colour (or is not); null when there is none.
+    const ModelVariant* variant_with_colour(bool colour) const;
 };
 
 const std::vector<const Model*>& all_models();
+// By model name ("3477", "IBM-3477") or by variant id ("3477-FG").
 const Model* find_model(const std::string& name);
+// The same, also giving the variant named (the model's first for a bare
+// model name). False when there is no such model or variant.
+bool find_model_variant(const std::string& name, const Model*& model, const ModelVariant*& variant);
+
+// The settings of older versions, which had one "display subtype" (green,
+// amber, paper-white, colour) per terminal: the variant and phosphor that
+// selection means for `model` now. Colour on a model without a colour
+// variant gives its first variant.
+void select_legacy_display(const Model& model, DisplaySubtype legacy, std::string& variant, std::string& phosphor);
 // Models an end user can run: buildable, with a complete ROM dump known
 // (not RomIncomplete, not a placeholder). What a GUI offers.
 std::vector<const Model*> runnable_models();

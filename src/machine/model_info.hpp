@@ -21,6 +21,40 @@ enum class ModelStatus {
 
 const char* model_status_name(ModelStatus s);
 
+// A tube a monochrome unit can be shown with. It only changes the picture:
+// the hardware and what the unit tells its host are the same whichever tube
+// is fitted (observed on real units: an amber tube in a green unit works).
+struct Phosphor {
+    std::string id;      // "green": what configuration files store
+    std::string label;   // "Green": what a front end shows
+    uint32_t rgb = 0xFFFFFFFFu;   // full-intensity colour, 0xFFRRGGBB
+};
+
+// The standard tubes.
+const Phosphor& phosphor_green();
+const Phosphor& phosphor_amber();
+const Phosphor& phosphor_paper_white();
+
+// One hardware identity of a model: what the user selects ("3477-FG"), what
+// the firmware is strapped as, and what the unit announces to its host.
+// A model has a monochrome variant, a colour variant or both; a monochrome
+// variant is one unit whatever tube it shows (its `phosphors`).
+struct ModelVariant {
+    std::string id;            // "3477-FG": shown, and stored in configuration files
+    std::string description;   // "monochrome"
+    bool colour = false;       // the host may send colour, and the picture is in colour
+    // A stand-in until the real unit can be emulated (its ROM is missing):
+    // see the model's notes. Front ends may say so.
+    bool stub = false;
+    uint8_t straps = 0;        // configuration strap byte the firmware reads
+    std::string tn5250_type;   // RFC 1205 terminal type announced to a TN5250 host
+    std::vector<Phosphor> phosphors;   // tubes a monochrome variant offers, default first; empty for colour
+
+    // The phosphor with this id, or the first one ("" and unknown ids);
+    // null for a colour variant.
+    const Phosphor* phosphor(const std::string& id) const;
+};
+
 struct ModelInfo {
     std::string name;            // "3477"
     std::string description;
@@ -31,6 +65,8 @@ struct ModelInfo {
     unsigned max_sessions = 1;   // twinax station addresses (sessions) the unit can answer on;
                                  // never more than TwinaxConfig::kMaxStationsPerBus (7)
     unsigned max_printer_sessions = 0;  // of those, how many may be printer sessions
+    // What can be selected, default first. Never empty for a model that runs.
+    std::vector<ModelVariant> variants;
     std::vector<RomSpec> roms;
     std::vector<KnownBadRom> known_bad_roms;
     std::vector<std::string> notes;  // hypotheses and open questions

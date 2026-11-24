@@ -19,8 +19,6 @@ using namespace em34xx::cocoa;
 
 namespace {
 
-const DisplaySubtype kSubtypes[] = {DisplaySubtype::Green, DisplaySubtype::Amber, DisplaySubtype::PaperWhite,
-                                    DisplaySubtype::Color};
 const unsigned kSpeeds[] = {25, 50, 100, 200, 400, 0};
 const TlsVersion kTlsVersions[] = {TlsVersion::Ssl3, TlsVersion::Tls1_0, TlsVersion::Tls1_1, TlsVersion::Tls1_2,
                                    TlsVersion::Tls1_3};
@@ -736,15 +734,6 @@ bool em34xx::cocoa::tls_settings_dialog(NSWindow* parent, Profile& p, const AppS
 // ===========================================================================
 // Profile editor
 
-const char* em34xx::cocoa::subtype_label(DisplaySubtype d) {
-    switch (d) {
-    case DisplaySubtype::Green: return "Green";
-    case DisplaySubtype::Amber: return "Amber";
-    case DisplaySubtype::PaperWhite: return "Paper white";
-    case DisplaySubtype::Color: return "Colour";
-    }
-    return "?";
-}
 
 namespace {
 std::string tls_summary(const Profile& p, const AppSettings& s) {
@@ -770,7 +759,9 @@ std::string tls_summary(const Profile& p, const AppSettings& s) {
     const AppSettings* _s;
     const UserDirs* _dirs;
     std::string _title;
-    std::vector<const Model*> _models;   // the terminal type list, in order
+    // The terminal type list, in order: a variant of a model per entry.
+    std::vector<const Model*> _models;
+    std::vector<const ModelVariant*> _variants;
     NSInteger _modelSel;                 // the selection to go back to
     NSPanel* _panel;
     NSPopUpButton* _model;
@@ -800,29 +791,34 @@ std::string tls_summary(const Profile& p, const AppSettings& s) {
     return group(i == 0 ? @"Session 1" : @"Session 2", g);
 }
 
-// The terminal type list: every model that can be emulated. One without
-// its ROM images is disabled (grey) and says so; "Import ROM Images…"
-// below them opens the ROM dialog. A profile that is for such a model
-// keeps it selected.
+// The terminal type list: every variant of every model that can be
+// emulated. One whose model lacks its ROM images is disabled (grey) and
+// says so; "Import ROM Images…" below them opens the ROM dialog. A profile
+// that is for such a unit keeps it selected.
 - (void)fillModels:(const std::string&)select {
     [_model removeAllItems];
     _model.autoenablesItems = NO;
-    _models = runnable_models();
+    _models.clear();
+    _variants.clear();
     NSInteger sel = 0;
     bool lacking = false;
-    for (size_t i = 0; i < _models.size(); ++i) {
-        const bool ready = model_roms_ready(*_models[i], _dirs->roms());
-        NSMenuItem* item =
-            [[NSMenuItem alloc] initWithTitle:ns("IBM " + _models[i]->info().name + (ready ? "" : " (ROM images needed)"))
-                                       action:nil
-                                keyEquivalent:@""];
-        item.enabled = ready;
-        if (!ready) {
-            item.toolTip = ns("Needs " + trim(unusable_roms_text(*_models[i], _dirs->roms())));
-            lacking = true;
+    for (const Model* m : runnable_models()) {
+        const bool ready = model_roms_ready(*m, _dirs->roms());
+        for (const ModelVariant& v : m->info().variants) {
+            NSMenuItem* item = [[NSMenuItem alloc]
+                initWithTitle:ns("IBM " + v.id + " (" + v.description + (ready ? ")" : ", ROM images needed)"))
+                       action:nil
+                keyEquivalent:@""];
+            item.enabled = ready;
+            if (!ready) {
+                item.toolTip = ns("Needs " + trim(unusable_roms_text(*m, _dirs->roms())));
+                lacking = true;
+            }
+            [_model.menu addItem:item];
+            if (v.id == select) sel = NSInteger(_variants.size());
+            _models.push_back(m);
+            _variants.push_back(&v);
         }
-        [_model.menu addItem:item];
-        if (_models[i]->info().name == select) sel = NSInteger(i);
     }
     if (lacking) {
         [_model.menu addItem:[NSMenuItem separatorItem]];
@@ -832,29 +828,65 @@ std::string tls_summary(const Profile& p, const AppSettings& s) {
     _modelSel = sel;
 }
 
+// The CRT type list: the tubes the selected variant can be shown with. A
+// colour unit has one tube, and the list says so.
+- (void)fillPhosphors:(const std::string&)select {
+    [_subtype removeAllItems];
+    const NSInteger sel = _model.indexOfSelectedItem;
+    const ModelVariant* v = sel >= 0 && size_t(sel) < _variants.size() ? _variants[size_t(sel)] : nullptr;
+    if (!v || v->phosphors.empty()) {
+        [_subtype addItemWithTitle:v ? @"Colour" : @""];
+        _subtype.enabled = NO;
+        return;
+    }
+    NSInteger at = 0;
+    for (size_t k = 0; k < v->phosphors.size(); ++k) {
+        [_subtype addItemWithTitle:ns(v->phosphors[k].label)];
+        if (v->phosphors[k].id == select) at = NSInteger(k);
+    }
+    [_subtype selectItemAtIndex:at];
+    _subtype.enabled = YES;
+}
+
+// The phosphor selected in the CRT type list ("" for a colour unit).
+- (std::string)selectedPhosphor {
+    const NSInteger sel = _model.indexOfSelectedItem;
+    if (sel < 0 || size_t(sel) >= _variants.size()) return {};
+    const std::vector<Phosphor>& tubes = _variants[size_t(sel)]->phosphors;
+    const NSInteger st = _subtype.indexOfSelectedItem;
+    return st >= 0 && size_t(st) < tubes.size() ? tubes[size_t(st)].id : std::string();
+}
+
 - (void)modelChosen:(id)sender {
     (void)sender;
     guarded([&] {
+        // The tube carries over when the new variant has it too.
+        const std::string tube = [self selectedPhosphor].empty() ? _p.phosphor : [self selectedPhosphor];
         const NSInteger sel = _model.indexOfSelectedItem;
-        if (sel >= 0 && size_t(sel) < _models.size()) {
+        if (sel >= 0 && size_t(sel) < _variants.size()) {
             _modelSel = sel;
+            [self fillPhosphors:tube];
             return;
         }
         // "Import ROM Images…": the ROM dialog, then the list again (an
         // import can ready several models) with the previous choice.
         const std::string back =
-            _modelSel >= 0 && size_t(_modelSel) < _models.size() ? _models[size_t(_modelSel)]->info().name : _p.model;
+            _modelSel >= 0 && size_t(_modelSel) < _variants.size() ? _variants[size_t(_modelSel)]->id : _p.variant;
         rom_manager_dialog(_panel, *_dirs, nullptr);
         [self fillModels:back];
+        [self fillPhosphors:tube];
     });
+}
+
+- (void)phosphorChosen:(id)sender {
+    (void)sender;
+    guarded([&] { _p.phosphor = [self selectedPhosphor]; });
 }
 
 - (void)build {
     _panel = make_panel(ns(_title), NSMakeSize(520, 440));
     _model = popup({}, self, @selector(modelChosen:));
-    std::vector<std::string> subtypes;
-    for (DisplaySubtype d : kSubtypes) subtypes.push_back(subtype_label(d));
-    _subtype = popup(subtypes, nil, nil);
+    _subtype = popup({}, self, @selector(phosphorChosen:));
     _crt = check_box(@"Scan lines", nil, nil);
     NSGridView* terminal = form(@[
         @[ label(@"Terminal type:"), _model ],
@@ -879,9 +911,9 @@ std::string tls_summary(const Profile& p, const AppSettings& s) {
         [v.widthAnchor constraintEqualToAnchor:content.widthAnchor].active = YES;
     set_content(_panel, content);
 
-    [self fillModels:_p.model];
-    for (size_t k = 0; k < 4; ++k)
-        if (kSubtypes[k] == _p.display) [_subtype selectItemAtIndex:NSInteger(k)];
+    _p.normalize();
+    [self fillModels:_p.variant];
+    [self fillPhosphors:_p.phosphor];
     _crt.state = _p.crt ? NSControlStateValueOn : NSControlStateValueOff;
     for (size_t s = 0; s < 2; ++s) {
         const ProfileSession& ps = _p.sessions[s];
@@ -903,9 +935,11 @@ std::string tls_summary(const Profile& p, const AppSettings& s) {
 // Read the fields into _p; false (with a message) when a port is invalid.
 - (bool)read:(bool)quiet {
     const NSInteger m = _model.indexOfSelectedItem;
-    if (m >= 0 && size_t(m) < _models.size()) _p.model = _models[size_t(m)]->info().name;
-    const NSInteger st = _subtype.indexOfSelectedItem;
-    if (st >= 0 && st < 4) _p.display = kSubtypes[st];
+    if (m >= 0 && size_t(m) < _variants.size()) {
+        _p.model = _models[size_t(m)]->info().name;
+        _p.variant = _variants[size_t(m)]->id;
+        _p.phosphor = [self selectedPhosphor];
+    }
     _p.crt = _crt.state == NSControlStateValueOn;
     for (size_t i = 0; i < 2; ++i) {
         ProfileSession& s = _p.sessions[i];

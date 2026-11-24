@@ -62,7 +62,7 @@ keeps running (from `WinMain`: exit code 3).
 5. The global keymap (`keymap.toml`) is checked; a broken file is reported
    and the built-in PCOMM map is used.
 6. The `Application` starts with a command line built from all this
-   (`--model`, `--rom-dir`, `--display`, `--speed`, `--keymap`, `--nvram`,
+   (`--model`, `--rom-dir`, `--phosphor`, `--speed`, `--keymap`, `--nvram`,
    `--unmapped log`, `--log info --log-file <folder>\em34xxw.log`,
    `--no-crt`). `--unmapped log`: an access the model does not decode is
    logged and the terminal keeps running (the emulator's default, `stop`,
@@ -174,16 +174,13 @@ to a temporary name and renamed over the old one.
 
 | Setting | Applies |
 | --- | --- |
-| CRT type green <-> amber | at once, picture only (the phosphor colour in `render_presented`); no reset, the sessions stay up |
-| CRT type to or from colour | in Edit > Connection Settings, asks "Changing the CRT type to colour restarts the terminal and reconnects the sessions. Continue?"; Yes: the sessions close, the machine is rebuilt with the new subtype and powered on (POST), and the profile reconnects (the host now sees `IBM-3477-FC`); No keeps the old CRT type and applies the rest. Opening a profile needs no question: it power-cycles anyway |
-| CRT type to or from paper-white (3477) | the same: paper-white sets the display-type straps to 0E (type 5, FW0) instead of 0C (hypothesis, `ibm3477_default_straps`), which the firmware reads at power-on |
+| CRT type (the phosphor of a monochrome unit) | at once, picture only (`Application::set_phosphor()`); no reset, the sessions stay up. Paper-white too: it is a tube, not another unit |
 | scan lines | at once |
-| model | the emulator restarts as the other model (`Application::set_model()`): its ROM images are read, it gets its own battery-backed RAM file (`<model>.nvram`), the sessions close and new ones announce its terminal type, and the title changes. Opening a profile does it without asking; Connection Settings asks first. Without the model's ROM images the user is told which files are missing and may import them; otherwise nothing changes |
+| terminal type (model or variant, e.g. 3487-HG -> 3487-HC) | the emulator restarts as the other unit (`Application::set_model()`): its ROM images are read, a model gets its own battery-backed RAM file (`<model>.nvram`, shared by its variants), the sessions close and new ones announce its terminal type, and the title changes. Opening a profile does it without asking; Connection Settings asks first. Without the model's ROM images the user is told which files are missing and may import them; otherwise nothing changes |
 
-Which subtype changes need the rebuild is the model's decision
-(`Model::display_change_needs_power_cycle()`): by default monochrome <->
-colour (the device type the bridge announces); the 3477 adds any change of
-its derived straps (none when `--straps` is given).
+The terminal type list shows every variant of every model (docs/models.md);
+the CRT type list shows the phosphors of the selected variant and is
+disabled ("Colour") for a colour unit.
 
 ## Profiles (`.em34xx`)
 
@@ -191,11 +188,11 @@ TOML, read and written by `config/profile.*`. A profile never contains a
 password.
 
 ```toml
-format = 2
-model = "3477"                  # terminal emulation type
+format = 3
+model = "3477-FG"               # terminal type: a model's variant (docs/models.md)
 
 [display]
-subtype = "green"               # CRT type: green, amber, paperwhite, color
+phosphor = "green"              # CRT type of a monochrome variant
 crt = true                      # scan-line rendering
 
 [tls]                           # for the sessions with tls = true

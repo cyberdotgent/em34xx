@@ -369,25 +369,18 @@ TEST_CASE("tn5250 client: replies nobody sends are bounded and fail the session"
     c.stop();
 }
 
-TEST_CASE("tn5250 terminal type: derived from model and display, overridable per station") {
-    using em34xx::DisplaySubtype;
-    CHECK(derived_terminal_type("3477", DisplaySubtype::Color) == "IBM-3477-FC");
-    CHECK(derived_terminal_type("3477", DisplaySubtype::Green) == "IBM-3477-FG");
-    CHECK(derived_terminal_type("3477", DisplaySubtype::Amber) == "IBM-3477-FG");
-    CHECK(derived_terminal_type("3477", DisplaySubtype::PaperWhite) == "IBM-3477-FG");
-    CHECK(derived_terminal_type("3486", DisplaySubtype::Green) == "IBM-5251-11");
-
+TEST_CASE("tn5250 terminal type: the unit's own, overridable per station") {
     Tn5250Config cfg;
-    CHECK(cfg.terminal_type.empty());          // default: derive
+    CHECK(cfg.terminal_type.empty());          // default: the unit's type
     StationConfig st;
-    CHECK(station_terminal_type(cfg, st, "3477", DisplaySubtype::Amber) == "IBM-3477-FG");
+    CHECK(station_terminal_type(cfg, st, "IBM-3477-FG") == "IBM-3477-FG");
     cfg.terminal_type = "IBM-3477-FC";         // --tn5250-type
-    CHECK(station_terminal_type(cfg, st, "3477", DisplaySubtype::Amber) == "IBM-3477-FC");
+    CHECK(station_terminal_type(cfg, st, "IBM-3477-FG") == "IBM-3477-FC");
     st.profile = "IBM-3179-2";                 // per-station profile wins
-    CHECK(station_terminal_type(cfg, st, "3477", DisplaySubtype::Amber) == "IBM-3179-2");
+    CHECK(station_terminal_type(cfg, st, "IBM-3477-FG") == "IBM-3179-2");
 
     // The engine's capabilities follow the type: FG is 27x132 monochrome.
-    const EngineOptions fg = EngineOptions::for_terminal_type(derived_terminal_type("3477", DisplaySubtype::Green));
+    const EngineOptions fg = EngineOptions::for_terminal_type("IBM-3477-FG");
     CHECK(fg.wide);
     CHECK_FALSE(fg.color);
     CHECK(fg.model == "0FG");

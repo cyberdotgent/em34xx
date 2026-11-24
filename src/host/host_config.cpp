@@ -28,17 +28,11 @@ std::string Tn5250Config::validate() const {
     return {};
 }
 
-std::string derived_terminal_type(const std::string& model, DisplaySubtype display) {
-    const bool colour = !is_monochrome(display);
-    if (model == "3477") return colour ? "IBM-3477-FC" : "IBM-3477-FG";
-    return colour ? "IBM-3179-2" : "IBM-5251-11";
-}
-
 std::string station_terminal_type(const Tn5250Config& tn5250, const StationConfig& station,
-                                  const std::string& model, DisplaySubtype display) {
+                                  const std::string& unit_type) {
     if (!station.profile.empty()) return station.profile;
     if (!tn5250.terminal_type.empty()) return tn5250.terminal_type;
-    return derived_terminal_type(model, display);
+    return unit_type;
 }
 
 std::string Tn5250Config::describe() const {

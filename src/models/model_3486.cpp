@@ -62,17 +62,14 @@ constexpr uint32_t kOptionRomSize = 0x20000;
 // colour) and the 3488 (010); 011 and 000/111 are rejected by POST.
 constexpr uint8_t kDefaultStraps = 0x42;
 
-// Straps for a display subtype [observed decoder; which unit has which tube
-// is a hypothesis]: colour is the 3487 HC0 (type 6) and paper-white the 3487
-// HW0 (type 5). Green and amber are the 3486 (type 2) on the 3486 model and
-// the 3487 HG0/HA0 (types 3/4, straps 4A) on the 3487 model.
-uint8_t default_straps(bool is_3487, DisplaySubtype d) {
-    switch (d) {
-    case DisplaySubtype::Color: return 0x4C;
-    case DisplaySubtype::PaperWhite: return 0x48;
-    default: return is_3487 ? 0x4A : kDefaultStraps;
-    }
-}
+// Straps per variant [observed decoder; which unit has which tube is a
+// hypothesis]: the 3486 is type 2 (42), the monochrome 3487 types 3/4
+// (HG0/HA0, 4A) and the colour 3487 type 6 (HC0, 4C). The firmware also
+// knows a paper-white 3487 (HW0, type 5, 48) with its own video timing; no
+// variant selects it, since the tube is a phosphor of the monochrome unit,
+// and it stays reachable with --straps 48.
+constexpr uint8_t kStraps3487Mono = 0x4A;
+constexpr uint8_t kStraps3487Colour = 0x4C;
 
 // An address range where optional hardware is absent: reads float high,
 // writes go nowhere.
@@ -113,6 +110,19 @@ public:
         info_.clock_hz = 7500000;
         info_.max_sessions = 2;
         info_.max_printer_sessions = 1;
+        const std::vector<Phosphor> tubes = {phosphor_green(), phosphor_amber(), phosphor_paper_white()};
+        // The TN5250 types are the conservative 24x80 ones: what these
+        // units announce through a real controller has not been established.
+        if (is_3487)
+            info_.variants = {
+                {"3487-HG", "monochrome", false, false, kStraps3487Mono, "IBM-5251-11", tubes},
+                {"3487-HC", "colour", true, false, kStraps3487Colour, "IBM-3179-2", {}},
+            };
+        else
+            info_.variants = {
+                // The firmware's VPD suffix for these straps is BA0 [observed].
+                {"3486-BA", "monochrome", false, false, kDefaultStraps, "IBM-5251-11", tubes},
+            };
         info_.roms = {
             {"system ROM (80000-FFFFF, reset vector)", "54g0010.bin", 0x80000,
              "7d04a011c1865c8c0745f9d2bb2948964dcd1ab1d0e8e4fa8cbde3d3b93ef51c", 0x80000},
@@ -188,7 +198,8 @@ public:
         kbd->keyboard().set_keymap(std::move(keymap));
         Ibm3477KeyboardInterface* kbd_ptr = kbd.get();
 
-        const uint8_t straps = opt.straps >= 0 ? uint8_t(opt.straps) : default_straps(is_3487_, opt.display);
+        const ModelVariant& variant = variant_for(opt);
+        const uint8_t straps = opt.straps >= 0 ? uint8_t(opt.straps) : variant.straps;
         if ((straps & 0x0E) == 0x04)
             LOG_WARN("system", "3486: straps %02X select display type 7 (3488), which the 54G0010 firmware "
                                "does not carry through its start-up: expect it to stop in POST "
@@ -232,7 +243,7 @@ public:
             });
         }
 
-        Ibm3477Display& disp = m.add_device<Ibm3477Display>(bus, opt, kIbm3486DisplayLayout);
+        Ibm3477Display& disp = m.add_device<Ibm3477Display>(bus, opt, kIbm3486DisplayLayout, variant.colour);
         disp.set_clock_hz(info_.clock_hz);
         disp.set_i2c(&i2c.bus());
         disp.set_irq([&irq](bool on) {
@@ -264,13 +275,6 @@ public:
             LOG_WARN("rom", "3486: 54G0011 mapped as segments A000/B000/E000/F000 only; "
                             "8000/9000/C000/D000 are missing and unmapped");
         }
-    }
-
-    bool display_change_needs_power_cycle(const TerminalOptions& current, DisplaySubtype to) const override {
-        if (Model::display_change_needs_power_cycle(current, to)) return true;
-        // The display-type straps (2000A) follow the subtype unless they are
-        // given explicitly, and the firmware reads them at power-on.
-        return current.straps < 0 && default_straps(is_3487_, current.display) != default_straps(is_3487_, to);
     }
 
 private:

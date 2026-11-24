@@ -20,15 +20,9 @@ struct Rig {
     TerminalOptions opts;
     Ibm3477Display disp;
 
-    explicit Rig(DisplaySubtype subtype = DisplaySubtype::Green)
-        : opts(make_opts(subtype)), disp(bus, opts, kIbm3477DisplayLayout) {
+    explicit Rig(bool colour = false) : disp(bus, opts, kIbm3477DisplayLayout, colour) {
         bus.map_ram("ram", 0, 0x20000);
         bus.map_mmio("display", 0x20100, 0x100, &disp);
-    }
-    static TerminalOptions make_opts(DisplaySubtype s) {
-        TerminalOptions o;
-        o.display = s;
-        return o;
     }
     void reg(uint32_t off, uint8_t v) { bus.mem_write8(0x20100 + off, v); }
     uint8_t status() { return bus.mem_read8(0x2012F); }
@@ -173,7 +167,7 @@ TEST_CASE("3477 display: attributes, font 2 and the status line") {
 }
 
 TEST_CASE("3477 display: colour attributes") {
-    Rig r(DisplaySubtype::Color);
+    Rig r(true);
     r.mode_80x24_12px();
     r.bus.poke8(0x18000 + 0xC1 * 32, 0xFF);
     const uint8_t attrs[] = {0x20, 0x22, 0x28, 0x30, 0x32, 0x38, 0x3A};
@@ -400,7 +394,7 @@ TEST_CASE("3477 display: VDO shim switched off reads the sense nibble") {
     TerminalOptions o;
     o.vdo_shim = false;
     Bus bus{20};
-    Ibm3477Display disp(bus, o, kIbm3477DisplayLayout);
+    Ibm3477Display disp(bus, o, kIbm3477DisplayLayout, false);
     CHECK_FALSE(disp.vdo_shim());
     Rig r;
     r.disp.set_vdo_shim(false);

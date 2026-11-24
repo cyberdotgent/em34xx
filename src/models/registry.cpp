@@ -12,11 +12,25 @@ std::string Model::can_build() const {
     return {};
 }
 
-bool Model::display_change_needs_power_cycle(const TerminalOptions& current, DisplaySubtype to) const {
-    // The colour/monochrome choice reaches the host as the device type
-    // (derived_terminal_type, the bridge) and the display renders colour
-    // from the field attributes.
-    return is_monochrome(current.display) != is_monochrome(to);
+const ModelVariant* Model::find_variant(const std::string& id) const {
+    const std::string want = to_lower(id);
+    const std::string full = to_lower(info().name) + "-" + want;
+    for (const ModelVariant& v : info().variants) {
+        const std::string have = to_lower(v.id);
+        if (have == want || have == full) return &v;
+    }
+    return nullptr;
+}
+
+const ModelVariant& Model::variant_for(const TerminalOptions& options) const {
+    if (const ModelVariant* v = options.variant.empty() ? nullptr : find_variant(options.variant)) return *v;
+    return default_variant();
+}
+
+const ModelVariant* Model::variant_with_colour(bool colour) const {
+    for (const ModelVariant& v : info().variants)
+        if (v.colour == colour) return &v;
+    return nullptr;
 }
 
 const std::vector<const Model*>& all_models() {
@@ -24,13 +38,42 @@ const std::vector<const Model*>& all_models() {
     return models;
 }
 
-const Model* find_model(const std::string& name) {
+bool find_model_variant(const std::string& name, const Model*& model, const ModelVariant*& variant) {
     std::string n = to_lower(name);
     if (starts_with(n, "ibm-")) n = n.substr(4);
     else if (starts_with(n, "ibm")) n = n.substr(3);
-    for (const Model* m : all_models())
-        if (to_lower(m->info().name) == n) return m;
-    return nullptr;
+    for (const Model* m : all_models()) {
+        const std::string base = to_lower(m->info().name);
+        if (n == base) {
+            model = m;
+            variant = m->info().variants.empty() ? nullptr : &m->default_variant();
+            return true;
+        }
+        if (starts_with(n, base + "-")) {
+            const ModelVariant* v = m->find_variant(n);
+            if (!v) return false;
+            model = m;
+            variant = v;
+            return true;
+        }
+    }
+    return false;
+}
+
+const Model* find_model(const std::string& name) {
+    const Model* m = nullptr;
+    const ModelVariant* v = nullptr;
+    return find_model_variant(name, m, v) ? m : nullptr;
+}
+
+void select_legacy_display(const Model& model, DisplaySubtype legacy, std::string& variant, std::string& phosphor) {
+    const bool colour = !is_monochrome(legacy);
+    const ModelVariant* v = model.variant_with_colour(colour);
+    if (!v) v = &model.default_variant();
+    variant = v->id;
+    phosphor.clear();
+    if (!colour)
+        if (const Phosphor* p = v->phosphor(display_subtype_name(legacy))) phosphor = p->id;
 }
 
 std::vector<const Model*> runnable_models() {

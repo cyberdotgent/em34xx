@@ -76,6 +76,19 @@ public:
         info_.clock_hz = 7477312;
         info_.max_sessions = 2;
         info_.max_printer_sessions = 1;   // display + printer [doc PAI 14.0 via 3197; obs]
+        const std::vector<Phosphor> tubes = {phosphor_green(), phosphor_amber(), phosphor_paper_white()};
+        info_.variants = {
+            // One monochrome unit whatever tube is fitted; it announces the
+            // green type. (The firmware's own VPD suffix for these straps
+            // is FE0 [observed]; FG is the green 3477's model and TN5250
+            // name [documented].)
+            {"3477-FG", "monochrome", false, false, kIbm3477MonoStraps, "IBM-3477-FG", tubes},
+            // Stand-in until the colour 3477's own ROM is emulated: this
+            // ROM cannot identify as colour (see the notes), so the unit
+            // runs as the monochrome one and only the host and the picture
+            // treat it as colour.
+            {"3477-FC", "colour (stand-in)", true, true, kIbm3477MonoStraps, "IBM-3477-FC", {}},
+        };
         info_.roms = {
             {"system ROM (C0000-DFFFF)", "95f4172.bin", 0x20000,
              "290a58cd5db6543957bdcb2c9e92efefd62a54e37bcd239d41d9bd9cdd6be1d0", 0xC0000},
@@ -94,7 +107,7 @@ public:
             "display type straps at 2000A: 04/0C/0E = types 3/4/5, reported as model FD0/FE0/FW0 "
             "with model ID 24 (observed); green/amber -> 0C, paper-white -> 0E (hypothesis)",
             "colour: the firmware has a complete colour path (display type 6 = FC0, model ID 50, "
-            "4 ECB planes) but nothing in this ROM selects type 6 (observed); --color renders the "
+            "4 ECB planes) but nothing in this ROM selects type 6 (observed); the 3477-FC variant is a stand-in that renders the "
             "attributes in colour on a unit that identifies as FE0, model ID 24",
             "setup configuration in battery-backed RAM: POST never tests 01A0-0A9F and only "
             "validates the checksummed setup block there; an hour meter and a power-on counter "
@@ -139,8 +152,9 @@ public:
         kbd->keyboard().set_keymap(std::move(keymap));
         Ibm3477KeyboardInterface* kbd_ptr = kbd.get();
 
-        const uint8_t straps = opt.straps >= 0 ? uint8_t(opt.straps) : ibm3477_default_straps(opt.display);
-        if (opt.display == DisplaySubtype::Color)
+        const ModelVariant& variant = variant_for(opt);
+        const uint8_t straps = opt.straps >= 0 ? uint8_t(opt.straps) : variant.straps;
+        if (variant.stub)
             LOG_WARN("system", "3477: this ROM has no colour display type; the terminal identifies as a "
                                "monochrome 3477 FE0 (model ID 24h) and only the rendering is in colour");
         Ibm3477System& sys = m.add_device<Ibm3477System>(info_.clock_hz, straps, std::move(kbd));
@@ -166,7 +180,7 @@ public:
         eeprom.attach(i2c.bus(), 0xA0);
         m.set_nvram(&eeprom);
 
-        Ibm3477Display& disp = m.add_device<Ibm3477Display>(bus, opt, kIbm3477DisplayLayout);
+        Ibm3477Display& disp = m.add_device<Ibm3477Display>(bus, opt, kIbm3477DisplayLayout, variant.colour);
         disp.set_clock_hz(info_.clock_hz);
         disp.set_i2c(&i2c.bus());
         Ibm3477Interrupts& ic = sys.interrupts();
@@ -177,14 +191,6 @@ public:
         bus.map_mmio("display", Ibm3477Display::kRegBase, 0x100, &disp);
         m.set_display(&disp);
         for (LoadedRom& r : roms) bus.map_rom(r.spec.file, r.spec.base, std::move(r.data));
-    }
-
-    bool display_change_needs_power_cycle(const TerminalOptions& current, DisplaySubtype to) const override {
-        if (Model::display_change_needs_power_cycle(current, to)) return true;
-        // The display-type straps (2000A) follow the subtype unless they are
-        // given explicitly: paper-white is type 5 (FW0), green and amber
-        // type 4 (FE0); the firmware reads them at power-on.
-        return current.straps < 0 && ibm3477_default_straps(current.display) != ibm3477_default_straps(to);
     }
 
 private:

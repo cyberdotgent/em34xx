@@ -2,6 +2,7 @@
 #include "config/profile.hpp"
 
 #include "config/settings.hpp"
+#include "models/model.hpp"
 #include "util/fingerprint.hpp"
 #include "util/strings.hpp"
 
@@ -65,8 +66,25 @@ std::string Profile::validate() const {
     return {};
 }
 
-bool Profile::operator==(const Profile& o) const {
-    if (model != o.model || display != o.display || crt != o.crt || tls_mode != o.tls_mode || tls_cert_sha256 != o.tls_cert_sha256 ||
+void Profile::normalize() {
+    const Model* m = nullptr;
+    const ModelVariant* v = nullptr;
+    if (!find_model_variant(model, m, v) || !v) return;
+    model = m->info().name;   // also for "3477-FG" in `model`
+    if (!variant.empty())
+        if (const ModelVariant* named = m->find_variant(variant)) v = named;
+    variant = v->id;
+    const Phosphor* p = v->phosphor(phosphor);
+    phosphor = p ? p->id : std::string();
+}
+
+bool Profile::operator==(const Profile& other) const {
+    Profile mine = *this, theirs = other;
+    mine.normalize();
+    theirs.normalize();
+    const Profile& o = other;
+    if (mine.model != theirs.model || mine.variant != theirs.variant || mine.phosphor != theirs.phosphor ||
+        crt != o.crt || tls_mode != o.tls_mode || tls_cert_sha256 != o.tls_cert_sha256 ||
         tls_min_version != o.tls_min_version)
         return false;
     for (size_t i = 0; i < kSessions; ++i) {
@@ -94,12 +112,31 @@ bool parse_profile(const std::string& text, const std::string& origin, Profile& 
             return false;
         }
     }
-    if (auto v = root["model"].value<std::string>()) p.model = *v;
+    const Model* model = nullptr;
+    const ModelVariant* variant = nullptr;
+    bool variant_named = false;
+    if (auto v = root["model"].value<std::string>()) {
+        p.model = *v;
+        if (find_model_variant(*v, model, variant) && variant) {
+            variant_named = to_lower(*v).find(to_lower(variant->id)) != std::string::npos;
+            p.model = model->info().name;
+            p.variant = variant->id;
+        }
+    }
     if (const toml::table* t = root["display"].as_table()) {
+        if (auto v = (*t)["phosphor"].value<std::string>()) p.phosphor = *v;
         if (auto v = (*t)["subtype"].value<std::string>()) {
-            if (!parse_display_subtype(*v, p.display)) {
+            // Formats 1 and 2.
+            DisplaySubtype legacy;
+            if (!parse_display_subtype(*v, legacy)) {
                 error = origin + ": display.subtype must be \"green\", \"amber\", \"paperwhite\" or \"color\"";
                 return false;
+            }
+            if (model && variant) {
+                std::string legacy_variant, legacy_phosphor;
+                select_legacy_display(*model, legacy, legacy_variant, legacy_phosphor);
+                if (!variant_named) p.variant = legacy_variant;
+                if (p.phosphor.empty()) p.phosphor = legacy_phosphor;
             }
         }
         if (auto v = (*t)["crt"].value<bool>()) p.crt = *v;
@@ -148,12 +185,16 @@ bool parse_profile(const std::string& text, const std::string& origin, Profile& 
             if (auto v = (*t)["cert_sha256"].value<std::string>()) s.cert_sha256 = *v;
         }
     }
+    p.normalize();
     out = p;
     return true;
 }
 
-std::string profile_to_toml(const Profile& p) {
-    toml::table display{{"subtype", display_subtype_name(p.display)}, {"crt", p.crt}};
+std::string profile_to_toml(const Profile& profile) {
+    Profile p = profile;
+    p.normalize();   // the file names the variant and the phosphor
+    toml::table display{{"crt", p.crt}};
+    if (!p.phosphor.empty()) display.insert("phosphor", p.phosphor);
     toml::table tls{{"verify", profile_tls_mode_name(p.tls_mode)}};
     if (!p.tls_cert_sha256.empty()) tls.insert("cert_sha256", p.tls_cert_sha256);
     if (!p.tls_min_version.empty()) tls.insert("min_version", p.tls_min_version);
@@ -167,7 +208,7 @@ std::string profile_to_toml(const Profile& p) {
         sessions.push_back(std::move(t));
     }
     toml::table root{{"format", int64_t(Profile::kFormat)},
-                     {"model", p.model},
+                     {"model", p.variant.empty() ? p.model : p.variant},
                      {"display", display},
                      {"tls", tls},
                      {"session", sessions}};

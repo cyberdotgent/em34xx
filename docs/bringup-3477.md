@@ -125,15 +125,16 @@ emulator setting) brings the station on line with model ID `50` under
 for all six (observed), and the PAI says the same for all models
 (documented).
 
-Mapping of the `--display` subtype:
+Straps per variant (docs/models.md):
 
-| Subtype | Straps | Reported model, 8C / Read Info ECB | Status |
+| Variant | Straps | Reported model, 8C / Read Info ECB | Status |
 | --- | --- | --- | --- |
-| green, amber | `0C` (type 4) | `3477 FE0`, `24` / `C0` | hypothesis |
-| paperwhite | `0E` (type 5) | `3477 FW0`, `24` / `C0` | hypothesis (W = white) |
-| color | `0C` (type 4) | `3477 FE0`, `24` / `C0` | no colour type is reachable in this ROM (observed). Type 4 has the cell heights of the colour type. The emulator warns at start-up and renders the attributes in colour on a unit that identifies as monochrome |
+| `3477-FG`, any phosphor | `0C` (type 4) | `3477 FE0`, `24` / `C0` | hypothesis |
+| `3477-FC` (stand-in) | `0C` (type 4) | `3477 FE0`, `24` / `C0` | no colour type is reachable in this ROM (observed). Type 4 has the cell heights of the colour type. The emulator warns at start-up and renders the attributes in colour on a unit that identifies as monochrome |
 
-Type `010` (`FD0`) is not selected by any subtype. The whole byte can be
+The firmware's paper-white type (`0E`, type 5, `3477 FW0`; hypothesis: W =
+white) is not selected by any variant: paper-white is a phosphor of the
+monochrome unit. Type `010` (`FD0`) is not selected either. The whole byte can be
 overridden with `--straps HEX` or `[emulator] straps`.
 
 ### Display test and the sense lines (`2012F` bits 7-4)

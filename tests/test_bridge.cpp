@@ -199,8 +199,7 @@ TEST_CASE("tn5250 bridge: sign-on screen to the station, keystrokes back to the 
     int connects = 0;
     std::vector<std::string> station_devnames;
     BridgeOptions opt;
-    opt.model = "3477";
-    opt.display = DisplaySubtype::Green;
+    opt.terminal_type = "IBM-3477-FG";
     opt.reconnect_min_ms = 400;
     opt.transport = [&](const StationConfig& st, std::string&) -> std::unique_ptr<em34xx::tn5250::Transport> {
         ++connects;
@@ -341,7 +340,7 @@ TEST_CASE("tn5250 bridge: per-station session settings") {
     StationConfig a{0, StationType::Display, "", ""};
     StationConfig b{1, StationType::Display, "SECOND", "IBM-3179-2"};
     StationConfig c{2, StationType::Display, "", ""};
-    const Tn5250Config ca = station_session_config(tn, a, true, "3477", DisplaySubtype::Color);
+    const Tn5250Config ca = station_session_config(tn, a, true, "IBM-3477-FC");
     CHECK(ca.device_name == "SHARED");
     CHECK(ca.terminal_type == "IBM-3477-FC");
     CHECK(ca.codepage == "273");
@@ -349,16 +348,16 @@ TEST_CASE("tn5250 bridge: per-station session settings") {
     CHECK(ca.port == 992);
     CHECK(ca.tls);
     CHECK(ca.ca_file == "ca.pem");
-    const Tn5250Config cb = station_session_config(tn, b, false, "3477", DisplaySubtype::Color);
+    const Tn5250Config cb = station_session_config(tn, b, false, "IBM-3477-FC");
     CHECK(cb.device_name == "SECOND");
     CHECK(cb.terminal_type == "IBM-3179-2");
-    const Tn5250Config cc = station_session_config(tn, c, false, "3477", DisplaySubtype::Green);
+    const Tn5250Config cc = station_session_config(tn, c, false, "IBM-3477-FG");
     CHECK(cc.device_name.empty());
     CHECK(cc.terminal_type == "IBM-3477-FG");
     // A station may lower the TLS minimum for its own session.
     CHECK(cb.tls_min_version == TlsVersion::Tls1_2);
     c.tls_min_version = "1.0";
-    CHECK(station_session_config(tn, c, false, "3477", DisplaySubtype::Green).tls_min_version == TlsVersion::Tls1_0);
+    CHECK(station_session_config(tn, c, false, "IBM-3477-FG").tls_min_version == TlsVersion::Tls1_0);
     // A session to another system: its own host, port and pinned certificate.
     tn.tls_verify = TlsVerify::None;
     StationConfig d{1, StationType::Display, "", ""};
@@ -366,7 +365,7 @@ TEST_CASE("tn5250 bridge: per-station session settings") {
     d.port = 9920;
     d.tls_cert_sha256.clear();
     for (int i = 0; i < 32; ++i) d.tls_cert_sha256 += i ? ":AB" : "AB";
-    const Tn5250Config cd = station_session_config(tn, d, false, "3477", DisplaySubtype::Color);
+    const Tn5250Config cd = station_session_config(tn, d, false, "IBM-3477-FC");
     CHECK(cd.host == "other");
     CHECK(cd.port == 9920);
     CHECK(cd.tls_cert_sha256 == d.tls_cert_sha256);
@@ -472,7 +471,7 @@ TEST_CASE("tn5250 bridge: the first paint of a long run arrives whole by Activat
                                                   {0x11, 0x0B, 0x05},
                                                   tn5250_test::eb("Welcome")})));
     BridgeOptions opt;
-    opt.model = "3477";
+    opt.terminal_type = "IBM-3477-FC";
     opt.transport = [&](const StationConfig&, std::string&) -> std::unique_ptr<em34xx::tn5250::Transport> {
         return std::make_unique<ScriptTransport>(server);
     };

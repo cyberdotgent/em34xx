@@ -107,7 +107,9 @@ public:
     static constexpr uint32_t kWindowBase = 0x8000;   // cell offsets are relative to this
     static constexpr uint32_t kCharGenBase = 0x18000; // four 8 KiB planes
 
-    Ibm3477Display(Bus& bus, const TerminalOptions& opts, const Ibm3477DisplayLayout& layout);
+    // `colour`: the unit has a colour tube (the model's variant); the cell
+    // attributes are then drawn as colours.
+    Ibm3477Display(Bus& bus, const TerminalOptions& opts, const Ibm3477DisplayLayout& layout, bool colour);
 
     // Display interrupt line (vector 0Ch); raised once per frame at the start
     // of vertical retrace, lowered by a write to 20136.
@@ -182,6 +184,7 @@ private:
 
     Bus& bus_;
     TerminalOptions opts_;
+    bool colour_;
     const Region* ram_ = nullptr;   // RAM region cached during render()
     int last_w_ = 0, last_h_ = 0;
     std::array<uint8_t, 256> regs_{};

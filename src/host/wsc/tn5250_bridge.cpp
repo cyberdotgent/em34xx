@@ -10,12 +10,12 @@ namespace em34xx {
 namespace wsc {
 
 Tn5250Config station_session_config(const Tn5250Config& tn5250, const StationConfig& station, bool first_display,
-                                    const std::string& model, DisplaySubtype display) {
+                                    const std::string& unit_type) {
     Tn5250Config c = tn5250;   // host, port, TLS settings, code page, environment
     c.device_name = !station.device_name.empty() ? station.device_name
                     : first_display              ? tn5250.device_name
                                                  : std::string();
-    c.terminal_type = station_terminal_type(tn5250, station, model, display);
+    c.terminal_type = station_terminal_type(tn5250, station, unit_type);
     apply_station_tls(c, station);   // per-station TLS versions and pinned certificate
     if (!station.host.empty()) c.host = station.host;
     if (station.port) c.port = station.port;
@@ -196,7 +196,7 @@ Tn5250Bridge::Tn5250Bridge(const TwinaxConfig& twinax, const Tn5250Config& tn525
         Station* s = sched_.station(uint8_t(sc.address));
         if (sc.type == StationType::Display) {
             auto port = std::make_unique<DisplayStationPort>(
-                sc, station_session_config(tn5250, sc, first_display, opt_.model, opt_.display), opt_, *s);
+                sc, station_session_config(tn5250, sc, first_display, opt_.terminal_type), opt_, *s);
             first_display = false;
             s->attach_display(port.get());
             displays_.push_back(std::move(port));
