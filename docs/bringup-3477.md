@@ -140,8 +140,14 @@ which the variant `3477-FC` runs on the same board model. Observed with it:
   the 3487 colour unit's values for the corresponding screens, which
   supports one signature function for both families (hypothesis). The
   temporary shim has entries for them.
-- **Cells.** The 24x80 format has 12-dot cells (the monochrome unit's are
-  16 dots wide).
+- **Cells and stroke weight.** The 24x80 format has 12-dot cells with
+  strokes one dot wide, 960 dots per line; the monochrome unit's are 16
+  dots wide with two-dot strokes. That is the 3486 family's geometry, so
+  the colour unit is drawn the same way (docs/bringup-3486.md, "Stroke
+  weight"): lit dots last half a dot longer, and the beam keeps the width
+  it has on the 1280-dot tube. Drawn dot for dot with a beam a third wider,
+  the text was blurred and reversed text hard to read (observed in the
+  emulator). Not compared with a real colour 3477 tube (hypothesis).
 - **Keyboard.** After the handshake it sends its echo (`EE`) by writing
   `20012` while the line is already released (`20013` = `02`) and waits
   for the answer; the monochrome firmware holds the line (`03`), writes

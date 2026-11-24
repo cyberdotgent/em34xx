@@ -52,14 +52,21 @@ constexpr DisplayLayout kDisplayLayout3477 = {
 // clear and writes the register with bit 6 once a screen is ready (40 in
 // the display test, C0 in use) [observed], as the 3486 family's does. Bit 6
 // stands in for "picture on" [hypothesis].
+// Its character generator is the 3486 family's shape, not the monochrome
+// 3477's: 12-dot cells with strokes one dot wide, 960 dots per 80-column
+// line [observed]. It is therefore drawn like that family (docs/
+// bringup-3486.md, "Stroke weight"): dots widened by half a dot, and a beam
+// as wide as on the 1280-dot monochrome tube rather than a third wider
+// [hypothesis; the 3487 was compared by eye with a real tube, this unit
+// was not].
 constexpr DisplayLayout kDisplayLayout3477Colour = {
     90,             // retrace_divisor
     {0x28, 0x00},   // sync_invert: none
     5,              // signature_selector_shift
     {0x28, 0x40},   // video_on
     {0x28, 0x80},   // cursor_on
-    false,          // half_dot_stretch
-    0,              // beam_reference_dots
+    true,           // half_dot_stretch
+    1280,           // beam_reference_dots
 };
 
 } // namespace em34xx
