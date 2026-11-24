@@ -156,20 +156,6 @@ void rom_fill(HWND dlg, RomDlg& d) {
         ++row;
     }
     lv_select(lv, std::min(keep, row - 1));
-    std::string summary;
-    for (const Model* m : runnable_models()) {
-        // A variant with firmware of its own is a line of its own.
-        bool shared = false;
-        for (const ModelVariant& v : m->info().variants) shared = shared || v.roms.empty();
-        for (const ModelVariant& v : m->info().variants) {
-            if (v.roms.empty() && !shared) continue;
-            const bool ready = model_roms_ready(*m, d.dirs->roms(), &v);
-            summary += "IBM " + (v.roms.empty() ? m->info().name : v.id) + ": " +
-                       (ready ? "ready to run. " : "ROM images missing or damaged. ");
-            if (v.roms.empty()) shared = false;   // one line for the variants that share the model's set
-        }
-    }
-    set_text(dlg, IDC_ROM_SUMMARY, summary);
 }
 
 INT_PTR CALLBACK rom_proc(HWND dlg, UINT msg, WPARAM wp, LPARAM lp) {

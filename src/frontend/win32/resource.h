@@ -62,7 +62,6 @@
 #define IDC_ROM_REMOVE          2003
 #define IDC_ROM_RECHECK         2004
 #define IDC_ROM_FOLDER          2005
-#define IDC_ROM_SUMMARY         2006
 
 #define IDC_SET_SPEED           2022
 #define IDC_SET_TLSMIN          2023

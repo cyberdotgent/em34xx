@@ -170,7 +170,6 @@ std::vector<std::string> tls_version_items(const std::string& first) {
     std::vector<RomStatusRow> _rows;
     NSPanel* _panel;
     NSTableView* _table;
-    NSTextField* _summary;
 }
 
 - (void)build {
@@ -196,8 +195,6 @@ std::vector<std::string> tls_version_items(const std::string& first) {
     _table.delegate = self;
     [_table registerForDraggedTypes:@[ NSPasteboardTypeFileURL ]];
     NSScrollView* sv = table_in_scroll(_table, 640, 180);
-    _summary = label(@"");
-    _summary.font = [NSFont boldSystemFontOfSize:NSFont.systemFontSize];
     NSTextField* folder = small_label(ns("ROM folder: " + _dirs->roms()));
     folder.selectable = YES;
     folder.lineBreakMode = NSLineBreakByTruncatingMiddle;
@@ -209,7 +206,7 @@ std::vector<std::string> tls_version_items(const std::string& first) {
     NSButton* done = push_button(@"Done", self, @selector(done:));
     make_default(done);
     NSStackView* content = vstack(@[
-        text, sv, _summary, hstack(@[ folder, show ]),
+        text, sv, hstack(@[ folder, show ]),
         button_row(@[ import, remove, recheck ], @[ done ])
     ], 10);
     [content.arrangedSubviews[4].widthAnchor constraintEqualToAnchor:content.widthAnchor].active = YES;
@@ -229,20 +226,6 @@ std::vector<std::string> tls_version_items(const std::string& first) {
     }
     [_table reloadData];
     select_row(_table, std::min<NSInteger>(keep, NSInteger(_rows.size()) - 1));
-    std::string summary;
-    for (const Model* m : runnable_models()) {
-        // A variant with firmware of its own is a line of its own.
-        bool shared = false;
-        for (const ModelVariant& v : m->info().variants) shared = shared || v.roms.empty();
-        for (const ModelVariant& v : m->info().variants) {
-            if (v.roms.empty() && !shared) continue;
-            const bool ready = model_roms_ready(*m, _dirs->roms(), &v);
-            summary += "IBM " + (v.roms.empty() ? m->info().name : v.id) + ": " +
-                       (ready ? "ready to run. " : "ROM images missing or damaged. ");
-            if (v.roms.empty()) shared = false;   // one line for the variants that share the model's set
-        }
-    }
-    _summary.stringValue = ns(trim(summary));
 }
 
 - (NSInteger)numberOfRowsInTableView:(NSTableView*)t {

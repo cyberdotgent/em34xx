@@ -26,7 +26,7 @@ namespace cocoa {
 
 // ROM images: what each model needs and its state; import (also by
 // dropping files on the list), remove, re-check. `required`: the model
-// about to run (its rows come first, the summary says whether it is ready).
+// about to run (its rows come first).
 // `need_any`: no model can run yet and one must (first start). True when
 // `required` is ready at close; without one, when some model is ready
 // (need_any) or always.

@@ -20,8 +20,7 @@ class Model;
 namespace win32 {
 
 // ROM images: what each model needs and its state; import, remove,
-// re-check. `required`: the model about to run (its rows come first, the
-// summary says whether it is ready). `need_any`: no model can run yet and
+// re-check. `required`: the model about to run (its rows come first). `need_any`: no model can run yet and
 // one must (first start). True when `required` is ready at close; without
 // one, when some model is ready (need_any) or always.
 // `required_variant`: the variant of `required` about to run (null: any).

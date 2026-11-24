@@ -88,8 +88,7 @@ BEGIN
     LTEXT           "The emulator runs the terminal's own firmware. ROM images are not included: dump them from your terminal and import them here. They are checked by SHA-256.", IDC_STATIC_TEXT, 7, 7, 366, 18
     LTEXT           "Folder:", -1, 7, 30, 26, 8
     EDITTEXT        IDC_ROM_FOLDER, 35, 28, 338, 12, ES_AUTOHSCROLL | ES_READONLY
-    CONTROL         "", IDC_ROM_LIST, "SysListView32", LVS_REPORT | LVS_SINGLESEL | LVS_SHOWSELALWAYS | WS_BORDER | WS_TABSTOP, 7, 45, 366, 128
-    LTEXT           "", IDC_ROM_SUMMARY, 7, 177, 366, 18
+    CONTROL         "", IDC_ROM_LIST, "SysListView32", LVS_REPORT | LVS_SINGLESEL | LVS_SHOWSELALWAYS | WS_BORDER | WS_TABSTOP, 7, 45, 366, 150
     PUSHBUTTON      "&Import...", IDC_ROM_IMPORT, 7, 201, 60, 14
     PUSHBUTTON      "&Remove", IDC_ROM_REMOVE, 71, 201, 60, 14
     PUSHBUTTON      "Re-&check", IDC_ROM_RECHECK, 135, 201, 60, 14
