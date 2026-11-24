@@ -28,6 +28,13 @@ constexpr Ibm3477DisplayLayout kIbm3486DisplayLayout = {
     // each time it places the cursor and with the bit clear to take it
     // away [observed].
     {0x27, 0x40},
+    // The character generator's strokes are one dot wide (12-dot cells;
+    // the 3477's are two wide in 16-dot cells) [observed]. A real 3487
+    // shows text about as heavy as the 3477 does [observed by eye on a real
+    // tube], so each dot is taken to last one dot longer [hypothesis: where
+    // the widening happens, video logic or the tube's bandwidth, is not
+    // known].
+    true,
 };
 
 } // namespace em34xx

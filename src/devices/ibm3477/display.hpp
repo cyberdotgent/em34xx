@@ -77,17 +77,21 @@ struct Ibm3477DisplayLayout {
     Bit video_on;
     // Set: the cursor is shown.
     Bit cursor_on;
+    // Every lit dot of a character lasts one dot longer, so a stroke that is
+    // one dot wide in the character generator is two wide on the tube.
+    bool dot_stretch;
 };
 
 // The 3477 [observed unless marked]: retrace 1/90 of the frame, no sync
 // polarity control, selector in 2012F bits 6-5, picture on with 20128 bit 4
-// [hypothesis], cursor on with 20128 bit 7 [hypothesis].
+// [hypothesis], cursor on with 20128 bit 7 [hypothesis], dots as generated.
 constexpr Ibm3477DisplayLayout kIbm3477DisplayLayout = {
     90,             // retrace_divisor
     {0x28, 0x00},   // sync_invert: none
     5,              // signature_selector_shift
     {0x28, 0x10},   // video_on
     {0x28, 0x80},   // cursor_on
+    false,          // dot_stretch: its strokes are two dots wide in the generator
 };
 
 class Ibm3477Display : public Device, public DisplaySource {

@@ -176,12 +176,6 @@ public:
         });
         bus.map_mmio("display", Ibm3477Display::kRegBase, 0x100, &disp);
         m.set_display(&disp);
-        // Display change tracking: the cell windows (offsets from 8000 are
-        // 16-bit [hyp], so 8000-17FFF), the character generator (18000-1FFFF)
-        // and the display registers.
-        bus.observe_writes(Ibm3477Display::kWindowBase, 0x20000 - Ibm3477Display::kWindowBase);
-        bus.observe_writes(Ibm3477Display::kRegBase, 0x100);
-
         for (LoadedRom& r : roms) bus.map_rom(r.spec.file, r.spec.base, std::move(r.data));
     }
 

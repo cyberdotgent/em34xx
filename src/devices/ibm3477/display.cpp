@@ -111,6 +111,12 @@ CellLook decode_attr(uint8_t attr, bool colour) {
 Ibm3477Display::Ibm3477Display(Bus& bus, const TerminalOptions& opts, const Ibm3477DisplayLayout& layout)
     : Device("display"), bus_(bus), opts_(opts), layout_(layout), vdo_shim_(opts.vdo_shim) {
     if (!layout_.retrace_divisor) layout_.retrace_divisor = 90;
+    // Display change tracking (Machine::take_display_change): the cell
+    // windows (offsets from 8000 are 16-bit [hyp], so 8000-17FFF), the
+    // character generator (18000-1FFFF) and the display registers. Done
+    // here so that every model that has this display gets it.
+    bus_.observe_writes(kWindowBase, 0x20000 - kWindowBase);
+    bus_.observe_writes(kRegBase, 0x100);
     reset();
 }
 
@@ -307,6 +313,9 @@ void Ibm3477Display::draw_row(Framebuffer& fb, uint32_t addr, int y0, int cols, 
             if (show && line < 32) {
                 bits = uint16_t(mem(glyph + uint32_t(line)) << 8);
                 if (cell_w > 8) bits = uint16_t(bits | mem(glyph + 0x2000 + uint32_t(line)));
+                // Before underline and reverse, so that the dark strokes of
+                // reversed text do not close up [hypothesis].
+                if (layout_.dot_stretch) bits = uint16_t(bits | (bits >> 1));
             }
             if (show && l.underline && line >= ul_top && line <= ul_bottom) bits = 0xFFFF;
             if (show && l.column_sep) bits |= 0x8000;

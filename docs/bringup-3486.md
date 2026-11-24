@@ -329,6 +329,19 @@ procedure once it is understood.
   mode flag, so it may be the cursor's style or blink (hypothesis). The
   cursor is drawn as a steady block, as on the 3477 model.
 
+## Stroke weight (dot widening)
+
+- The character generator the firmware loads has strokes one dot wide in
+  12-dot cells (observed); the 3477's are two dots wide in 16-dot cells.
+- On a real 3487 the text looks about as heavy as the 3477 model draws it,
+  not thin (observed by eye on a real tube).
+- The model lets every lit character dot last one dot longer (hypothesis).
+  Whether the real unit widens dots in its video logic or the tube's
+  bandwidth does it is not known; no register has been tied to it. It is
+  applied before underline and reverse so reversed text keeps its strokes,
+  and in every mode, 132 columns included (hypothesis, not compared with a
+  real tube).
+
 ## Display subtype and straps
 
 Without `--straps`, the model picks the strap code from `--display`:

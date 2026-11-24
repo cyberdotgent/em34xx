@@ -17,6 +17,7 @@
 #include <initializer_list>
 #include <memory>
 #include <string>
+#include <utility>
 
 using namespace em34xx;
 using Src = Ibm3477Interrupts::Source;
@@ -240,6 +241,37 @@ TEST_CASE("3486 display: the cursor is switched by 20127 bit 6") {
     CHECK(b.disp.cursor_on());
     b.bus.mem_write8(0x20127, 0x30);
     CHECK_FALSE(b.disp.cursor_on());
+}
+
+TEST_CASE("3486 display: writes to the screen are tracked and dots are widened") {
+    DisplayRig a(kIbm3477DisplayLayout), b(kIbm3486DisplayLayout);
+    for (DisplayRig* r : {&a, &b}) {
+        // The display registers its own memory for change tracking.
+        const uint64_t before = r->bus.observed_writes();
+        r->bus.mem_write8(0xC200, 0x41);
+        r->bus.mem_write8(0x20117, 3);
+        CHECK(r->bus.observed_writes() == before + 2);
+
+        // 80 x 24+1 rows of 12-dot cells, main window at C200; one cell
+        // with a glyph whose first line is a single dot.
+        const uint8_t on = r == &a ? 0x10 : 0x40;
+        for (auto rv : std::initializer_list<std::pair<uint32_t, uint8_t>>{
+                 {0x0F, 20}, {0x14, 25}, {0x15, 24}, {0x2A, 0x01}, {0x30, 0x00}, {0x31, 0x42},
+                 {0x34, 0x00}, {0x35, 0x6E}, {0x28, on}})
+            r->bus.mem_write8(0x20100 + rv.first, rv.second);
+        r->bus.poke8(0x18000 + 0x41 * 32u, 0x20);   // dot 2 of line 0
+        r->bus.poke8(0xC200 + 1, 0x20);
+    }
+    auto lit = [](DisplayRig& r) {
+        Framebuffer fb;
+        r.disp.render(fb);
+        int n = 0;
+        for (int x = 0; x < 12; ++x)
+            if ((fb.pixels[size_t(x)] & 0x00FFFFFFu) != 0) ++n;
+        return n;
+    };
+    CHECK(lit(a) == 1);
+    CHECK(lit(b) == 2);
 }
 
 TEST_CASE("3486 display: the signature selector is 2012F bits 5-4") {
