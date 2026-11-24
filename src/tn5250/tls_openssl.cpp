@@ -282,6 +282,13 @@ public:
             if (port == 23) error += " (port 23 is plain telnet; TLS servers usually listen on 992)";
             else if (cfg_.tls_min_version >= TlsVersion::Tls1_2)
                 error += " (an old host may need a lower tls_min_version)";
+            else if (why.find("invalid digest") != std::string::npos)
+                // TLS 1.0 and 1.1 sign an ephemeral key exchange with MD5
+                // and SHA-1. Fedora and RHEL forbid SHA-1 signatures by
+                // crypto policy, whatever the security level; only the
+                // system's policy can allow them.
+                error += " (this system's OpenSSL does not allow the SHA-1 signatures that TLS 1.0 and 1.1 key "
+                         "exchange uses; on Fedora and RHEL the crypto policy decides, see docs/tn5250.md)";
             close();
             return false;
         }
