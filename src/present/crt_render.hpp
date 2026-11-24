@@ -28,7 +28,8 @@ struct CrtParams {
     // pitch. ~0.30 leaves a dark gap between lines like the photographed
     // tube; larger values blend lines together.
     double beam_sigma = 0.30;
-    // Beam spread along a line, as a Gaussian sigma in dots. Together with
+    // Beam spread along a line, as a Gaussian sigma in dots (of a raster
+    // whose Framebuffer::dot_pitch is 1: the 3477's). Together with
     // the bloom gain this widens a 2-dot stroke to ~4 dots (a quarter of a
     // 16-dot cell), as photographed on a real tube.
     double spread = 0.9;
@@ -67,7 +68,7 @@ private:
     bool valid_ = false;
     // Geometry the cache was built for.
     int fb_w_ = 0, fb_h_ = 0, out_w_ = 0, out_h_ = 0;
-    double border_x_ = 0, border_y_ = 0;
+    double border_x_ = 0, border_y_ = 0, dot_pitch_ = 1.0;
     CrtParams params_;
     std::vector<uint32_t> last_;   // raster of the previous call
 

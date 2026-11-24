@@ -243,7 +243,7 @@ TEST_CASE("3486 display: the cursor is switched by 20127 bit 6") {
     CHECK_FALSE(b.disp.cursor_on());
 }
 
-TEST_CASE("3486 display: writes to the screen are tracked and dots are widened") {
+TEST_CASE("3486 display: writes to the screen are tracked and dots are widened by half") {
     DisplayRig a(kIbm3477DisplayLayout), b(kIbm3486DisplayLayout);
     for (DisplayRig* r : {&a, &b}) {
         // The display registers its own memory for change tracking.
@@ -266,12 +266,14 @@ TEST_CASE("3486 display: writes to the screen are tracked and dots are widened")
         Framebuffer fb;
         r.disp.render(fb);
         int n = 0;
-        for (int x = 0; x < 12; ++x)
+        for (int x = 0; x < fb.width / 80; ++x)
             if ((fb.pixels[size_t(x)] & 0x00FFFFFFu) != 0) ++n;
-        return n;
+        return std::make_pair(fb.width, n);
     };
-    CHECK(lit(a) == 1);
-    CHECK(lit(b) == 2);
+    // 3477: a pixel per dot. 3486 family: two pixels per dot and half a dot
+    // more for every lit dot.
+    CHECK(lit(a) == std::make_pair(960, 1));
+    CHECK(lit(b) == std::make_pair(1920, 3));
 }
 
 TEST_CASE("3486 display: the signature selector is 2012F bits 5-4") {

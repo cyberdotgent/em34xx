@@ -40,6 +40,7 @@ void CrtRenderer::setup(const Framebuffer& fb, int out_w, int out_h, const CrtPa
     out_w_ = out_w;
     out_h_ = out_h;
     border_x_ = fb.border_x;
+    dot_pitch_ = fb.dot_pitch;
     border_y_ = fb.border_y;
     params_ = p;
     ox0_ = ox1_ = oy0_ = oy1_ = 0;
@@ -84,7 +85,8 @@ void CrtRenderer::setup(const Framebuffer& fb, int out_w, int out_h, const CrtPa
     // dots, normalised so a uniformly lit run keeps its level. Sharp mode:
     // nearest dot.
     const size_t cols = size_t(ox1_ - ox0_);
-    const double hs = std::max(p.spread, 0.5 * sx);
+    const double pitch = fb.dot_pitch > 0.0 ? fb.dot_pitch : 1.0;
+    const double hs = std::max(p.spread / pitch, 0.5 * sx);
     xi_.assign(cols, 0);
     xw_.assign(cols * kTapCount, 0.0f);
     for (int x = ox0_; x < ox1_; ++x) {
@@ -163,7 +165,7 @@ CrtRenderer::Rows CrtRenderer::render(const Framebuffer& fb, int out_w, int out_
     Rows rows;
     const size_t out_size = size_t(std::max(out_w, 0)) * size_t(std::max(out_h, 0));
     const bool full = !valid_ || fb.width != fb_w_ || fb.height != fb_h_ || out_w != out_w_ || out_h != out_h_ ||
-                      fb.border_x != border_x_ || fb.border_y != border_y_ || !same_params(p, params_) ||
+                      fb.border_x != border_x_ || fb.border_y != border_y_ || fb.dot_pitch != dot_pitch_ || !same_params(p, params_) ||
                       out.size() != out_size || last_.size() != fb.pixels.size();
     if (full) {
         setup(fb, out_w, out_h, p);

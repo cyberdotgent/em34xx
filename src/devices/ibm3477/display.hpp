@@ -77,9 +77,15 @@ struct Ibm3477DisplayLayout {
     Bit video_on;
     // Set: the cursor is shown.
     Bit cursor_on;
-    // Every lit dot of a character lasts one dot longer, so a stroke that is
-    // one dot wide in the character generator is two wide on the tube.
-    bool dot_stretch;
+    // Every lit dot of a character lasts half a dot longer, so a stroke
+    // that is one dot wide in the character generator is one and a half
+    // wide on the tube. The raster is then drawn with two pixels per dot.
+    bool half_dot_stretch;
+    // Dots per line of the raster for which the tube's beam spread is
+    // quoted (CrtParams::spread): the beam keeps that physical width
+    // whatever the dot count of the mode shown. 0 = the spread is per dot of
+    // whatever is shown.
+    unsigned beam_reference_dots;
 };
 
 // The 3477 [observed unless marked]: retrace 1/90 of the frame, no sync
@@ -91,7 +97,8 @@ constexpr Ibm3477DisplayLayout kIbm3477DisplayLayout = {
     5,              // signature_selector_shift
     {0x28, 0x10},   // video_on
     {0x28, 0x80},   // cursor_on
-    false,          // dot_stretch: its strokes are two dots wide in the generator
+    false,          // half_dot_stretch: its strokes are two dots wide in the generator
+    0,              // beam_reference_dots: the spread was tuned per dot on this tube
 };
 
 class Ibm3477Display : public Device, public DisplaySource {

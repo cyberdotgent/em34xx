@@ -329,18 +329,26 @@ procedure once it is understood.
   mode flag, so it may be the cursor's style or blink (hypothesis). The
   cursor is drawn as a steady block, as on the 3477 model.
 
-## Stroke weight (dot widening)
+## Stroke weight (dot widening and beam width)
 
 - The character generator the firmware loads has strokes one dot wide in
   12-dot cells (observed); the 3477's are two dots wide in 16-dot cells.
-- On a real 3487 the text looks about as heavy as the 3477 model draws it,
-  not thin (observed by eye on a real tube).
-- The model lets every lit character dot last one dot longer (hypothesis).
-  Whether the real unit widens dots in its video logic or the tube's
-  bandwidth does it is not known; no register has been tied to it. It is
-  applied before underline and reverse so reversed text keeps its strokes,
-  and in every mode, 132 columns included (hypothesis, not compared with a
-  real tube).
+  An 80-column line is 960 dots here against 1280 on the 3477, on a tube
+  of the same size, so a dot is a third wider on the glass.
+- On a real 3487 the text looks about as heavy as the 3477 model draws it
+  (observed by eye on a real tube). Drawn dot for dot it is thin; with
+  every dot doubled it is too heavy and smeared (both observed in the
+  emulator, compared by eye).
+- The model therefore does two things (hypotheses):
+  - every lit character dot lasts half a dot longer; the raster is drawn
+    with two pixels per dot for that. Whether the real unit widens dots in
+    its video logic or the tube's bandwidth does it is not known; no
+    register has been tied to it. It is applied before underline and
+    reverse so reversed text keeps its strokes.
+  - the beam is as wide as on the 3477's tube, not a fixed number of dots:
+    the presentation's beam spread is quoted for a 1280-dot line and
+    scaled to the line shown.
+- Not compared with a real tube: 132 columns, colour.
 
 ## Display subtype and straps
 

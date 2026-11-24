@@ -307,21 +307,32 @@ void Ibm3477Display::draw_row(Framebuffer& fb, uint32_t addr, int y0, int cols, 
         const uint32_t glyph = kCharGenBase + (l.font2 ? 0x4000u : 0u) + uint32_t(code) * 32;
         const bool show = !l.hidden && !(l.blink && !blink_phase);
         const bool cursor = c == cursor_col;
-        uint32_t* px = fb.row(y0) + c * cell_w;
+        // Pixels per dot: two when dots are widened by half a dot.
+        const int sub = layout_.half_dot_stretch ? 2 : 1;
+        const int width = cell_w * sub;   // at most 32
+        const uint32_t full = width >= 32 ? 0xFFFFFFFFu : ~(0xFFFFFFFFu >> width);
+        uint32_t* px = fb.row(y0) + c * width;
         for (int line = 0; line < cell_h; ++line, px += fb.width) {
-            uint16_t bits = 0;
+            // The cell's pixels, leftmost in bit 31.
+            uint32_t bits = 0;
             if (show && line < 32) {
-                bits = uint16_t(mem(glyph + uint32_t(line)) << 8);
-                if (cell_w > 8) bits = uint16_t(bits | mem(glyph + 0x2000 + uint32_t(line)));
-                // Before underline and reverse, so that the dark strokes of
-                // reversed text do not close up [hypothesis].
-                if (layout_.dot_stretch) bits = uint16_t(bits | (bits >> 1));
+                uint16_t dots = uint16_t(mem(glyph + uint32_t(line)) << 8);
+                if (cell_w > 8) dots = uint16_t(dots | mem(glyph + 0x2000 + uint32_t(line)));
+                if (sub == 1) {
+                    bits = uint32_t(dots) << 16;
+                } else {
+                    for (int x = 0; x < cell_w; ++x)
+                        if (dots & (0x8000u >> x)) bits |= 0xC0000000u >> (2 * x);
+                    // Widened before underline and reverse, so that the dark
+                    // strokes of reversed text do not close up [hypothesis].
+                    bits |= bits >> 1;
+                }
             }
-            if (show && l.underline && line >= ul_top && line <= ul_bottom) bits = 0xFFFF;
-            if (show && l.column_sep) bits |= 0x8000;
-            if (l.reverse) bits = uint16_t(~bits);
-            if (cursor) bits = uint16_t(~bits);   // block cursor [hyp]
-            for (int x = 0; x < cell_w; ++x) px[x] = (bits & (0x8000u >> x)) ? l.fg : kBlack;
+            if (show && l.underline && line >= ul_top && line <= ul_bottom) bits = full;
+            if (show && l.column_sep) bits |= sub == 1 ? 0x80000000u : 0xC0000000u;
+            if (l.reverse) bits = ~bits;
+            if (cursor) bits = ~bits;   // block cursor [hyp]
+            for (int x = 0; x < width; ++x) px[x] = (bits & (0x80000000u >> x)) ? l.fg : kBlack;
         }
     }
 }
@@ -338,9 +349,11 @@ void Ibm3477Display::render(Framebuffer& fb) {
         return;
     }
     const Geometry g = geometry();
-    const int w = g.cols * g.cell_w;
+    const int w = g.cols * g.cell_w * (layout_.half_dot_stretch ? 2 : 1);
     const int h = (g.rows + g.status_rows) * g.cell_h;
     if (fb.width != w || fb.height != h) fb.resize(w, h);
+    fb.pixels_per_dot = layout_.half_dot_stretch ? 2 : 1;
+    fb.dot_pitch = layout_.beam_reference_dots ? double(layout_.beam_reference_dots) / double(w) : 1.0;
     last_w_ = w;
     last_h_ = h;
 

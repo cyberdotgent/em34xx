@@ -23,11 +23,21 @@ struct Framebuffer {
     // margins. 0 = the raster fills the presentation.
     double border_x = 0.0;
     double border_y = 0.0;
+    // Width of one pixel of this raster in units of the dot that the tube's
+    // beam spread is quoted in (CrtParams::spread). 1 = a pixel is such a
+    // dot. A raster with finer pixels (sub-dot resolution, or a tube of the
+    // same size showing more dots per line) has a smaller value, so the beam
+    // keeps its physical width.
+    double dot_pitch = 1.0;
+    // Raster pixels per dot of the terminal (2 when the raster is drawn at
+    // half-dot resolution). The presented size is counted in dots.
+    int pixels_per_dot = 1;
 
     // Size of the whole presented tube area (raster plus border) in output
     // pixels, keeping the raster at its native width.
     int presented_width() const {
-        return border_x > 0.0 ? int(double(width) / (1.0 - 2.0 * border_x) + 0.5) : width;
+        const int dots = width / (pixels_per_dot > 0 ? pixels_per_dot : 1);
+        return border_x > 0.0 ? int(double(dots) / (1.0 - 2.0 * border_x) + 0.5) : dots;
     }
     int presented_height() const {
         const int w = presented_width();
