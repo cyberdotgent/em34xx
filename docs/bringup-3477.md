@@ -11,7 +11,7 @@ only: register addresses, bit meanings, reset values and protocols.
 | --- | --- | --- |
 | `00000-1FFFF` | RAM, 128 KiB | Observed: the firmware tests and clears all of it. Includes the character window (`08000-17FFF`, cell offsets in the display registers are relative to `08000`) and the character-generator RAM (`18000-1FFFF`). |
 | `20000-200FF` | System gate array (registers at `20000-2003F`) | Observed. |
-| `20100-201FF` | Display controller (registers at `20100-2013F`) | Observed; see `src/devices/ibm3477/display.hpp`. |
+| `20100-201FF` | Display controller (registers at `20100-2013F`) | Observed; see `src/hw/display_controller.hpp`. |
 | `40000-7FFFF` | Optional RAM, absent | Observed: probed by a write/read-back on every boot. Mapped as open bus (reads `FF`, writes ignored) so the probe is not an unexpected access. |
 | `A0000-BFFFF` | Optional feature ROM, absent | Observed: a signature word near the top is read on every boot. Mapped as open bus. |
 | `C0000-DFFFF` | ROM `95F4172` | Observed. |
@@ -307,7 +307,7 @@ expected values are too few for any family flexible enough to contain a
 plausible gate-array design. The single-dot measurement above is still
 what is needed.
 
-**TEMPORARY shim (implemented, `src/devices/ibm3477/display.*`).** Until the
+**TEMPORARY shim (implemented, `src/hw/display_controller.*`).** Until the
 function is measured, the display controller stands in for it so that the
 firmware can boot:
 
@@ -430,7 +430,7 @@ screen (observed). `dev nvram` shows the state.
 
 ## Twinax engine (`20000-20009`, `20015`, `20020-2002B`)
 
-Implemented in `src/devices/ibm3477/twinax_engine.*` as a generic engine
+Implemented in `src/hw/twinax_engine.*` as a generic engine
 with N station channels (two on the 3477). All entries are **hypotheses**
 built from the firmware's register traffic and the 5250 station protocol
 (documented: IBM 5250 Product Attachment Information), unless marked

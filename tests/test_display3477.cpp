@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-#include "devices/i2c.hpp"
-#include "devices/ibm3477/display.hpp"
+#include "hw/i2c.hpp"
+#include "hw/display_controller.hpp"
 
+#include "models/board_3477.hpp"
 #include <doctest/doctest.h>
 
 #include <vector>
@@ -18,9 +19,9 @@ constexpr uint32_t kBlack = 0xFF000000u;
 struct Rig {
     Bus bus{20};
     TerminalOptions opts;
-    Ibm3477Display disp;
+    DisplayController disp;
 
-    explicit Rig(bool colour = false) : disp(bus, opts, kIbm3477DisplayLayout, colour) {
+    explicit Rig(bool colour = false) : disp(bus, opts, kDisplayLayout3477, colour) {
         bus.map_ram("ram", 0, 0x20000);
         bus.map_mmio("display", 0x20100, 0x100, &disp);
     }
@@ -394,7 +395,7 @@ TEST_CASE("3477 display: VDO shim switched off reads the sense nibble") {
     TerminalOptions o;
     o.vdo_shim = false;
     Bus bus{20};
-    Ibm3477Display disp(bus, o, kIbm3477DisplayLayout, false);
+    DisplayController disp(bus, o, kDisplayLayout3477, false);
     CHECK_FALSE(disp.vdo_shim());
     Rig r;
     r.disp.set_vdo_shim(false);

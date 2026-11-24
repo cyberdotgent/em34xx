@@ -10,7 +10,7 @@ it returns to Read ID (`F2`).
 The emulator models the keyboard at the byte level (`src/input/set3_keyboard.*`)
 and keeps the ID table in `src/input/keyboard_ids.*`. How each terminal's
 keyboard interface is wired to the CPU differs per model; the 3477's interface
-(`src/devices/ibm3477/keyboard_if.*`) is described in `docs/bringup-3477.md`.
+(`src/hw/keyboard_interface.*`) is described in `docs/bringup-3477.md`.
 
 Labels used below: **documented** (in a cited source), **observed** (reported
 from real hardware by a cited source), **inferred** (our reasoning, to be

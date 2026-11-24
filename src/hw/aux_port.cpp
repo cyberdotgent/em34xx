@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-#include "devices/ibm3486/aux_port.hpp"
+#include "hw/aux_port.hpp"
 
-#include "devices/ibm3477/system.hpp"
+#include "hw/system_gate_array.hpp"
 #include "util/log.hpp"
 #include "util/strings.hpp"
 
@@ -20,7 +20,7 @@ bool odd_parity_bit(uint8_t b) {
 }
 } // namespace
 
-void Ibm3486AuxPort::reset() {
+void AuxPort::reset() {
     ctl_ = kHold | kClock;
     tx_ = 0;
     tx_loaded_ = false;
@@ -28,10 +28,10 @@ void Ibm3486AuxPort::reset() {
     rx_ = 0;
     rx_full_ = false;
     rx_parity_ = false;
-    if (ic_) ic_->lower(Ibm3477Interrupts::Source::Aux);
+    if (ic_) ic_->lower(GateArrayInterrupts::Source::Aux);
 }
 
-uint8_t Ibm3486AuxPort::read(unsigned reg) const {
+uint8_t AuxPort::read(unsigned reg) const {
     switch (reg) {
     case 0: return rx_;
     case 1: return uint8_t((rx_parity_ ? 0x01 : 0) | (rx_full_ ? 0x40 : 0));
@@ -39,7 +39,7 @@ uint8_t Ibm3486AuxPort::read(unsigned reg) const {
     }
 }
 
-void Ibm3486AuxPort::write(unsigned reg, uint8_t v) {
+void AuxPort::write(unsigned reg, uint8_t v) {
     switch (reg) {
     case 0:
         tx_ = v;
@@ -58,20 +58,20 @@ void Ibm3486AuxPort::write(unsigned reg, uint8_t v) {
             rx_full_ = true;
             ++wrapped_;
             LOG_DEBUG("aux", "wrap: %02X looped back", rx_);
-            if (ic_) ic_->raise(Ibm3477Interrupts::Source::Aux);
+            if (ic_) ic_->raise(GateArrayInterrupts::Source::Aux);
         }
         break;
     }
     case 2:
         rx_full_ = false;
-        if (ic_) ic_->lower(Ibm3477Interrupts::Source::Aux);
+        if (ic_) ic_->lower(GateArrayInterrupts::Source::Aux);
         break;
     default:
         break;
     }
 }
 
-std::string Ibm3486AuxPort::describe() const {
+std::string AuxPort::describe() const {
     return format("  control %02X, rx %02X%s, tx %02X%s, %llu byte(s) wrapped, no device\n", ctl_, rx_,
                   rx_full_ ? " (received)" : "", tx_, tx_loaded_ ? " (waiting)" : "",
                   (unsigned long long)wrapped_);

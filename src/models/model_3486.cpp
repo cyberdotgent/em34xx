@@ -30,16 +30,16 @@
 // wrong segment.
 #include "models/model.hpp"
 
-#include "devices/battery_ram.hpp"
-#include "devices/ibm3486/alignment_shim.hpp"
-#include "devices/ibm3486/aux_port.hpp"
-#include "devices/ibm3486/display_layout.hpp"
-#include "devices/i2c.hpp"
-#include "devices/ibm3477/display.hpp"
-#include "devices/ibm3477/i2c.hpp"
-#include "devices/ibm3477/keyboard_if.hpp"
-#include "devices/ibm3477/system.hpp"
-#include "devices/ibm3477/twinax_engine.hpp"
+#include "hw/battery_ram.hpp"
+#include "models/alignment_shim_3486.hpp"
+#include "hw/aux_port.hpp"
+#include "models/board_3486.hpp"
+#include "hw/i2c.hpp"
+#include "hw/display_controller.hpp"
+#include "hw/i2c_eeprom.hpp"
+#include "hw/keyboard_interface.hpp"
+#include "hw/system_gate_array.hpp"
+#include "hw/twinax_engine.hpp"
 #include "input/host_keymap.hpp"
 #include "input/keyboard_ids.hpp"
 #include "machine/machine.hpp"
@@ -191,12 +191,12 @@ public:
         if (!resolve_keyboard_id(opt, id1, id2, error)) throw std::runtime_error(error);
         KeyboardType type = KeyboardType::Terminal122;
         parse_keyboard_type(opt.keyboard_type, type);
-        auto kbd = std::make_unique<Ibm3477KeyboardInterface>(info_.clock_hz, type, id1, id2);
+        auto kbd = std::make_unique<KeyboardInterface>(info_.clock_hz, type, id1, id2);
         kbd->keyboard().set_shift_fkeys(opt.shift_fkeys);
         auto keymap = std::make_shared<Keymap>();
         if (!load_keymap(opt.keymap, opt.shift_fkeys, *keymap, error)) throw std::runtime_error(error);
         kbd->keyboard().set_keymap(std::move(keymap));
-        Ibm3477KeyboardInterface* kbd_ptr = kbd.get();
+        KeyboardInterface* kbd_ptr = kbd.get();
 
         const ModelVariant& variant = variant_for(opt);
         const uint8_t straps = opt.straps >= 0 ? uint8_t(opt.straps) : variant.straps;
@@ -204,16 +204,14 @@ public:
             LOG_WARN("system", "3486: straps %02X select display type 7 (3488), which the 54G0010 firmware "
                                "does not carry through its start-up: expect it to stop in POST "
                                "(docs/bringup-3486.md)", straps);
-        Ibm3477System& sys = m.add_device<Ibm3477System>(info_.clock_hz, straps, std::move(kbd));
-        bus.map_mmio("system", Ibm3477System::kBase, Ibm3477System::kSize, &sys);
-        sys.interrupts().set_three_channel_layout();
+        SystemGateArray& sys = m.add_device<SystemGateArray>(info_.clock_hz, straps, kLinkChannels3486, std::move(kbd));
+        bus.map_mmio("system", SystemGateArray::kBase, SystemGateArray::kSize, &sys);
         bus.set_interrupt_controller(&sys.interrupts());
         m.set_keyboard(kbd_ptr);
 
         // Three station channels; the third reports through 2000D/2000F.
-        sys.set_third_channel(true);
-        TwinaxEngine& link = m.add_device<TwinaxEngine>(bus, 3u, info_.clock_hz);
-        Ibm3477Interrupts& irq = sys.interrupts();
+        TwinaxEngine& link = m.add_device<TwinaxEngine>(bus, kLinkChannels3486, info_.clock_hz, kLinkLayout3486);
+        GateArrayInterrupts& irq = sys.interrupts();
         link.set_raise([&irq](unsigned ch, uint8_t bits) {
             if (ch == 2) irq.request2(bits);
             else irq.request(uint16_t(bits << (8 * ch)));
@@ -222,7 +220,7 @@ public:
             return uint8_t((ch == 2 ? irq.requests2() : uint8_t(irq.requests() >> (8 * ch))) & 0x7F);
         });
         link.set_host([&m]() { return m.twinax_host(); });
-        Ibm3477TwinaxRegisters& link_regs = m.add_device<Ibm3477TwinaxRegisters>(link);
+        TwinaxRegisters& link_regs = m.add_device<TwinaxRegisters>(link);
         sys.set_twinax_port(&link_regs);
 
         I2cBusDevice& i2c = m.add_device<I2cBusDevice>();
@@ -243,17 +241,17 @@ public:
             });
         }
 
-        Ibm3477Display& disp = m.add_device<Ibm3477Display>(bus, opt, kIbm3486DisplayLayout, variant.colour);
+        DisplayController& disp = m.add_device<DisplayController>(bus, opt, kDisplayLayout3486, variant.colour);
         disp.set_clock_hz(info_.clock_hz);
         disp.set_i2c(&i2c.bus());
         disp.set_irq([&irq](bool on) {
-            if (on) irq.raise(Ibm3477Interrupts::Source::Display);
-            else irq.lower(Ibm3477Interrupts::Source::Display);
+            if (on) irq.raise(GateArrayInterrupts::Source::Display);
+            else irq.lower(GateArrayInterrupts::Source::Display);
         });
-        Ibm3486AuxPort& aux = m.add_device<Ibm3486AuxPort>();
+        AuxPort& aux = m.add_device<AuxPort>();
         aux.connect(&irq);
         disp.set_aux_port(&aux);
-        bus.map_mmio("display", Ibm3477Display::kRegBase, 0x100, &disp);
+        bus.map_mmio("display", DisplayController::kRegBase, 0x100, &disp);
         m.set_display(&disp);
 
         for (LoadedRom& r : roms) {

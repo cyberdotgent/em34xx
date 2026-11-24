@@ -253,14 +253,14 @@ em34xx_library(em34xx_machines
   src/input/host_keymap.cpp
   src/input/keyboard_ids.cpp
   src/input/set3_keyboard.cpp
-  src/devices/battery_ram.cpp
-  src/devices/i2c.cpp
-  src/devices/ibm3477/display.cpp
-  src/devices/ibm3477/i2c.cpp
-  src/devices/ibm3477/keyboard_if.cpp
-  src/devices/ibm3477/system.cpp
-  src/devices/ibm3477/twinax_engine.cpp
-  src/devices/ibm3486/aux_port.cpp
+  src/hw/battery_ram.cpp
+  src/hw/i2c.cpp
+  src/hw/display_controller.cpp
+  src/hw/i2c_eeprom.cpp
+  src/hw/keyboard_interface.cpp
+  src/hw/system_gate_array.cpp
+  src/hw/twinax_engine.cpp
+  src/hw/aux_port.cpp
 )
 target_link_libraries(em34xx_machines PUBLIC em34xx_emu PRIVATE em34xx_tomlplusplus)
 

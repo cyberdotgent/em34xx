@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-#include "devices/ibm3477/display.hpp"
+#include "hw/display_controller.hpp"
 
-#include "devices/ibm3486/aux_port.hpp"
+#include "hw/aux_port.hpp"
 
-#include "devices/i2c.hpp"
+#include "hw/i2c.hpp"
 #include "util/log.hpp"
 #include "util/strings.hpp"
 
@@ -108,7 +108,7 @@ CellLook decode_attr(uint8_t attr, bool colour) {
 
 } // namespace
 
-Ibm3477Display::Ibm3477Display(Bus& bus, const TerminalOptions& opts, const Ibm3477DisplayLayout& layout,
+DisplayController::DisplayController(Bus& bus, const TerminalOptions& opts, const DisplayLayout& layout,
                                bool colour)
     : Device("display"), bus_(bus), opts_(opts), colour_(colour), layout_(layout), vdo_shim_(opts.vdo_shim) {
     if (!layout_.retrace_divisor) layout_.retrace_divisor = 90;
@@ -121,15 +121,15 @@ Ibm3477Display::Ibm3477Display(Bus& bus, const TerminalOptions& opts, const Ibm3
     reset();
 }
 
-void Ibm3477Display::set_irq(std::function<void(bool)> line) { irq_ = std::move(line); }
-void Ibm3477Display::set_i2c(I2cBus* bus) { i2c_ = bus; }
+void DisplayController::set_irq(std::function<void(bool)> line) { irq_ = std::move(line); }
+void DisplayController::set_i2c(I2cBus* bus) { i2c_ = bus; }
 
-void Ibm3477Display::set_clock_hz(uint64_t hz) {
+void DisplayController::set_clock_hz(uint64_t hz) {
     clock_hz_ = hz ? hz : 8000000;
     recompute_timing();
 }
 
-void Ibm3477Display::reset() {
+void DisplayController::reset() {
     regs_.fill(0);
     phase_ = 0;
     frames_ = 0;
@@ -142,20 +142,20 @@ void Ibm3477Display::reset() {
     recompute_timing();
 }
 
-void Ibm3477Display::recompute_timing() {
+void DisplayController::recompute_timing() {
     frame_cycles_ = std::max<uint64_t>(clock_hz_ / kRefreshHz, 100);
     // Vertical sync of a few scan lines out of a ~525-line frame [hyp].
     retrace_cycles_ = std::max<uint64_t>(frame_cycles_ / layout_.retrace_divisor, 1);
     phase_ %= frame_cycles_;
 }
 
-void Ibm3477Display::set_irq_line(bool on) {
+void DisplayController::set_irq_line(bool on) {
     if (irq_pending_ == on) return;
     irq_pending_ = on;
     if (irq_) irq_(on);
 }
 
-void Ibm3477Display::tick(uint64_t cycles) {
+void DisplayController::tick(uint64_t cycles) {
     phase_ += cycles;
     bool frame_started = false;
     while (phase_ >= frame_cycles_) {
@@ -180,7 +180,7 @@ void Ibm3477Display::tick(uint64_t cycles) {
     in_retrace_ = retrace;
 }
 
-uint8_t Ibm3477Display::read_status() const {
+uint8_t DisplayController::read_status() const {
     const uint8_t w = regs_[kRegStatus];
     uint8_t v = uint8_t((sig_valid_ ? sig_result_ : sense_) << 4);
     if ((w & 0x01) || (i2c_ && !i2c_->sda_in())) v |= 0x01;
@@ -193,16 +193,16 @@ uint8_t Ibm3477Display::read_status() const {
     return v;
 }
 
-uint8_t Ibm3477Display::mmio_read8(uint32_t offset) {
+uint8_t DisplayController::mmio_read8(uint32_t offset) {
     offset &= 0xFF;
     if (offset == kRegStatus) return read_status();
     if (aux_ && offset >= kRegAuxPort && offset < kRegAuxPort + 3) return aux_->read(offset - kRegAuxPort);
     return regs_[offset];
 }
 
-uint8_t Ibm3477Display::peek8(uint32_t offset) { return mmio_read8(offset); }
+uint8_t DisplayController::peek8(uint32_t offset) { return mmio_read8(offset); }
 
-void Ibm3477Display::mmio_write8(uint32_t offset, uint8_t value) {
+void DisplayController::mmio_write8(uint32_t offset, uint8_t value) {
     offset &= 0xFF;
     const uint8_t old = regs_[offset];
     regs_[offset] = value;
@@ -235,7 +235,7 @@ void Ibm3477Display::mmio_write8(uint32_t offset, uint8_t value) {
     }
 }
 
-bool Ibm3477Display::enabled() const {
+bool DisplayController::enabled() const {
     // 20128 is 00 while the firmware reloads the character generator [obs];
     // bit 4 is set whenever a screen is meant to be visible [hyp].
     // 3486 family: 20128 bits 4-3 are constants of the tube (10 on type 2,
@@ -248,7 +248,7 @@ bool Ibm3477Display::enabled() const {
            regs_[kRegTotalRows] <= 64;
 }
 
-Ibm3477Display::Geometry Ibm3477Display::geometry() const {
+DisplayController::Geometry DisplayController::geometry() const {
     Geometry g;
     const bool narrow = regs_[kRegMode0] & 0x10;
     g.cols = narrow ? 132 : 80;
@@ -272,11 +272,11 @@ Ibm3477Display::Geometry Ibm3477Display::geometry() const {
     return g;
 }
 
-bool Ibm3477Display::cursor_on() const {
+bool DisplayController::cursor_on() const {
     return (regs_[layout_.cursor_on.reg] & layout_.cursor_on.mask) != 0;
 }
 
-std::string Ibm3477Display::describe() const {
+std::string DisplayController::describe() const {
     const Geometry g = geometry();
     return format("  %s, %dx%d+%d cells of %dx%d px, main %05X, status %05X\n"
                   "  cursor row %u col %u (%s), frame %llu, retrace %d, irq %d, block pending %d\n",
@@ -290,13 +290,13 @@ std::string Ibm3477Display::describe() const {
                                  : "idle");
 }
 
-uint8_t Ibm3477Display::mem(uint32_t addr) const {
+uint8_t DisplayController::mem(uint32_t addr) const {
     if (ram_ && addr >= ram_->base && addr - ram_->base < ram_->storage.size())
         return ram_->storage[addr - ram_->base];
     return bus_.peek8(addr);
 }
 
-void Ibm3477Display::draw_row(Framebuffer& fb, uint32_t addr, int y0, int cols, int cell_w,
+void DisplayController::draw_row(Framebuffer& fb, uint32_t addr, int y0, int cols, int cell_w,
                               int cell_h, int cursor_col, bool blink_phase) {
     const bool colour = colour_;
     const int ul_top = std::min<int>(regs_[kRegLineTop], cell_h - 1);
@@ -338,7 +338,7 @@ void Ibm3477Display::draw_row(Framebuffer& fb, uint32_t addr, int y0, int cols, 
     }
 }
 
-void Ibm3477Display::render(Framebuffer& fb) {
+void DisplayController::render(Framebuffer& fb) {
     // The 3477 uses a 4:3 CRT with a black border around the raster.
     fb.display_aspect = kDisplayAspect;
     fb.border_x = kDisplayBorderX;
@@ -390,7 +390,7 @@ void Ibm3477Display::render(Framebuffer& fb) {
 // Change tracking (DisplaySource::animation_phase): RAM and register writes
 // are observed on the bus (model_3477.cpp); only the blink phase changes the
 // picture on its own.
-uint64_t Ibm3477Display::animation_phase() const { return frames_ / kBlinkFrames; }
+uint64_t DisplayController::animation_phase() const { return frames_ / kBlinkFrames; }
 
 // ---------------------------------------------------------------------------
 // TEMPORARY: video signature shim for the power-on display test (VDO).
@@ -485,7 +485,7 @@ inline void fnv(uint64_t& h, uint8_t b) {
 
 } // namespace
 
-uint64_t Ibm3477Display::vdo_fingerprint() const {
+uint64_t DisplayController::vdo_fingerprint() const {
     uint64_t h = kFnvOffset;
     // Raster definition: CRT timing block and cursor position (00-18), mode
     // block (25-2E: cell width, column mode, cursor, video control and
@@ -518,7 +518,7 @@ uint64_t Ibm3477Display::vdo_fingerprint() const {
     return h;
 }
 
-uint8_t Ibm3477Display::vdo_shim_signature(int selector) const {
+uint8_t DisplayController::vdo_shim_signature(int selector) const {
     selector &= 3;
     const uint64_t fp = vdo_fingerprint();
     for (const VdoShimEntry& e : kVdoShimTable) {

@@ -1,13 +1,29 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// 3486 family (3486, 3487): where its board keeps the display controls that
-// differ from the 3477's. docs/bringup-3486.md has the observations.
+// The 3486 family's logic board (3486, 3487): where it keeps the controls
+// of the shared hardware (src/hw) that differ between the terminal
+// families. docs/bringup-3486.md has the observations.
 #pragma once
 
-#include "devices/ibm3477/display.hpp"
+#include "hw/display_controller.hpp"
+#include "hw/twinax_engine.hpp"
 
 namespace em34xx {
 
-constexpr Ibm3477DisplayLayout kIbm3486DisplayLayout = {
+// Station channels of the link engine: a third one, with its own request
+// and mask registers in the gate array [observed].
+constexpr unsigned kLinkChannels3486 = 3;
+
+// The engine's structures in low RAM: as on the 3477, and the third
+// channel's programs at 0200 [observed].
+constexpr TwinaxEngineLayout kLinkLayout3486 = {
+    0x0060,   // class_table
+    0x0080,   // programs
+    0x80,     // program_stride
+    0x0180,   // descriptors
+    0x0200,   // third_programs
+};
+
+constexpr DisplayLayout kDisplayLayout3486 = {
     // Retrace as a fraction of the frame. The display test requires the
     // retrace flag (2012F bit 3) to drop within 3 to 9 status reads of its
     // start and to come back one field later [observed windows]; the 3477's

@@ -162,7 +162,7 @@ and `20030-20031` (observed). The new registers (observed accesses,
     bit 0 parity, bit 1 busy, bit 6 byte received, and bit 7, see below.
     `20146` is written `FF` to clear. The firmware runs a keyboard-type
     exchange on it. It takes the pointing device (see below). The model has
-    the port (`src/devices/ibm3486/aux_port.*`) with its wrap path and
+    the port (`src/hw/aux_port.*`) with its wrap path and
     interrupt, enabled by `20007` bit 1, and no device on it: a byte sent
     with the line released gets no answer.
 
@@ -284,7 +284,7 @@ More about when the firmware looks (observed):
 
 **The alignment stand-in (temporary).** A colour unit (display type 6) is
 set up with its alignment marked done, since there is no tube to align and
-the procedure is not known (`src/devices/ibm3486/alignment_shim.hpp`):
+the procedure is not known (`src/models/alignment_shim_3486.hpp`):
 whenever the EEPROM holds the firmware's "initialised" mark (`00` = `AA`),
 the model makes byte `30` `AA`; when that happens while the firmware runs
 (a new unit's first power-on) it switches the unit off and on once, so the

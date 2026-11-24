@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-#include "devices/i2c.hpp"
+#include "hw/i2c.hpp"
 
 #include "util/log.hpp"
 #include "util/strings.hpp"

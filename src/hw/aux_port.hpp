@@ -26,13 +26,13 @@
 
 namespace em34xx {
 
-class Ibm3477Interrupts;
+class GateArrayInterrupts;
 
-class Ibm3486AuxPort : public Device {
+class AuxPort : public Device {
 public:
-    Ibm3486AuxPort() : Device("aux-port") {}
+    AuxPort() : Device("aux-port") {}
 
-    void connect(Ibm3477Interrupts* ic) { ic_ = ic; }
+    void connect(GateArrayInterrupts* ic) { ic_ = ic; }
 
     // Register access; reg 0 = 20144, 1 = 20145, 2 = 20146.
     uint8_t read(unsigned reg) const;
@@ -42,7 +42,7 @@ public:
     std::string describe() const override;
 
 private:
-    Ibm3477Interrupts* ic_ = nullptr;
+    GateArrayInterrupts* ic_ = nullptr;
     uint8_t ctl_ = 0x03;
     uint8_t tx_ = 0;
     bool tx_loaded_ = false;

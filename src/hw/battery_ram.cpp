@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-#include "devices/battery_ram.hpp"
+#include "hw/battery_ram.hpp"
 
 #include "util/file_io.hpp"
 #include "util/log.hpp"

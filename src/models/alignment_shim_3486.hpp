@@ -29,7 +29,7 @@
 // alignment_shim.
 #pragma once
 
-#include "devices/ibm3477/i2c.hpp"
+#include "hw/i2c_eeprom.hpp"
 #include "util/log.hpp"
 
 #include <functional>

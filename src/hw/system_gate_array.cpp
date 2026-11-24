@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-#include "devices/ibm3477/system.hpp"
+#include "hw/system_gate_array.hpp"
 
-#include "devices/ibm3477/keyboard_if.hpp"
+#include "hw/keyboard_interface.hpp"
 #include "util/log.hpp"
 #include "util/strings.hpp"
 
@@ -10,12 +10,12 @@ namespace em34xx {
 // ---------------------------------------------------------------------------
 // Interrupt controller
 
-void Ibm3477Interrupts::set_three_channel_layout() {
+void GateArrayInterrupts::set_three_channel_layout() {
     vectors_ = {{0x06, 0x07, 0x08, 0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F}};
     three_channel_ = true;
 }
 
-const char* Ibm3477Interrupts::source_name(Source s) {
+const char* GateArrayInterrupts::source_name(Source s) {
     switch (s) {
     case Source::Timer: return "timer";
     case Source::Twinax0Event: return "twinax0 event";
@@ -31,19 +31,19 @@ const char* Ibm3477Interrupts::source_name(Source s) {
     return "?";
 }
 
-static uint16_t source_bits(Ibm3477Interrupts::Source s) {
-    using S = Ibm3477Interrupts::Source;
+static uint16_t source_bits(GateArrayInterrupts::Source s) {
+    using S = GateArrayInterrupts::Source;
     switch (s) {
-    case S::Timer: return Ibm3477Interrupts::kTimerBit;
-    case S::Twinax0Event: return Ibm3477Interrupts::kTwinax0EventBit;
-    case S::Twinax1Event: return Ibm3477Interrupts::kTwinax1EventBit;
-    case S::Twinax0Status: return Ibm3477Interrupts::kTwinax0StatusBits;
-    case S::Twinax1Status: return Ibm3477Interrupts::kTwinax1StatusBits;
+    case S::Timer: return GateArrayInterrupts::kTimerBit;
+    case S::Twinax0Event: return GateArrayInterrupts::kTwinax0EventBit;
+    case S::Twinax1Event: return GateArrayInterrupts::kTwinax1EventBit;
+    case S::Twinax0Status: return GateArrayInterrupts::kTwinax0StatusBits;
+    case S::Twinax1Status: return GateArrayInterrupts::kTwinax1StatusBits;
     default: return 0;
     }
 }
 
-void Ibm3477Interrupts::raise(Source s) {
+void GateArrayInterrupts::raise(Source s) {
     if (s == Source::Display) display_ = true;
     else if (s == Source::Keyboard) keyboard_ = true;
     else if (s == Source::Aux) aux_ = true;
@@ -55,7 +55,7 @@ void Ibm3477Interrupts::raise(Source s) {
     }
 }
 
-void Ibm3477Interrupts::lower(Source s) {
+void GateArrayInterrupts::lower(Source s) {
     if (s == Source::Display) display_ = false;
     else if (s == Source::Keyboard) keyboard_ = false;
     else if (s == Source::Aux) aux_ = false;
@@ -64,7 +64,7 @@ void Ibm3477Interrupts::lower(Source s) {
     else req_ = uint16_t(req_ & ~source_bits(s));
 }
 
-bool Ibm3477Interrupts::line(Source s) const {
+bool GateArrayInterrupts::line(Source s) const {
     if (s == Source::Display) return display_;
     if (s == Source::Keyboard) return keyboard_;
     if (s == Source::Aux) return aux_;
@@ -73,7 +73,7 @@ bool Ibm3477Interrupts::line(Source s) const {
     return (req_ & source_bits(s)) != 0;
 }
 
-bool Ibm3477Interrupts::highest(Source& out) const {
+bool GateArrayInterrupts::highest(Source& out) const {
     const uint16_t active = uint16_t(req_ & mask_);
     for (int i = 0; i < kSourceCount; ++i) {
         const Source s = Source(i);
@@ -92,12 +92,12 @@ bool Ibm3477Interrupts::highest(Source& out) const {
     return false;
 }
 
-bool Ibm3477Interrupts::intr_asserted() const {
+bool GateArrayInterrupts::intr_asserted() const {
     Source s;
     return highest(s);
 }
 
-uint8_t Ibm3477Interrupts::acknowledge() {
+uint8_t GateArrayInterrupts::acknowledge() {
     Source s;
     if (!highest(s)) {
         LOG_WARN("irq", "interrupt acknowledge with no source pending");
@@ -107,7 +107,7 @@ uint8_t Ibm3477Interrupts::acknowledge() {
     return vector(s);
 }
 
-void Ibm3477Interrupts::reset() {
+void GateArrayInterrupts::reset() {
     req_ = 0;
     mask_ = 0;
     req2_ = 0;
@@ -119,7 +119,7 @@ void Ibm3477Interrupts::reset() {
     aux_ = false;
 }
 
-std::string Ibm3477Interrupts::describe() const {
+std::string GateArrayInterrupts::describe() const {
     std::string t = format("  irq: request %04X mask %04X, keyboard %s%s, display %s\n", req_, mask_,
                            keyboard_ ? "requesting" : "idle", kbd_enable_ ? "" : " (disabled)",
                            display_ ? "requesting" : "idle");
@@ -149,25 +149,28 @@ std::string Ibm3477Interrupts::describe() const {
 // [hypothesis]. The colour stand-in uses 110 as well: type 4 has the same
 // cell heights as type 6 (21/18/12 scan lines) [observed], so the screen
 // formats match; the unit then identifies as a monochrome FE0.
-// (kIbm3477MonoStraps, kIbm3477PaperWhiteStraps in system.hpp.)
+// (kStraps3477Mono, kStraps3477PaperWhite in system.hpp.)
 
 // ---------------------------------------------------------------------------
 // Gate array
 
-Ibm3477System::Ibm3477System(uint64_t clock_hz, uint8_t straps, std::unique_ptr<Ibm3477KeyboardInterface> kbd)
+SystemGateArray::SystemGateArray(uint64_t clock_hz, uint8_t straps, unsigned link_channels,
+                                 std::unique_ptr<KeyboardInterface> kbd)
     : Device("system"), kbd_(std::move(kbd)), straps_(straps),
       timer_period_((clock_hz ? clock_hz : 8000000) / kTimerHz) {
+    third_channel_ = link_channels >= 3;
+    if (third_channel_) ic_.set_three_channel_layout();
     kbd_->connect(&ic_);
 }
 
-Ibm3477System::~Ibm3477System() { kbd_->connect(nullptr); }
+SystemGateArray::~SystemGateArray() { kbd_->connect(nullptr); }
 
-bool Ibm3477System::is_twinax_register(uint32_t off) const {
+bool SystemGateArray::is_twinax_register(uint32_t off) const {
     if (third_channel_ && (off == 0x0B || off == 0x1A || off == 0x1B)) return true;
     return off <= 0x01 || off == 0x08 || off == 0x09 || (off >= 0x20 && off <= 0x2F);
 }
 
-void Ibm3477System::reset() {
+void SystemGateArray::reset() {
     if (audio_ && tone_on()) audio_->tone(false, 0.0);
     if (audio_ && speaker_gate()) audio_->speaker(false);
     ic_.reset();
@@ -178,17 +181,17 @@ void Ibm3477System::reset() {
     kbd_->reset();
 }
 
-void Ibm3477System::tick(uint64_t cycles) {
+void SystemGateArray::tick(uint64_t cycles) {
     timer_acc_ += cycles;
     if (timer_acc_ >= timer_period_) {
         timer_acc_ -= timer_period_;
         ++timer_ticks_;
-        ic_.raise(Ibm3477Interrupts::Source::Timer);
+        ic_.raise(GateArrayInterrupts::Source::Timer);
     }
     kbd_->tick(cycles);
 }
 
-uint8_t Ibm3477System::read(uint32_t off, bool side_effects) {
+uint8_t SystemGateArray::read(uint32_t off, bool side_effects) {
     // The link registers read without side effects, so the debugger sees them too.
     (void)side_effects;
     if (twinax_ && is_twinax_register(off)) return twinax_->twinax_read(off);
@@ -208,10 +211,10 @@ uint8_t Ibm3477System::read(uint32_t off, bool side_effects) {
     }
 }
 
-uint8_t Ibm3477System::mmio_read8(uint32_t off) { return read(off & 0xFF, true); }
-uint8_t Ibm3477System::peek8(uint32_t off) { return read(off & 0xFF, false); }
+uint8_t SystemGateArray::mmio_read8(uint32_t off) { return read(off & 0xFF, true); }
+uint8_t SystemGateArray::peek8(uint32_t off) { return read(off & 0xFF, false); }
 
-void Ibm3477System::mmio_write8(uint32_t off, uint8_t v) {
+void SystemGateArray::mmio_write8(uint32_t off, uint8_t v) {
     off &= 0xFF;
     if (twinax_ && is_twinax_register(off)) {
         twinax_->twinax_write(off, v);
@@ -262,7 +265,7 @@ void Ibm3477System::mmio_write8(uint32_t off, uint8_t v) {
     }
 }
 
-std::string Ibm3477System::describe() const {
+std::string SystemGateArray::describe() const {
     std::string t = ic_.describe();
     t += format("  timer: %u Hz (every %llu clocks), %llu ticks\n", kTimerHz, (unsigned long long)timer_period_,
                 (unsigned long long)timer_ticks_);

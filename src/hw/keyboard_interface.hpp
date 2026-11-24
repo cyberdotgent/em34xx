@@ -30,16 +30,16 @@
 
 namespace em34xx {
 
-class Ibm3477Interrupts;
+class GateArrayInterrupts;
 
-class Ibm3477KeyboardInterface : public KeyboardSink {
+class KeyboardInterface : public KeyboardSink {
 public:
     // About 11 bits at the keyboard's 10-16.7 kHz clock.
     static constexpr unsigned kByteTimeUs = 1000;
 
-    Ibm3477KeyboardInterface(uint64_t clock_hz, KeyboardType type, uint8_t id1, uint8_t id2);
+    KeyboardInterface(uint64_t clock_hz, KeyboardType type, uint8_t id1, uint8_t id2);
 
-    void connect(Ibm3477Interrupts* ic) { ic_ = ic; }
+    void connect(GateArrayInterrupts* ic) { ic_ = ic; }
     Set3Keyboard& keyboard() { return kbd_; }
 
     // Register access; reg 0 = 20012, 1 = 20013, 2 = 20014.
@@ -67,7 +67,7 @@ private:
     void set_rx(uint8_t byte);
 
     Set3Keyboard kbd_;
-    Ibm3477Interrupts* ic_ = nullptr;
+    GateArrayInterrupts* ic_ = nullptr;
     uint64_t clock_hz_;
     uint64_t byte_cycles_;
     uint64_t us_acc_ = 0;      // cycle remainder for keyboard time

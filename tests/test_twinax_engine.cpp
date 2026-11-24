@@ -3,9 +3,11 @@
 // 3477 loopback test registers. The engine programs below are written for
 // these tests from the opcode set documented in docs/bringup-3477.md.
 #include "bus/bus.hpp"
-#include "devices/ibm3477/twinax_engine.hpp"
+#include "hw/twinax_engine.hpp"
 #include "host/twinax_link.hpp"
 
+#include "models/board_3477.hpp"
+#include "models/board_3486.hpp"
 #include <doctest/doctest.h>
 
 #include <algorithm>
@@ -33,7 +35,7 @@ struct Rig {
 
     explicit Rig(unsigned channels = 2) {
         bus.map_ram("ram", 0, 0x10000);
-        eng = std::make_unique<TwinaxEngine>(bus, channels, kClock);
+        eng = std::make_unique<TwinaxEngine>(bus, channels, kClock, channels == 3 ? kLinkLayout3486 : kLinkLayout3477);
         eng->set_raise([this](unsigned ch, uint8_t bits) { req = uint16_t(req | (bits << (8 * ch))); });
         eng->set_pending([this](unsigned ch) { return uint8_t((req >> (8 * ch)) & 0x7F); });
         eng->reset();
@@ -413,7 +415,7 @@ TEST_CASE("twinax engine: the controller's clock keeps running across a terminal
 
 TEST_CASE("twinax engine: 3477 loopback test registers") {
     Rig r;
-    Ibm3477TwinaxRegisters regs(*r.eng);
+    TwinaxRegisters regs(*r.eng);
     regs.reset();
     r.eng->set_channel_enabled(1, false);
     // Station addresses A = 2, B = 5; channel A enabled, engine running.

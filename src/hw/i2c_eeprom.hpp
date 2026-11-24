@@ -10,7 +10,7 @@
 #pragma once
 
 #include "bus/device.hpp"
-#include "devices/i2c.hpp"
+#include "hw/i2c.hpp"
 #include "machine/peripherals.hpp"
 
 #include <cstdint>

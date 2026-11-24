@@ -27,7 +27,7 @@
 #pragma once
 
 #include "bus/device.hpp"
-#include "devices/ibm3477/system.hpp"
+#include "hw/system_gate_array.hpp"
 #include "machine/twinax_port.hpp"
 
 #include <array>
@@ -40,15 +40,16 @@ namespace em34xx {
 
 class Bus;
 
-// Where the engine's RAM structures live.
+// Where a board keeps the engine's RAM structures. Every model states all
+// of them (no defaults).
 struct TwinaxEngineLayout {
-    uint32_t class_table = 0x0060;     // 32 bytes, indexed by command & 1F
-    uint32_t programs = 0x0080;        // 4 programs x 32 bytes per channel
-    uint32_t program_stride = 0x80;    // distance between channels' program sets
-    uint32_t descriptors = 0x0180;     // 16 bytes per channel
-    // Third channel (3486 family): its programs do not follow the stride,
-    // which would put them on the descriptors.
-    uint32_t third_programs = 0x0200;
+    uint32_t class_table;      // 32 bytes, indexed by command & 1F
+    uint32_t programs;         // 4 programs x 32 bytes per channel
+    uint32_t program_stride;   // distance between channels' program sets
+    uint32_t descriptors;      // 16 bytes per channel
+    // A third channel's programs, which do not follow the stride (that
+    // would put them on the descriptors); 0 on a two-channel board.
+    uint32_t third_programs;
 };
 
 class TwinaxEngine : public Device {
@@ -70,7 +71,7 @@ public:
     using PendingFn = std::function<uint8_t(unsigned channel)>;
     using HostFn = std::function<TwinaxHost*()>;
 
-    TwinaxEngine(Bus& bus, unsigned channels, uint64_t clock_hz, TwinaxEngineLayout layout = {});
+    TwinaxEngine(Bus& bus, unsigned channels, uint64_t clock_hz, const TwinaxEngineLayout& layout);
 
     unsigned channels() const { return unsigned(ch_.size()); }
 
@@ -185,9 +186,9 @@ private:
 // test control bits of 20015. With a three-channel engine (3486 family)
 // also the third channel's control register at 2000B, its station
 // address at 2001A and its enable at 2001B. Offsets are relative to 20000.
-class Ibm3477TwinaxRegisters : public Device, public Ibm3477TwinaxPort {
+class TwinaxRegisters : public Device, public LinkRegisterPort {
 public:
-    explicit Ibm3477TwinaxRegisters(TwinaxEngine& engine) : Device("twinax-regs"), eng_(engine) {}
+    explicit TwinaxRegisters(TwinaxEngine& engine) : Device("twinax-regs"), eng_(engine) {}
     uint8_t twinax_read(uint32_t offset) override;
     void twinax_write(uint32_t offset, uint8_t value) override;
     void reset() override;

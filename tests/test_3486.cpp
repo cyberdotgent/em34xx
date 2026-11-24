@@ -2,14 +2,15 @@
 // Hardware the 3486 family adds to the 3477 design: the second serial port,
 // the third Twinax station channel and the display's sync polarity bit.
 #include "bus/bus.hpp"
-#include "devices/ibm3486/alignment_shim.hpp"
-#include "devices/ibm3486/aux_port.hpp"
-#include "devices/ibm3486/display_layout.hpp"
-#include "devices/ibm3477/i2c.hpp"
-#include "devices/ibm3477/display.hpp"
-#include "devices/ibm3477/keyboard_if.hpp"
-#include "devices/ibm3477/system.hpp"
-#include "devices/ibm3477/twinax_engine.hpp"
+#include "models/alignment_shim_3486.hpp"
+#include "hw/aux_port.hpp"
+#include "models/board_3486.hpp"
+#include "hw/i2c_eeprom.hpp"
+#include "hw/display_controller.hpp"
+#include "hw/keyboard_interface.hpp"
+#include "hw/system_gate_array.hpp"
+#include "hw/twinax_engine.hpp"
+#include "models/board_3477.hpp"
 #include "models/model.hpp"
 
 #include <doctest/doctest.h>
@@ -20,14 +21,14 @@
 #include <utility>
 
 using namespace em34xx;
-using Src = Ibm3477Interrupts::Source;
+using Src = GateArrayInterrupts::Source;
 
 namespace {
 constexpr uint64_t kClock = 7500000;
 
-std::unique_ptr<Ibm3477System> make_system() {
-    auto k = std::make_unique<Ibm3477KeyboardInterface>(kClock, KeyboardType::Terminal122, 0xBF, 0xBF);
-    auto sys = std::make_unique<Ibm3477System>(kClock, uint8_t(0x42), std::move(k));
+std::unique_ptr<SystemGateArray> make_system(unsigned link_channels = kLinkChannels3486) {
+    auto k = std::make_unique<KeyboardInterface>(kClock, KeyboardType::Terminal122, 0xBF, 0xBF);
+    auto sys = std::make_unique<SystemGateArray>(kClock, uint8_t(0x42), link_channels, std::move(k));
     sys->reset();
     return sys;
 }
@@ -35,9 +36,9 @@ std::unique_ptr<Ibm3477System> make_system() {
 
 TEST_CASE("3486 second serial port: manual-clock wrap and its interrupt") {
     auto sys = make_system();
-    Ibm3477Interrupts& ic = sys->interrupts();
+    GateArrayInterrupts& ic = sys->interrupts();
     ic.set_three_channel_layout();
-    Ibm3486AuxPort aux;
+    AuxPort aux;
     aux.connect(&ic);
     aux.reset();
     CHECK((aux.read(1) & 0x80) == 0);   // layout bit
@@ -84,10 +85,9 @@ TEST_CASE("3486 second serial port: manual-clock wrap and its interrupt") {
 TEST_CASE("3486 third Twinax channel: registers, programs at 0200, descriptor at 01A0") {
     Bus bus{20};
     bus.map_ram("ram", 0, 0x10000);
-    TwinaxEngine eng(bus, 3, kClock);
+    TwinaxEngine eng(bus, 3, kClock, kLinkLayout3486);
     auto sys = make_system();
-    sys->set_third_channel(true);
-    Ibm3477Interrupts& ic = sys->interrupts();
+    GateArrayInterrupts& ic = sys->interrupts();
     eng.set_raise([&ic](unsigned ch, uint8_t bits) {
         if (ch == 2) ic.request2(bits);
         else ic.request(uint16_t(bits << (8 * ch)));
@@ -96,7 +96,7 @@ TEST_CASE("3486 third Twinax channel: registers, programs at 0200, descriptor at
         return uint8_t((ch == 2 ? ic.requests2() : uint8_t(ic.requests() >> (8 * ch))) & 0x7F);
     });
     eng.reset();
-    Ibm3477TwinaxRegisters regs(eng);
+    TwinaxRegisters regs(eng);
     regs.reset();
     sys->set_twinax_port(&regs);
     auto w = [&](uint32_t off, uint8_t v) { sys->mmio_write8(off, v); };
@@ -145,7 +145,7 @@ TEST_CASE("3486 third Twinax channel: registers, programs at 0200, descriptor at
 }
 
 TEST_CASE("3477 gate array keeps 2000B-2000F and 2001A/B as plain storage") {
-    auto sys = make_system();
+    auto sys = make_system(kLinkChannels3477);
     for (uint32_t off : {0x0Bu, 0x0Du, 0x0Fu, 0x1Au, 0x1Bu}) {
         sys->mmio_write8(off, 0xA5);
         CHECK(sys->mmio_read8(off) == 0xA5);
@@ -156,9 +156,9 @@ TEST_CASE("3477 gate array keeps 2000B-2000F and 2001A/B as plain storage") {
 struct DisplayRig {
     Bus bus{20};
     TerminalOptions opts;
-    Ibm3477Display disp;
+    DisplayController disp;
 
-    explicit DisplayRig(const Ibm3477DisplayLayout& layout) : disp(bus, opts, layout, false) {
+    explicit DisplayRig(const DisplayLayout& layout) : disp(bus, opts, layout, false) {
         bus.map_ram("ram", 0, 0x20000);
         bus.map_mmio("display", 0x20100, 0x100, &disp);
         disp.set_clock_hz(kClock);
@@ -188,7 +188,7 @@ struct DisplayRig {
 };
 
 TEST_CASE("3486 display: retrace length and the sync polarity bit") {
-    DisplayRig a(kIbm3477DisplayLayout), b(kIbm3486DisplayLayout);
+    DisplayRig a(kDisplayLayout3477), b(kDisplayLayout3486);
     a.retrace_cycles();   // align to a whole retrace
     CHECK(a.retrace_cycles() == a.disp.cycles_per_frame() / 90);
     b.retrace_cycles();
@@ -208,7 +208,7 @@ TEST_CASE("3486 display: retrace length and the sync polarity bit") {
 TEST_CASE("3486 display: the picture is on with 20128 bit 6") {
     // Bit 4 on the 3477, bit 6 on the 3486 family (whose colour tube never
     // sets bit 4).
-    DisplayRig a(kIbm3477DisplayLayout), b(kIbm3486DisplayLayout);
+    DisplayRig a(kDisplayLayout3477), b(kDisplayLayout3486);
     for (DisplayRig* r : {&a, &b}) {
         r->bus.mem_write8(0x20114, 25);
         r->bus.mem_write8(0x20115, 24);
@@ -224,7 +224,7 @@ TEST_CASE("3486 display: the picture is on with 20128 bit 6") {
 }
 
 TEST_CASE("3486 display: the cursor is switched by 20127 bit 6") {
-    DisplayRig a(kIbm3477DisplayLayout), b(kIbm3486DisplayLayout);
+    DisplayRig a(kDisplayLayout3477), b(kDisplayLayout3486);
 
     // 3477: 20128 bit 7.
     a.bus.mem_write8(0x20127, 0x70);
@@ -244,7 +244,7 @@ TEST_CASE("3486 display: the cursor is switched by 20127 bit 6") {
 }
 
 TEST_CASE("3486 display: writes to the screen are tracked and dots are widened by half") {
-    DisplayRig a(kIbm3477DisplayLayout), b(kIbm3486DisplayLayout);
+    DisplayRig a(kDisplayLayout3477), b(kDisplayLayout3486);
     for (DisplayRig* r : {&a, &b}) {
         // The display registers its own memory for change tracking.
         const uint64_t before = r->bus.observed_writes();
@@ -277,7 +277,7 @@ TEST_CASE("3486 display: writes to the screen are tracked and dots are widened b
 }
 
 TEST_CASE("3486 display: the signature selector is 2012F bits 5-4") {
-    DisplayRig a(kIbm3477DisplayLayout), b(kIbm3486DisplayLayout);
+    DisplayRig a(kDisplayLayout3477), b(kDisplayLayout3486);
     REQUIRE(a.disp.vdo_shim());
     // The 3477 reads bits 6-5: selector 0, which never measures 0.
     CHECK(a.measure() == a.disp.vdo_shim_signature(0));
@@ -289,12 +289,12 @@ TEST_CASE("20025 bit 6 sends two frames only on a three-channel engine") {
     for (unsigned channels : {2u, 3u}) {
         Bus bus{20};
         bus.map_ram("ram", 0, 0x10000);
-        TwinaxEngine eng(bus, channels, kClock);
+        TwinaxEngine eng(bus, channels, kClock, channels == 3 ? kLinkLayout3486 : kLinkLayout3477);
         uint8_t req = 0;
         eng.set_raise([&req](unsigned, uint8_t bits) { req |= bits; });
         eng.set_pending([&req](unsigned) { return uint8_t(req & 0x7F); });
         eng.reset();
-        Ibm3477TwinaxRegisters regs(eng);
+        TwinaxRegisters regs(eng);
         regs.reset();
         // Channel 0, queue program that stores the message's frames.
         uint32_t a = 0x0080;
@@ -353,7 +353,7 @@ TEST_CASE("3486 and 3487 models: one board, straps from the display subtype") {
 }
 
 TEST_CASE("interrupt controller state shown per board") {
-    Ibm3477Interrupts ic;
+    GateArrayInterrupts ic;
     CHECK(ic.describe().find("FF=") == std::string::npos);
     CHECK(ic.describe().find("0D=") == std::string::npos);
     CHECK(ic.describe().find("third channel") == std::string::npos);

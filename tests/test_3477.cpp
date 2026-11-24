@@ -2,12 +2,13 @@
 // IBM 3477 system hardware: interrupt controller, timer, keyboard interface,
 // two-wire bus and setup EEPROM.
 #include "bus/bus.hpp"
-#include "devices/battery_ram.hpp"
-#include "devices/i2c.hpp"
-#include "devices/ibm3477/i2c.hpp"
-#include "devices/ibm3477/keyboard_if.hpp"
-#include "devices/ibm3477/system.hpp"
+#include "hw/battery_ram.hpp"
+#include "hw/i2c.hpp"
+#include "hw/i2c_eeprom.hpp"
+#include "hw/keyboard_interface.hpp"
+#include "hw/system_gate_array.hpp"
 
+#include "models/board_3477.hpp"
 #include "models/model.hpp"
 #include <doctest/doctest.h>
 
@@ -18,19 +19,19 @@
 #include <vector>
 
 using namespace em34xx;
-using Src = Ibm3477Interrupts::Source;
+using Src = GateArrayInterrupts::Source;
 
 namespace {
 
 constexpr uint64_t kClock = 8000000;
 
 struct Sys {
-    Ibm3477KeyboardInterface* kbd;
-    std::unique_ptr<Ibm3477System> sys;
+    KeyboardInterface* kbd;
+    std::unique_ptr<SystemGateArray> sys;
     Sys() {
-        auto k = std::make_unique<Ibm3477KeyboardInterface>(kClock, KeyboardType::Terminal122, 0xBF, 0xBF);
+        auto k = std::make_unique<KeyboardInterface>(kClock, KeyboardType::Terminal122, 0xBF, 0xBF);
         kbd = k.get();
-        sys = std::make_unique<Ibm3477System>(kClock, uint8_t(0x0C), std::move(k));
+        sys = std::make_unique<SystemGateArray>(kClock, kStraps3477Mono, kLinkChannels3477, std::move(k));
         sys->reset();
     }
     void w(uint32_t a, uint8_t v) { sys->mmio_write8(a - 0x20000, v); }
@@ -139,7 +140,7 @@ std::vector<uint8_t> eeprom_read(Master& m, uint8_t addr, size_t n) {
 } // namespace
 
 TEST_CASE("3477 interrupt vectors and priority") {
-    Ibm3477Interrupts ic;
+    GateArrayInterrupts ic;
     CHECK_FALSE(ic.intr_asserted());
 
     // Latched sources need their mask bit.
@@ -186,7 +187,7 @@ TEST_CASE("3477 interrupt vectors and priority") {
 }
 
 TEST_CASE("interrupt vectors of the 3486 family's three-channel layout") {
-    Ibm3477Interrupts ic;
+    GateArrayInterrupts ic;
     ic.set_keyboard_enabled(true);
     ic.raise(Src::Keyboard);
     CHECK(ic.acknowledge() == 0x0E);
@@ -277,7 +278,7 @@ TEST_CASE("3477 variants: one monochrome unit and the colour stand-in") {
     const ModelVariant& mono = m.default_variant();
     CHECK(mono.id == "3477-FG");
     CHECK_FALSE(mono.colour);
-    CHECK(mono.straps == kIbm3477MonoStraps);
+    CHECK(mono.straps == kStraps3477Mono);
     CHECK(mono.tn5250_type == "IBM-3477-FG");
     REQUIRE(mono.phosphors.size() == 3);
     CHECK(mono.phosphor("")->id == "green");
@@ -287,7 +288,7 @@ TEST_CASE("3477 variants: one monochrome unit and the colour stand-in") {
     REQUIRE(colour);
     CHECK(colour->colour);
     CHECK(colour->stub);                              // until the colour ROM is emulated
-    CHECK(colour->straps == kIbm3477MonoStraps);      // identifies as the monochrome unit
+    CHECK(colour->straps == kStraps3477Mono);      // identifies as the monochrome unit
     CHECK(colour->tn5250_type == "IBM-3477-FC");
     CHECK(colour->phosphor("green") == nullptr);
 

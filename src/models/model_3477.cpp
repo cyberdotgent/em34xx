@@ -19,13 +19,14 @@
 //  - Clock frequency unknown; 8 MHz is a pacing placeholder only.
 #include "models/model.hpp"
 
-#include "devices/battery_ram.hpp"
-#include "devices/i2c.hpp"
-#include "devices/ibm3477/display.hpp"
-#include "devices/ibm3477/i2c.hpp"
-#include "devices/ibm3477/keyboard_if.hpp"
-#include "devices/ibm3477/system.hpp"
-#include "devices/ibm3477/twinax_engine.hpp"
+#include "hw/battery_ram.hpp"
+#include "hw/i2c.hpp"
+#include "hw/display_controller.hpp"
+#include "models/board_3477.hpp"
+#include "hw/i2c_eeprom.hpp"
+#include "hw/keyboard_interface.hpp"
+#include "hw/system_gate_array.hpp"
+#include "hw/twinax_engine.hpp"
 #include "input/host_keymap.hpp"
 #include "input/keyboard_ids.hpp"
 #include "machine/machine.hpp"
@@ -82,12 +83,12 @@ public:
             // green type. (The firmware's own VPD suffix for these straps
             // is FE0 [observed]; FG is the green 3477's model and TN5250
             // name [documented].)
-            {"3477-FG", "monochrome", false, false, kIbm3477MonoStraps, "IBM-3477-FG", tubes},
+            {"3477-FG", "monochrome", false, false, kStraps3477Mono, "IBM-3477-FG", tubes},
             // Stand-in until the colour 3477's own ROM is emulated: this
             // ROM cannot identify as colour (see the notes), so the unit
             // runs as the monochrome one and only the host and the picture
             // treat it as colour.
-            {"3477-FC", "colour (stand-in)", true, true, kIbm3477MonoStraps, "IBM-3477-FC", {}},
+            {"3477-FC", "colour (stand-in)", true, true, kStraps3477Mono, "IBM-3477-FC", {}},
         };
         info_.roms = {
             {"system ROM (C0000-DFFFF)", "95f4172.bin", 0x20000,
@@ -145,20 +146,20 @@ public:
         if (!resolve_keyboard_id(opt, id1, id2, error)) throw std::runtime_error(error);
         KeyboardType type = KeyboardType::Terminal122;
         parse_keyboard_type(opt.keyboard_type, type);
-        auto kbd = std::make_unique<Ibm3477KeyboardInterface>(info_.clock_hz, type, id1, id2);
+        auto kbd = std::make_unique<KeyboardInterface>(info_.clock_hz, type, id1, id2);
         kbd->keyboard().set_shift_fkeys(opt.shift_fkeys);
         auto keymap = std::make_shared<Keymap>();
         if (!load_keymap(opt.keymap, opt.shift_fkeys, *keymap, error)) throw std::runtime_error(error);
         kbd->keyboard().set_keymap(std::move(keymap));
-        Ibm3477KeyboardInterface* kbd_ptr = kbd.get();
+        KeyboardInterface* kbd_ptr = kbd.get();
 
         const ModelVariant& variant = variant_for(opt);
         const uint8_t straps = opt.straps >= 0 ? uint8_t(opt.straps) : variant.straps;
         if (variant.stub)
             LOG_WARN("system", "3477: this ROM has no colour display type; the terminal identifies as a "
                                "monochrome 3477 FE0 (model ID 24h) and only the rendering is in colour");
-        Ibm3477System& sys = m.add_device<Ibm3477System>(info_.clock_hz, straps, std::move(kbd));
-        bus.map_mmio("system", Ibm3477System::kBase, Ibm3477System::kSize, &sys);
+        SystemGateArray& sys = m.add_device<SystemGateArray>(info_.clock_hz, straps, kLinkChannels3477, std::move(kbd));
+        bus.map_mmio("system", SystemGateArray::kBase, SystemGateArray::kSize, &sys);
         sys.set_audio(&m.audio());
         bus.set_interrupt_controller(&sys.interrupts());
         m.set_keyboard(kbd_ptr);
@@ -166,12 +167,12 @@ public:
         // Twinax link engine: two station channels, structures in low RAM,
         // events latched in the gate array's request register (channel 0 in
         // the low byte, channel 1 in the high byte).
-        TwinaxEngine& link = m.add_device<TwinaxEngine>(bus, 2u, info_.clock_hz);
-        Ibm3477Interrupts& irq = sys.interrupts();
+        TwinaxEngine& link = m.add_device<TwinaxEngine>(bus, kLinkChannels3477, info_.clock_hz, kLinkLayout3477);
+        GateArrayInterrupts& irq = sys.interrupts();
         link.set_raise([&irq](unsigned ch, uint8_t bits) { irq.request(uint16_t(bits << (8 * ch))); });
         link.set_pending([&irq](unsigned ch) { return uint8_t((irq.requests() >> (8 * ch)) & 0x7F); });
         link.set_host([&m]() { return m.twinax_host(); });
-        Ibm3477TwinaxRegisters& link_regs = m.add_device<Ibm3477TwinaxRegisters>(link);
+        TwinaxRegisters& link_regs = m.add_device<TwinaxRegisters>(link);
         sys.set_twinax_port(&link_regs);
 
         I2cBusDevice& i2c = m.add_device<I2cBusDevice>();
@@ -180,15 +181,15 @@ public:
         eeprom.attach(i2c.bus(), 0xA0);
         m.set_nvram(&eeprom);
 
-        Ibm3477Display& disp = m.add_device<Ibm3477Display>(bus, opt, kIbm3477DisplayLayout, variant.colour);
+        DisplayController& disp = m.add_device<DisplayController>(bus, opt, kDisplayLayout3477, variant.colour);
         disp.set_clock_hz(info_.clock_hz);
         disp.set_i2c(&i2c.bus());
-        Ibm3477Interrupts& ic = sys.interrupts();
+        GateArrayInterrupts& ic = sys.interrupts();
         disp.set_irq([&ic](bool on) {
-            if (on) ic.raise(Ibm3477Interrupts::Source::Display);
-            else ic.lower(Ibm3477Interrupts::Source::Display);
+            if (on) ic.raise(GateArrayInterrupts::Source::Display);
+            else ic.lower(GateArrayInterrupts::Source::Display);
         });
-        bus.map_mmio("display", Ibm3477Display::kRegBase, 0x100, &disp);
+        bus.map_mmio("display", DisplayController::kRegBase, 0x100, &disp);
         m.set_display(&disp);
         for (LoadedRom& r : roms) bus.map_rom(r.spec.file, r.spec.base, std::move(r.data));
     }

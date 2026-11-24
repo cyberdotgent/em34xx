@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-#include "devices/ibm3477/keyboard_if.hpp"
+#include "hw/keyboard_interface.hpp"
 
-#include "devices/ibm3477/system.hpp"
+#include "hw/system_gate_array.hpp"
 #include "util/log.hpp"
 #include "util/strings.hpp"
 
@@ -20,11 +20,11 @@ bool odd_parity_bit(uint8_t b) {
 }
 } // namespace
 
-Ibm3477KeyboardInterface::Ibm3477KeyboardInterface(uint64_t clock_hz, KeyboardType type, uint8_t id1, uint8_t id2)
+KeyboardInterface::KeyboardInterface(uint64_t clock_hz, KeyboardType type, uint8_t id1, uint8_t id2)
     : kbd_(type, id1, id2), clock_hz_(clock_hz ? clock_hz : 1000000),
       byte_cycles_(clock_hz_ * kByteTimeUs / 1000000) {}
 
-void Ibm3477KeyboardInterface::reset() {
+void KeyboardInterface::reset() {
     ctl_ = kHold | kClock;
     tx_ = 0;
     tx_loaded_ = false;
@@ -37,15 +37,15 @@ void Ibm3477KeyboardInterface::reset() {
     rx_left_ = 0;
     rx_active_ = false;
     us_acc_ = 0;
-    if (ic_) ic_->lower(Ibm3477Interrupts::Source::Keyboard);
+    if (ic_) ic_->lower(GateArrayInterrupts::Source::Keyboard);
     kbd_.power_on();
 }
 
-uint8_t Ibm3477KeyboardInterface::status() const {
+uint8_t KeyboardInterface::status() const {
     return uint8_t((rx_parity_ ? 0x01 : 0) | (tx_left_ ? 0x02 : 0) | (rx_full_ ? 0x04 : 0));
 }
 
-uint8_t Ibm3477KeyboardInterface::read(unsigned reg) const {
+uint8_t KeyboardInterface::read(unsigned reg) const {
     switch (reg) {
     case 0: return rx_;
     case 1: return status();
@@ -53,15 +53,15 @@ uint8_t Ibm3477KeyboardInterface::read(unsigned reg) const {
     }
 }
 
-void Ibm3477KeyboardInterface::set_rx(uint8_t byte) {
+void KeyboardInterface::set_rx(uint8_t byte) {
     rx_ = byte;
     rx_parity_ = odd_parity_bit(byte);
     rx_full_ = true;
     ++received_;
-    if (ic_) ic_->raise(Ibm3477Interrupts::Source::Keyboard);
+    if (ic_) ic_->raise(GateArrayInterrupts::Source::Keyboard);
 }
 
-void Ibm3477KeyboardInterface::write(unsigned reg, uint8_t v) {
+void KeyboardInterface::write(unsigned reg, uint8_t v) {
     switch (reg) {
     case 0:
         tx_ = v;
@@ -93,7 +93,7 @@ void Ibm3477KeyboardInterface::write(unsigned reg, uint8_t v) {
         if (rx_full_ || tx_done_) {
             rx_full_ = false;
             tx_done_ = false;
-            if (ic_) ic_->lower(Ibm3477Interrupts::Source::Keyboard);
+            if (ic_) ic_->lower(GateArrayInterrupts::Source::Keyboard);
         }
         break;
     default:
@@ -101,7 +101,7 @@ void Ibm3477KeyboardInterface::write(unsigned reg, uint8_t v) {
     }
 }
 
-void Ibm3477KeyboardInterface::tick(uint64_t cycles) {
+void KeyboardInterface::tick(uint64_t cycles) {
     // Keyboard time (typematic repeat).
     us_acc_ += cycles * 1000000;
     const uint64_t us = us_acc_ / clock_hz_;
@@ -121,7 +121,7 @@ void Ibm3477KeyboardInterface::tick(uint64_t cycles) {
         // firmware waits for an interrupt after each byte it sends and
         // discards it before expecting the keyboard's answer).
         tx_done_ = true;
-        if (ic_) ic_->raise(Ibm3477Interrupts::Source::Keyboard);
+        if (ic_) ic_->raise(GateArrayInterrupts::Source::Keyboard);
         return;
     }
     // The keyboard may send while the line is released (02) and the
@@ -144,7 +144,7 @@ void Ibm3477KeyboardInterface::tick(uint64_t cycles) {
     set_rx(b);
 }
 
-std::string Ibm3477KeyboardInterface::describe() const {
+std::string KeyboardInterface::describe() const {
     return format("  keyboard: control %02X status %02X%s, rx %02X, tx %02X%s, %llu sent, %llu received, "
                   "%zu queued, ID %02X %02X\n",
                   ctl_, status(), tx_done_ ? " (sent)" : "", rx_, tx_, tx_loaded_ ? " (loaded)" : "", (unsigned long long)sent_,

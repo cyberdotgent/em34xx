@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-#include "devices/ibm3477/keyboard_if.hpp"
+#include "hw/keyboard_interface.hpp"
 #include "input/keyboard_ids.hpp"
 #include "input/set3_keyboard.hpp"
 
@@ -422,7 +422,7 @@ TEST_CASE("typematic runs in emulated time (3477 keyboard interface)") {
     // Repeats follow the machine's cycles, not the wall clock: a machine
     // running slower or faster than real time keeps the terminal's timing.
     const uint64_t hz = 7477312;
-    Ibm3477KeyboardInterface kif(hz, KeyboardType::Terminal122, 0xBF, 0xBF);
+    KeyboardInterface kif(hz, KeyboardType::Terminal122, 0xBF, 0xBF);
     kif.reset();
     Set3Keyboard& k = kif.keyboard();
     drain(k);

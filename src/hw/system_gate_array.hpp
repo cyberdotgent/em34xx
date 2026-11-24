@@ -19,7 +19,7 @@
 
 namespace em34xx {
 
-class Ibm3477KeyboardInterface;
+class KeyboardInterface;
 
 // Interrupt controller of the gate array. There is no 8259: a 16-bit
 // request register (read at 20002, write 1 to clear) and a 16-bit enable
@@ -30,7 +30,7 @@ class Ibm3477KeyboardInterface;
 // vectors from 09h on are one or two higher (set_three_channel_layout()).
 // Requests are levels:
 // a source stays pending until its device or a W1C write clears it.
-class Ibm3477Interrupts : public InterruptController {
+class GateArrayInterrupts : public InterruptController {
 public:
     // In priority order, highest first.
     enum class Source {
@@ -114,40 +114,31 @@ private:
 // frame registers) and the writes to 20015, whose loopback bits belong to the
 // engine. Without a link device those registers are plain storage. Reads
 // must have no side effects.
-class Ibm3477TwinaxPort {
+class LinkRegisterPort {
 public:
-    virtual ~Ibm3477TwinaxPort() = default;
+    virtual ~LinkRegisterPort() = default;
     virtual uint8_t twinax_read(uint32_t offset) = 0;
     virtual void twinax_write(uint32_t offset, uint8_t value) = 0;
 };
 
-// Strap byte for a display subtype (register 2000A). Hypothesis; see
-// docs/bringup-3477.md.
-// Straps of the monochrome 3477 this ROM can be (display type 4, FE0).
-constexpr uint8_t kIbm3477MonoStraps = 0x0C;
-// Paper-white as the firmware knows it (display type 5, FW0): its own cell
-// heights and monitor-control setting. Not selected by any variant (the
-// tube is a phosphor of the monochrome unit); reachable with --straps 0E.
-constexpr uint8_t kIbm3477PaperWhiteStraps = 0x0E;
-
-class Ibm3477System : public Device {
+class SystemGateArray : public Device {
 public:
     static constexpr uint32_t kBase = 0x20000;
     static constexpr uint32_t kSize = 0x100;
     static constexpr unsigned kTimerHz = 50;
 
     // Takes ownership of the keyboard interface.
-    Ibm3477System(uint64_t clock_hz, uint8_t straps, std::unique_ptr<Ibm3477KeyboardInterface> kbd);
-    ~Ibm3477System() override;
+    // `link_channels`: 2 (3477) or 3 (3486 family: the third channel's
+    // registers, a second request/mask pair and the interrupt layout that
+    // goes with them).
+    SystemGateArray(uint64_t clock_hz, uint8_t straps, unsigned link_channels,
+                    std::unique_ptr<KeyboardInterface> kbd);
+    ~SystemGateArray() override;
 
-    Ibm3477Interrupts& interrupts() { return ic_; }
-    Ibm3477KeyboardInterface& keyboard_interface() { return *kbd_; }
-    void set_twinax_port(Ibm3477TwinaxPort* p) { twinax_ = p; }   // hook for the link device
+    GateArrayInterrupts& interrupts() { return ic_; }
+    KeyboardInterface& keyboard_interface() { return *kbd_; }
+    void set_twinax_port(LinkRegisterPort* p) { twinax_ = p; }   // hook for the link device
     void set_audio(AudioSink* a) { audio_ = a; }                   // alarm tone and speaker gate
-    // 3486 family: a third Twinax channel, with request/mask registers at
-    // 2000D/2000F and link registers at 2000B and 2001A/2001B. Off, those are plain
-    // storage (3477).
-    void set_third_channel(bool on) { third_channel_ = on; }
     uint8_t straps() const { return straps_; }
     bool tone_on() const { return (status_latch_ & 0x80) != 0; }
     bool speaker_gate() const { return (misc_ & 0x02) != 0; }
@@ -164,10 +155,13 @@ private:
     uint8_t read(uint32_t offset, bool side_effects);
     bool is_twinax_register(uint32_t offset) const;
 
-    Ibm3477Interrupts ic_;
-    std::unique_ptr<Ibm3477KeyboardInterface> kbd_;
-    Ibm3477TwinaxPort* twinax_ = nullptr;
+    GateArrayInterrupts ic_;
+    std::unique_ptr<KeyboardInterface> kbd_;
+    LinkRegisterPort* twinax_ = nullptr;
     AudioSink* audio_ = nullptr;
+    // 3486 family: a third Twinax channel, with request/mask registers at
+    // 2000D/2000F and link registers at 2000B and 2001A/2001B. Without it
+    // those are plain storage (3477).
     bool third_channel_ = false;
     uint8_t straps_;
     uint64_t timer_period_;

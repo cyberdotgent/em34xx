@@ -54,14 +54,14 @@
 namespace em34xx {
 
 class I2cBus;
-class Ibm3486AuxPort;
+class AuxPort;
 
 // Where a board keeps the controls of this display chip that differ between
 // the terminal families. Every model states all of them when it builds its
 // display: the fields have no defaults, so a new model cannot take another
 // board's layout by leaving one out. Register numbers are offsets in the
 // controller page (20100 + n).
-struct Ibm3477DisplayLayout {
+struct DisplayLayout {
     struct Bit {
         uint8_t reg;    // register offset
         uint8_t mask;   // bit(s) in it; 0 = the board has no such control
@@ -88,20 +88,7 @@ struct Ibm3477DisplayLayout {
     unsigned beam_reference_dots;
 };
 
-// The 3477 [observed unless marked]: retrace 1/90 of the frame, no sync
-// polarity control, selector in 2012F bits 6-5, picture on with 20128 bit 4
-// [hypothesis], cursor on with 20128 bit 7 [hypothesis], dots as generated.
-constexpr Ibm3477DisplayLayout kIbm3477DisplayLayout = {
-    90,             // retrace_divisor
-    {0x28, 0x00},   // sync_invert: none
-    5,              // signature_selector_shift
-    {0x28, 0x10},   // video_on
-    {0x28, 0x80},   // cursor_on
-    false,          // half_dot_stretch: its strokes are two dots wide in the generator
-    0,              // beam_reference_dots: the spread was tuned per dot on this tube
-};
-
-class Ibm3477Display : public Device, public DisplaySource {
+class DisplayController : public Device, public DisplaySource {
 public:
     static constexpr uint32_t kRegBase = 0x20100;
     static constexpr uint32_t kWindowBase = 0x8000;   // cell offsets are relative to this
@@ -109,7 +96,7 @@ public:
 
     // `colour`: the unit has a colour tube (the model's variant); the cell
     // attributes are then drawn as colours.
-    Ibm3477Display(Bus& bus, const TerminalOptions& opts, const Ibm3477DisplayLayout& layout, bool colour);
+    DisplayController(Bus& bus, const TerminalOptions& opts, const DisplayLayout& layout, bool colour);
 
     // Display interrupt line (vector 0Ch); raised once per frame at the start
     // of vertical retrace, lowered by a write to 20136.
@@ -118,7 +105,7 @@ public:
     void set_i2c(I2cBus* bus);
     // 3486 family: the second serial port's registers at 20144-20146 sit in
     // this page. Without it they are plain storage.
-    void set_aux_port(Ibm3486AuxPort* port) { aux_ = port; }
+    void set_aux_port(AuxPort* port) { aux_ = port; }
     // CPU clock used to derive frame timing (default 8 MHz).
     void set_clock_hz(uint64_t hz);
     // Whether the firmware has the cursor switched on.
@@ -190,12 +177,12 @@ private:
     std::array<uint8_t, 256> regs_{};
     std::function<void(bool)> irq_;
     I2cBus* i2c_ = nullptr;
-    Ibm3486AuxPort* aux_ = nullptr;
+    AuxPort* aux_ = nullptr;
     uint8_t sense_ = 0;
     uint64_t clock_hz_ = 8000000;
     uint64_t frame_cycles_ = 0;
     uint64_t retrace_cycles_ = 0;
-    Ibm3477DisplayLayout layout_;
+    DisplayLayout layout_;
     uint64_t phase_ = 0;
     uint64_t frames_ = 0;
     bool in_retrace_ = false;

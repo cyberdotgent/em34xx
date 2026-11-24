@@ -67,10 +67,10 @@ struct TerminalOptions {
     // Image of the battery-backed RAM; empty = volatile (cleared at power-on).
     std::string nvram_path;
     // 3477: TEMPORARY stand-in for the unmodelled video signature of the
-    // power-on display test (see Ibm3477Display, docs/bringup-3477.md).
+    // power-on display test (see DisplayController, docs/bringup-3477.md).
     bool vdo_shim = true;
     // 3486 family, colour units: TEMPORARY stand-in for the monitor
-    // alignment procedure (devices/ibm3486/alignment_shim.hpp,
+    // alignment procedure (models/alignment_shim_3486.hpp,
     // docs/bringup-3486.md).
     bool alignment_shim = true;
 };

@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-#include "devices/ibm3477/twinax_engine.hpp"
+#include "hw/twinax_engine.hpp"
 
 #include "bus/bus.hpp"
 #include "util/log.hpp"
@@ -12,7 +12,7 @@ namespace em34xx {
 // ---------------------------------------------------------------------------
 // Engine
 
-TwinaxEngine::TwinaxEngine(Bus& bus, unsigned channels, uint64_t clock_hz, TwinaxEngineLayout layout)
+TwinaxEngine::TwinaxEngine(Bus& bus, unsigned channels, uint64_t clock_hz, const TwinaxEngineLayout& layout)
     : Device("twinax"), bus_(bus), layout_(layout), ch_(channels), clock_hz_(clock_hz ? clock_hz : 8000000),
       bit_cycles_(clock_hz_ / 1000000 ? clock_hz_ / 1000000 : 1) {
     if (channels == 0) throw std::invalid_argument("twinax engine needs at least one channel");
@@ -261,7 +261,7 @@ std::string TwinaxEngine::describe() const {
 // ---------------------------------------------------------------------------
 // 3477 register view
 
-uint8_t Ibm3477TwinaxRegisters::twinax_read(uint32_t off) {
+uint8_t TwinaxRegisters::twinax_read(uint32_t off) {
     switch (off) {
     case 0x00:
     case 0x01: return eng_.read_control(off);
@@ -272,7 +272,7 @@ uint8_t Ibm3477TwinaxRegisters::twinax_read(uint32_t off) {
     }
 }
 
-void Ibm3477TwinaxRegisters::twinax_write(uint32_t off, uint8_t v) {
+void TwinaxRegisters::twinax_write(uint32_t off, uint8_t v) {
     if (off < reg_.size()) reg_[off] = v;
     switch (off) {
     case 0x00:
@@ -307,7 +307,7 @@ void Ibm3477TwinaxRegisters::twinax_write(uint32_t off, uint8_t v) {
     }
 }
 
-void Ibm3477TwinaxRegisters::transmit(bool dma, bool bad_parity) {
+void TwinaxRegisters::transmit(bool dma, bool bad_parity) {
     TwinaxMessage msg;
     const uint8_t station = reg_[0x24] & 7;
     if (dma) {
@@ -326,12 +326,12 @@ void Ibm3477TwinaxRegisters::transmit(bool dma, bool bad_parity) {
     if (!msg.empty()) eng_.inject(msg, bad_parity);
 }
 
-void Ibm3477TwinaxRegisters::reset() {
+void TwinaxRegisters::reset() {
     reg_.fill(0);
     misc_ = 0;
 }
 
-std::string Ibm3477TwinaxRegisters::describe() const {
+std::string TwinaxRegisters::describe() const {
     return format("  station addresses %02X, channel control %02X, test %02X, frame regs %02X %02X %02X %02X %02X\n",
                   reg_[0x08], reg_[0x09], misc_, reg_[0x24], reg_[0x25], reg_[0x26], reg_[0x27], reg_[0x28]);
 }
