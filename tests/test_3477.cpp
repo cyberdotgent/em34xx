@@ -314,6 +314,12 @@ TEST_CASE("3477 variants: one monochrome unit and the colour stand-in") {
     CHECK(phosphor == "paperwhite");
     select_legacy_display(m, DisplaySubtype::Color, variant, phosphor);
     CHECK(variant == "3477-FC");
+
+    // Switches are declared by the model, with their defaults.
+    CHECK(m.info().option_on("vdo-shim", {}));
+    CHECK_FALSE(m.info().option_on("vdo-shim", {{"vdo-shim", false}}));
+    CHECK_FALSE(m.info().option_on("alignment-shim", {{"alignment-shim", true}}));   // not a 3477 option
+    CHECK(model_3487().info().option_on("alignment-shim", {}));
 }
 
 TEST_CASE("3477 keyboard interface: power-on, reset and ID handshake") {

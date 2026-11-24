@@ -21,7 +21,7 @@ struct Rig {
     TerminalOptions opts;
     DisplayController disp;
 
-    explicit Rig(bool colour = false) : disp(bus, opts, kDisplayLayout3477, colour) {
+    explicit Rig(bool colour = false) : disp(bus, kDisplayLayout3477, colour, true) {
         bus.map_ram("ram", 0, 0x20000);
         bus.map_mmio("display", 0x20100, 0x100, &disp);
     }
@@ -392,10 +392,8 @@ TEST_CASE("3477 display: VDO shim latches a result at the next retrace") {
 }
 
 TEST_CASE("3477 display: VDO shim switched off reads the sense nibble") {
-    TerminalOptions o;
-    o.vdo_shim = false;
     Bus bus{20};
-    DisplayController disp(bus, o, kDisplayLayout3477, false);
+    DisplayController disp(bus, kDisplayLayout3477, false, false);
     CHECK_FALSE(disp.vdo_shim());
     Rig r;
     r.disp.set_vdo_shim(false);

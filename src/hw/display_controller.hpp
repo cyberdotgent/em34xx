@@ -96,7 +96,8 @@ public:
 
     // `colour`: the unit has a colour tube (the model's variant); the cell
     // attributes are then drawn as colours.
-    DisplayController(Bus& bus, const TerminalOptions& opts, const DisplayLayout& layout, bool colour);
+    // `vdo_shim`: stand in for the unmodelled video signature (below).
+    DisplayController(Bus& bus, const DisplayLayout& layout, bool colour, bool vdo_shim);
 
     // Display interrupt line (vector 0Ch); raised once per frame at the start
     // of vertical retrace, lowered by a write to 20136.
@@ -122,7 +123,7 @@ public:
     // frame the controller displayed (vdo_fingerprint()), in a small table of
     // results measured for the test screens. Unknown frames get a
     // placeholder nibble. It never looks at the CPU or firmware state.
-    // On by default; TerminalOptions::vdo_shim = false (--no-vdo-shim)
+    // On by default; the model's "vdo-shim" option off (--no-vdo-shim)
     // turns it off, and bits 7..4 then read the sense nibble (0).
     void set_vdo_shim(bool on) { vdo_shim_ = on; }
     bool vdo_shim() const { return vdo_shim_; }
@@ -170,7 +171,6 @@ private:
     uint8_t mem(uint32_t addr) const;
 
     Bus& bus_;
-    TerminalOptions opts_;
     bool colour_;
     const Region* ram_ = nullptr;   // RAM region cached during render()
     int last_w_ = 0, last_h_ = 0;

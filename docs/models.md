@@ -83,3 +83,13 @@ An 8086 would behave as the 8088 does here apart from its bus width. The
 8088 core is checked against the SingleStepTests 8088 vectors
 (`tools/fetch-test-vectors.sh`); that project also publishes V20 and 80286
 sets, which are not wired in yet.
+
+## Options
+
+A model declares its own switches (`ModelInfo::options`): today the
+temporary stand-ins that can be turned off (`vdo-shim` on both families,
+`alignment-shim` on the 3486 family). `--list-models` shows them. They are
+set with `--set NAME=on|off` or `[emulator.options]` in the configuration
+file; `--no-vdo-shim`, `--no-alignment-shim` and the `[emulator]` keys
+`vdo_shim` / `alignment_shim` remain as shorthands. A switch the running
+model does not declare is ignored with a warning.

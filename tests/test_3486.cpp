@@ -158,7 +158,7 @@ struct DisplayRig {
     TerminalOptions opts;
     DisplayController disp;
 
-    explicit DisplayRig(const DisplayLayout& layout) : disp(bus, opts, layout, false) {
+    explicit DisplayRig(const DisplayLayout& layout) : disp(bus, layout, false, true) {
         bus.map_ram("ram", 0, 0x20000);
         bus.map_mmio("display", 0x20100, 0x100, &disp);
         disp.set_clock_hz(kClock);

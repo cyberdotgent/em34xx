@@ -31,6 +31,9 @@ void list_models() {
             std::printf("         %-8s %s%s%s%s\n", v.id.c_str(), v.description.c_str(), tubes.empty() ? "" : "; phosphor ",
                         tubes.c_str(), &v == &i.variants.front() ? " (default)" : "");
         }
+        for (const ModelOption& o : i.options)
+            std::printf("         --set %s=%s  %s (default %s)\n", o.id.c_str(), o.default_on ? "off" : "on",
+                        o.description.c_str(), o.default_on ? "on" : "off");
     }
 }
 
@@ -140,6 +143,14 @@ bool Application::configure(int argc, char** argv) {
     if (model_->info().status == ModelStatus::RomIncomplete && !cfg_.allow_bad_rom)
         return fail("model " + model_->info().name + " has no complete ROM dump yet; use --allow-bad-rom to try anyway");
     if (!select_variant(named, error)) return fail(error);
+    // Switches are the model's own: one it does not have does nothing.
+    for (const auto& kv : cfg_.terminal.switches) {
+        bool known = false;
+        for (const ModelOption& o : model_->info().options) known = known || o.id == kv.first;
+        if (!known)
+            LOG_WARN("machine", "model %s has no option '%s'; ignored (see --list-models)",
+                     model_->info().name.c_str(), kv.first.c_str());
+    }
     return true;
 }
 

@@ -124,6 +124,12 @@ public:
                 // The firmware's VPD suffix for these straps is BA0 [observed].
                 {"3486-BA", "monochrome", false, false, kDefaultStraps, "IBM-5251-11", tubes},
             };
+        info_.options = {
+            {"vdo-shim", "TEMPORARY: stand in for the unmodelled video signature of the power-on display test "
+                         "(off: POST stops at VDO)", true},
+            {"alignment-shim", "TEMPORARY, colour units: mark the monitor alignment done in the EEPROM (off: the "
+                               "unit shows its alignment pattern and stays off line)", true},
+        };
         info_.roms = {
             {"system ROM (80000-FFFFF, reset vector)", "54g0010.bin", 0x80000,
              "7d04a011c1865c8c0745f9d2bb2948964dcd1ab1d0e8e4fa8cbde3d3b93ef51c", 0x80000},
@@ -235,7 +241,7 @@ public:
         // is no tube to align [temporary; alignment_shim.hpp]. A new unit
         // is switched off and on once when the firmware has initialised its
         // EEPROM.
-        if ((straps & 0x0E) == 0x0C && opt.alignment_shim) {
+        if ((straps & 0x0E) == 0x0C && info_.option_on("alignment-shim", opt.switches)) {
             Machine* machine = &m;
             install_monitor_alignment_shim(eeprom, [machine] {
                 LOG_INFO("machine", "colour unit: power cycle after the alignment was marked done");
@@ -243,7 +249,8 @@ public:
             });
         }
 
-        DisplayController& disp = m.add_device<DisplayController>(bus, opt, kDisplayLayout3486, variant.colour);
+        DisplayController& disp = m.add_device<DisplayController>(bus, kDisplayLayout3486, variant.colour,
+                                                                  info_.option_on("vdo-shim", opt.switches));
         disp.set_clock_hz(info_.clock_hz);
         disp.set_i2c(&i2c.bus());
         disp.set_irq([&irq](bool on) {

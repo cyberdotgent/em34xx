@@ -108,9 +108,8 @@ CellLook decode_attr(uint8_t attr, bool colour) {
 
 } // namespace
 
-DisplayController::DisplayController(Bus& bus, const TerminalOptions& opts, const DisplayLayout& layout,
-                               bool colour)
-    : Device("display"), bus_(bus), opts_(opts), colour_(colour), layout_(layout), vdo_shim_(opts.vdo_shim) {
+DisplayController::DisplayController(Bus& bus, const DisplayLayout& layout, bool colour, bool vdo_shim)
+    : Device("display"), bus_(bus), colour_(colour), layout_(layout), vdo_shim_(vdo_shim) {
     if (!layout_.retrace_divisor) layout_.retrace_divisor = 90;
     // Display change tracking (Machine::take_display_change): the cell
     // windows (offsets from 8000 are 16-bit [hyp], so 8000-17FFF), the
@@ -413,7 +412,7 @@ uint64_t DisplayController::animation_phase() const { return frames_ / kBlinkFra
 //
 // Replace this with the real signature function (and delete the table) once
 // single-dot signatures or the gate array documentation are available.
-// Switch: TerminalOptions::vdo_shim / --no-vdo-shim / [emulator] vdo_shim.
+// Switch: the model's "vdo-shim" option (--no-vdo-shim, [emulator] vdo_shim).
 // ---------------------------------------------------------------------------
 namespace {
 

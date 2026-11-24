@@ -25,7 +25,7 @@
 // runs (a new unit's first power-on) the unit is switched off and on once,
 // as after an alignment. The alignment values themselves stay the
 // firmware's own; none are stored in the emulator. Switch:
-// TerminalOptions::alignment_shim / --no-alignment-shim / [emulator]
+// the model's "alignment-shim" option / --no-alignment-shim / [emulator]
 // alignment_shim.
 #pragma once
 

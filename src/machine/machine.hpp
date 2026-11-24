@@ -12,6 +12,7 @@
 #include <atomic>
 #include <cstdint>
 #include <functional>
+#include <map>
 #include <memory>
 #include <string>
 #include <vector>
@@ -66,13 +67,10 @@ struct TerminalOptions {
     std::string eeprom_path;
     // Image of the battery-backed RAM; empty = volatile (cleared at power-on).
     std::string nvram_path;
-    // 3477: TEMPORARY stand-in for the unmodelled video signature of the
-    // power-on display test (see DisplayController, docs/bringup-3477.md).
-    bool vdo_shim = true;
-    // 3486 family, colour units: TEMPORARY stand-in for the monitor
-    // alignment procedure (models/alignment_shim_3486.hpp,
-    // docs/bringup-3486.md).
-    bool alignment_shim = true;
+    // Switches the model declares (ModelInfo::options), by id: only those
+    // that differ from, or restate, the model's defaults. A switch the model
+    // does not have is ignored (Application::configure warns).
+    std::map<std::string, bool> switches;
 };
 
 struct Breakpoint {

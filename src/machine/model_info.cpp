@@ -27,6 +27,15 @@ const Phosphor& phosphor_paper_white() {
     return p;
 }
 
+bool ModelInfo::option_on(const std::string& id, const std::map<std::string, bool>& switches) const {
+    for (const ModelOption& o : options) {
+        if (o.id != id) continue;
+        const auto it = switches.find(id);
+        return it == switches.end() ? o.default_on : it->second;
+    }
+    return false;
+}
+
 const Phosphor* ModelVariant::phosphor(const std::string& wanted) const {
     if (phosphors.empty()) return nullptr;
     for (const Phosphor& p : phosphors)

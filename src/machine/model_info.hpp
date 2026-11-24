@@ -8,6 +8,7 @@
 #include "rom/romset.hpp"
 
 #include <cstdint>
+#include <map>
 #include <string>
 #include <vector>
 
@@ -55,6 +56,15 @@ struct ModelVariant {
     const Phosphor* phosphor(const std::string& id) const;
 };
 
+// A switch a model declares for itself (a temporary stand-in that can be
+// turned off, an optional device): what --list-models shows and
+// --no-<id> / --set <id>=on|off and [emulator.options] set.
+struct ModelOption {
+    std::string id;            // "vdo-shim"
+    std::string description;
+    bool default_on = true;
+};
+
 struct ModelInfo {
     std::string name;            // "3477"
     std::string description;
@@ -67,6 +77,11 @@ struct ModelInfo {
     unsigned max_printer_sessions = 0;  // of those, how many may be printer sessions
     // What can be selected, default first. Never empty for a model that runs.
     std::vector<ModelVariant> variants;
+    // Switches of this model, with their defaults (TerminalOptions::switches).
+    std::vector<ModelOption> options;
+    // The state of a declared switch: what `switches` says, else its default;
+    // false for one the model does not declare.
+    bool option_on(const std::string& id, const std::map<std::string, bool>& switches) const;
     std::vector<RomSpec> roms;
     std::vector<KnownBadRom> known_bad_roms;
     std::vector<std::string> notes;  // hypotheses and open questions

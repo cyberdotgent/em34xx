@@ -73,8 +73,13 @@ bool load_config_file(const std::string& path, AppConfig& cfg, std::string& erro
         }
         get(*t, "eeprom", cfg.terminal.eeprom_path);
         get(*t, "nvram", cfg.terminal.nvram_path);
-        get(*t, "vdo_shim", cfg.terminal.vdo_shim);
-        get(*t, "alignment_shim", cfg.terminal.alignment_shim);
+        // The models' switches: the two older keys, and any in [emulator.options].
+        bool on = true;
+        if (get(*t, "vdo_shim", on)) cfg.terminal.switches["vdo-shim"] = on;
+        if (get(*t, "alignment_shim", on)) cfg.terminal.switches["alignment-shim"] = on;
+        if (auto* o = (*t)["options"].as_table())
+            for (auto&& kv : *o)
+                if (auto v = kv.second.value<bool>()) cfg.terminal.switches[std::string(kv.first.str())] = *v;
     }
     if (auto* t = root["display"].as_table()) {
         get(*t, "crt", cfg.crt);
@@ -234,6 +239,9 @@ Unit options:
                             alignment done in the EEPROM (the unit then shows
                             its alignment pattern and stays off line); see
                             docs/bringup-3486.md
+      --set NAME=on|off     a switch the model declares (see --list-models);
+                            the two above are --set vdo-shim=off and
+                            --set alignment-shim=off
       --list-keyboards      list keyboard layouts and their IDs
 
 Front end and monitor:
@@ -369,8 +377,19 @@ bool parse_command_line(int argc, char** argv, AppConfig& cfg, std::string& erro
             cfg.terminal.straps = int(n);
         } else if (a == "--eeprom") { if (!need(cfg.terminal.eeprom_path)) return false; }
         else if (a == "--nvram") { if (!need(cfg.terminal.nvram_path)) return false; }
-        else if (a == "--no-vdo-shim") cfg.terminal.vdo_shim = false;
-        else if (a == "--no-alignment-shim") cfg.terminal.alignment_shim = false;
+        else if (a == "--no-vdo-shim") cfg.terminal.switches["vdo-shim"] = false;
+        else if (a == "--no-alignment-shim") cfg.terminal.switches["alignment-shim"] = false;
+        else if (a == "--set") {
+            // A switch the model declares: NAME=on|off (see --list-models).
+            if (!need(v)) return false;
+            const size_t eq = v.find('=');
+            const std::string state = eq == std::string::npos ? std::string("on") : to_lower(v.substr(eq + 1));
+            if (eq == 0 || (state != "on" && state != "off")) {
+                error = "--set needs NAME=on or NAME=off";
+                return false;
+            }
+            cfg.terminal.switches[v.substr(0, eq)] = state == "on";
+        }
         else if (a == "--headless") cfg.headless = true;
         else if (a == "--scale") {
             if (!need(v)) return false;
@@ -461,8 +480,6 @@ std::string config_to_toml(const AppConfig& cfg) {
             {"start_stopped", cfg.start_stopped},
             {"eeprom", cfg.terminal.eeprom_path},
             {"nvram", cfg.terminal.nvram_path},
-            {"vdo_shim", cfg.terminal.vdo_shim},
-            {"alignment_shim", cfg.terminal.alignment_shim},
         }},
         {"display", toml::table{{"phosphor", cfg.terminal.phosphor},
                                 {"subtype", cfg.legacy_display},
@@ -484,6 +501,11 @@ std::string config_to_toml(const AppConfig& cfg) {
     };
     toml::table env;
     for (const auto& kv : cfg.tn5250.env) env.insert(kv.first, kv.second);
+    if (!cfg.terminal.switches.empty()) {
+        toml::table options;
+        for (const auto& kv : cfg.terminal.switches) options.insert(kv.first, kv.second);
+        root["emulator"].as_table()->insert("options", options);
+    }
     root.insert("tn5250", toml::table{
         {"host", cfg.tn5250.host},
         {"port", int64_t(cfg.tn5250.port)},

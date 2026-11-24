@@ -90,6 +90,10 @@ public:
             // treat it as colour.
             {"3477-FC", "colour (stand-in)", true, true, kStraps3477Mono, "IBM-3477-FC", {}},
         };
+        info_.options = {
+            {"vdo-shim", "TEMPORARY: stand in for the unmodelled video signature of the power-on display test "
+                         "(off: POST stops at VDO)", true},
+        };
         info_.roms = {
             {"system ROM (C0000-DFFFF)", "95f4172.bin", 0x20000,
              "290a58cd5db6543957bdcb2c9e92efefd62a54e37bcd239d41d9bd9cdd6be1d0", 0xC0000},
@@ -181,7 +185,8 @@ public:
         eeprom.attach(i2c.bus(), 0xA0);
         m.set_nvram(&eeprom);
 
-        DisplayController& disp = m.add_device<DisplayController>(bus, opt, kDisplayLayout3477, variant.colour);
+        DisplayController& disp = m.add_device<DisplayController>(bus, kDisplayLayout3477, variant.colour,
+                                                                  info_.option_on("vdo-shim", opt.switches));
         disp.set_clock_hz(info_.clock_hz);
         disp.set_i2c(&i2c.bus());
         GateArrayInterrupts& ic = sys.interrupts();
