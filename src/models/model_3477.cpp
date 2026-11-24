@@ -4,7 +4,8 @@
 // Primary bring-up target. See docs/bringup-3477.md for the memory and
 // register map and the evidence for each entry. Summary:
 //  - Two byte-wide 128 KiB ROMs, 95F4171 (E0000-FFFFF, reset vector) and
-//    95F4172 (C0000-DFFFF), each a linear image.
+//    95F4172 (C0000-DFFFF), each a linear image. The colour unit (3477-FC)
+//    has its own pair at the same addresses, 65F2995 and 65F2996.
 //  - 128 KiB of RAM at 00000-1FFFF, including the display window and the
 //    character-generator RAM (18000-1FFFF) [observed: tested and cleared
 //    by the firmware].
@@ -51,12 +52,15 @@ public:
             // green type. (The firmware's own VPD suffix for these straps
             // is FE0 [observed]; FG is the green 3477's model and TN5250
             // name [documented].)
-            {"3477-FG", "monochrome", false, false, kStraps3477Mono, "IBM-3477-FG", tubes},
-            // Stand-in until the colour 3477's own ROM is emulated: this
-            // ROM cannot identify as colour (see the notes), so the unit
-            // runs as the monochrome one and only the host and the picture
-            // treat it as colour.
-            {"3477-FC", "colour (stand-in)", true, true, kStraps3477Mono, "IBM-3477-FC", {}},
+            {"3477-FG", "monochrome", false, kStraps3477Mono, "IBM-3477-FG", tubes, {}},
+            // The colour unit has its own firmware, which accepts only the
+            // colour monitor's sense code and identifies as FC0, model ID
+            // 50h [observed]. In bring-up: see docs/bringup-3477.md.
+            {"3477-FC", "colour", true, kStraps3477Colour, "IBM-3477-FC", {},
+             {{"system ROM (C0000-DFFFF)", "65f2996.bin", 0x20000,
+               "92f1c1becaf9e3a14606b8988f835f0a2ddb2ab46f44670586f65ab1b736a940", 0xC0000},
+              {"system ROM (E0000-FFFFF, reset vector)", "65f2995.bin", 0x20000,
+               "d5dc45f8e3c632449f17ad1e4dfd37b562aafb1464715bc4ac12df407da381e9", 0xE0000}}},
         };
         info_.options = {
             {"vdo-shim", "TEMPORARY: stand in for the unmodelled video signature of the power-on display test "
@@ -79,9 +83,12 @@ public:
             "(observed use, bit map hypothesis), 50 Hz timer (hypothesis)",
             "display type straps at 2000A: 04/0C/0E = types 3/4/5, reported as model FD0/FE0/FW0 "
             "with model ID 24 (observed); green/amber -> 0C, paper-white -> 0E (hypothesis)",
-            "colour: the firmware has a complete colour path (display type 6 = FC0, model ID 50, "
-            "4 ECB planes) but nothing in this ROM selects type 6 (observed); the 3477-FC variant is a stand-in that renders the "
-            "attributes in colour on a unit that identifies as FE0, model ID 24",
+            "colour: 3477-FC runs the colour unit's own ROM pair (65F2995/65F2996), which accepts only "
+            "straps 02 (display type 6 = FC0, model ID 50) (observed); the monochrome pair accepts only "
+            "04/0C/0E and cannot identify as colour (observed)",
+            "3477-FC: picture on with 20128 bit 6 (hypothesis; the firmware never sets bit 4); the keyboard "
+            "echo is written with the line released (observed); setup block incompatible with the "
+            "monochrome firmware's, hence its own NVRAM file (observed)",
             "setup configuration in battery-backed RAM: POST never tests 01A0-0A9F and only "
             "validates the checksummed setup block there; an hour meter and a power-on counter "
             "live in the same range (observed); battery backing of the whole 128 KiB is a hypothesis",
@@ -103,9 +110,6 @@ public:
         const TerminalOptions& opt = m.options();
         const ModelVariant& variant = variant_for(opt);
         const uint8_t straps = opt.straps >= 0 ? uint8_t(opt.straps) : variant.straps;
-        if (variant.stub)
-            LOG_WARN("system", "3477: this ROM has no colour display type; the terminal identifies as a "
-                               "monochrome 3477 FE0 (model ID 24h) and only the rendering is in colour");
 
         // 128 KiB of RAM; the setup configuration and the counters live in
         // it and survive power-off [hypothesis, strong: see the notes].
@@ -115,7 +119,8 @@ public:
         SystemGateArray& sys = parts::system_gate_array(m, info_.clock_hz, straps, kLinkChannels3477, true);
         parts::link_engine(m, sys, info_.clock_hz, kLinkChannels3477, kLinkLayout3477);
         const parts::TwoWireBus i2c = parts::two_wire_bus(m);
-        parts::display_controller(m, sys, i2c.bus, info_.clock_hz, kDisplayLayout3477, variant.colour,
+        parts::display_controller(m, sys, i2c.bus, info_.clock_hz,
+                                  variant.colour ? kDisplayLayout3477Colour : kDisplayLayout3477, variant.colour,
                                   info_.option_on("vdo-shim", opt.switches));
         for (LoadedRom& r : roms) m.bus().map_rom(r.spec.file, r.spec.base, std::move(r.data));
     }

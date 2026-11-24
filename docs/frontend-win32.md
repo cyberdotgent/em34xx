@@ -176,7 +176,7 @@ to a temporary name and renamed over the old one.
 | --- | --- |
 | CRT type (the phosphor of a monochrome unit) | at once, picture only (`Application::set_phosphor()`); no reset, the sessions stay up. Paper-white too: it is a tube, not another unit |
 | scan lines | at once |
-| terminal type (model or variant, e.g. 3487-HG -> 3487-HC) | the emulator restarts as the other unit (`Application::set_model()`): its ROM images are read, a model gets its own battery-backed RAM file (`<model>.nvram`, shared by its variants), the sessions close and new ones announce its terminal type, and the title changes. Opening a profile does it without asking; Connection Settings asks first. Without the model's ROM images the user is told which files are missing and may import them; otherwise nothing changes |
+| terminal type (model or variant, e.g. 3487-HG -> 3487-HC) | the emulator restarts as the other unit (`Application::set_model()`): its ROM images are read, a model gets its own battery-backed RAM file (`<model>.nvram`, shared by its variants; a variant with its own firmware has `<variant>.nvram`, e.g. `3477-FC.nvram`, docs/models.md), the sessions close and new ones announce its terminal type, and the title changes. Opening a profile does it without asking; Connection Settings asks first. Without the model's ROM images the user is told which files are missing and may import them; otherwise nothing changes |
 
 The terminal type list shows every variant of every model (docs/models.md);
 the CRT type list shows the phosphors of the selected variant and is

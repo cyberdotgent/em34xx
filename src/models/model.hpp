@@ -38,6 +38,13 @@ public:
     // the model has no such variant.
     const ModelVariant* find_variant(const std::string& id) const;
     const ModelVariant& default_variant() const { return info().variants.front(); }
+    // find_variant(), or the model's first for "" and unknown ids.
+    const ModelVariant& variant_named(const std::string& id) const;
+    // The name a unit's saved state (battery-backed RAM, EEPROM) is kept
+    // under: the model's, so its variants share one setup; the variant's
+    // own id when it runs its own firmware, which keeps the setup in its
+    // own format (observed: the colour 3477 resets a monochrome 3477's).
+    std::string storage_name(const ModelVariant& variant) const;
     // The first variant that is colour (or is not); null when there is none.
     const ModelVariant* variant_with_colour(bool colour) const;
 };

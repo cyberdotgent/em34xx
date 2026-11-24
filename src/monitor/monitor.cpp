@@ -839,7 +839,10 @@ bool Monitor::cmd_info(const std::vector<std::string>&) {
                                model_status_name(mi.status));
         t += format("cpu       %s, %u-bit addresses, nominal %.3f MHz\n", cpu_level_name(mi.cpu), mi.address_bits,
                     double(mi.clock_hz) / 1e6);
-        for (const RomSpec& r : mi.roms) t += format("rom       %06X  %-12s %s\n", r.base, r.file.c_str(), r.label.c_str());
+        const ModelVariant* variant = nullptr;
+        for (const ModelVariant& v : mi.variants)
+            if (v.id == m.options().variant) variant = &v;
+        for (const RomSpec& r : variant ? mi.roms_of(*variant) : mi.roms) t += format("rom       %06X  %-12s %s\n", r.base, r.file.c_str(), r.label.c_str());
         for (const std::string& n : mi.notes) t += "note      " + n + "\n";
         t += format("state     %s\n", emu_.running() ? "running" : "stopped");
         t += format("executed  %llu instructions, %llu cycles\n", (unsigned long long)m.cpu().instructions(),

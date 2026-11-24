@@ -9,6 +9,8 @@ them by SHA-256 and contains no code or data taken from them.
 | 3486 | `54g0010.bin` | 524288 | `7d04a011c1865c8c0745f9d2bb2948964dcd1ab1d0e8e4fa8cbde3d3b93ef51c` | **Good.** The complete 512 KiB firmware image, dumped from a 3487 logic module (one chip; see below). Maps at physical `0x80000..0xFFFFF`; holds the reset vector. The 3486 model runs it. |
 | 3477 | `95f4171.bin` | 131072 | `3f7fb58aec7505315ff94206c8dc05102e319944bd0bde55092274777fb39fde` | **Good (primary bring-up target).** Maps at physical `0xE0000..0xFFFFF`; holds the reset vector. No invariant address bit. |
 | 3477 | `95f4172.bin` | 131072 | `290a58cd5db6543957bdcb2c9e92efefd62a54e37bcd239d41d9bd9cdd6be1d0` | **Good.** Maps at physical `0xC0000..0xDFFFF`. No invariant address bit. |
+| 3477-FC | `65f2995.bin` | 131072 | `d5dc45f8e3c632449f17ad1e4dfd37b562aafb1464715bc4ac12df407da381e9` | **Good.** The colour 3477's firmware (variant `3477-FC`). Maps at physical `0xE0000..0xFFFFF`; holds the reset vector. |
+| 3477-FC | `65f2996.bin` | 131072 | `92f1c1becaf9e3a14606b8988f835f0a2ddb2ab46f44670586f65ab1b736a940` | **Good.** Maps at physical `0xC0000..0xDFFFF`. |
 
 ## Known-bad dumps
 
@@ -28,6 +30,17 @@ and the second half of `95f4171` in `F000`; the reset vector at the top of
 an 8-bit CPU bus (8088-class) — a hypothesis to confirm from the board. Neither
 image contains any `IN`/`OUT DX` sequences, so the hardware is most likely
 memory-mapped.
+
+## 3477 colour unit (`65f2995.bin`, `65f2996.bin`)
+
+A second ROM pair, from a colour 3477, published as `65F2995.bin` and
+`65F2996.bin` on
+<https://flatpack.microwavepizza.co.uk/tinkering/as400/infowindow.html>;
+store them here in lower case. Same placement as the pair above: `65f2995`
+holds the reset vector (`E0000`), `65f2996` sits below it (`C0000`). The two
+pairs are not interchangeable: each firmware accepts only its own monitor
+sense codes (docs/bringup-3477.md), so the monochrome variant `3477-FG` runs
+`95f4171/95f4172` and the colour variant `3477-FC` runs this pair.
 
 Verify with:
 

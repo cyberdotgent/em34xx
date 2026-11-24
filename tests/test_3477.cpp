@@ -272,7 +272,7 @@ TEST_CASE("3477 alarm tone and speaker gate reach the audio sink") {
     CHECK(rec.events == want);
 }
 
-TEST_CASE("3477 variants: one monochrome unit and the colour stand-in") {
+TEST_CASE("3477 variants: a monochrome unit and a colour unit with its own firmware") {
     const Model& m = model_3477();
     REQUIRE(m.info().variants.size() == 2);
     const ModelVariant& mono = m.default_variant();
@@ -287,8 +287,17 @@ TEST_CASE("3477 variants: one monochrome unit and the colour stand-in") {
     const ModelVariant* colour = m.find_variant("3477-fc");
     REQUIRE(colour);
     CHECK(colour->colour);
-    CHECK(colour->stub);                              // until the colour ROM is emulated
-    CHECK(colour->straps == kStraps3477Mono);      // identifies as the monochrome unit
+    CHECK(colour->straps == kStraps3477Colour);    // the colour monitor's sense code
+    // Its own ROM pair; the monochrome unit runs the model's.
+    REQUIRE(colour->roms.size() == 2);
+    CHECK(m.info().roms_of(*colour)[1].file == "65f2995.bin");
+    CHECK(mono.roms.empty());
+    CHECK(m.info().roms_of(mono)[1].file == "95f4171.bin");
+    // Each firmware keeps the setup in its own format: separate saved state.
+    CHECK(m.storage_name(mono) == "3477");
+    CHECK(m.storage_name(*colour) == "3477-FC");
+    CHECK(&m.variant_named("") == &mono);
+    CHECK(&m.variant_named("fc") == colour);
     CHECK(colour->tn5250_type == "IBM-3477-FC");
     CHECK(colour->phosphor("green") == nullptr);
 
@@ -366,6 +375,20 @@ TEST_CASE("3477 keyboard interface: power-on, reset and ID handshake") {
     CHECK((s.r(0x20013) & 0x04) != 0);
     CHECK_FALSE(s.sys->interrupts().intr_asserted());
     CHECK(s.r(0x20012) == 0xEE);
+}
+
+TEST_CASE("3477 keyboard interface: a byte written with the line released is sent") {
+    // The colour unit's firmware sends its echo this way (observed); the
+    // monochrome one holds the line (03), writes and releases.
+    Sys s;
+    s.w(0x20013, 0x02);
+    uint8_t b;
+    while (s.receive(b)) {}
+    s.w(0x20012, 0xEE);   // line still released
+    s.run_us(3000);       // the byte goes out; its completion is flagged
+    s.w(0x20014, 0x00);
+    REQUIRE(s.receive(b));
+    CHECK(b == 0xEE);     // the keyboard's echo
 }
 
 TEST_CASE("3477 keyboard interface: key-mode configuration sequence is acknowledged") {

@@ -7,7 +7,7 @@ firmware reads, the ROM set, and what the unit announces to its host.
 | Model | Variant | Unit | Straps | TN5250 type | Phosphors |
 | --- | --- | --- | --- | --- | --- |
 | 3477 | `3477-FG` (default) | monochrome | `0C` | `IBM-3477-FG` | green, amber, paper-white |
-| 3477 | `3477-FC` | colour, a stand-in | `0C` | `IBM-3477-FC` | - |
+| 3477 | `3477-FC` | colour, its own ROM pair | `02` | `IBM-3477-FC` | - |
 | 3486 | `3486-BA` (default) | monochrome | `42` | `IBM-5251-11` | green, amber, paper-white |
 | 3487 | `3487-HG` (default) | monochrome | `4A` | `IBM-5251-11` | green, amber, paper-white |
 | 3487 | `3487-HC` | colour | `4C` | `IBM-3179-2` | - |
@@ -43,12 +43,31 @@ without further changes.
 - `3477-FG`: FG is the green 3477 (documented: the TN5250 type
   `IBM-3477-FG`). The firmware's own VPD suffix for the straps used is
   `FE0` (observed); which real tube `FE` is has not been established.
-- `3477-FC`: a **stand-in**. This ROM cannot identify as colour (observed,
-  docs/bringup-3477.md), so the unit runs as the monochrome one, and only
-  the host (terminal type `IBM-3477-FC`) and the picture treat it as
-  colour. It is to be replaced by the colour 3477's own ROM.
+- `3477-FC`: the colour 3477, which runs its own firmware
+  (`65f2995.bin`, `65f2996.bin`) and reports `FC0`, model ID `50`
+  (observed, docs/bringup-3477.md).
 - `3486-BA`: the firmware reports `BA0` for these straps (observed).
 - `3487-HG`, `3487-HC`: the firmware's `HG0`/`HA0` and `HC0` (observed).
+
+## A variant can have its own firmware
+
+Variants of a model normally share its ROM set (`ModelInfo::roms`). One
+that runs other firmware names its own (`ModelVariant::roms`); the 3477 is
+the case: each of its two ROM pairs accepts only its own monitor, so
+`3477-FG` and `3477-FC` are different images on the same board.
+
+- ROM checks, `--check-roms`, the ROM dialogs and the terminal type lists
+  work per variant: with only one pair present, the other variant is shown
+  as needing its ROM images, and a bare `--model 3477` in a front end
+  starts the variant that can run.
+- Saved state follows the firmware (`Model::storage_name`): variants that
+  share the model's ROM set share `<model>.nvram` and `<model>.eeprom`;
+  one with its own firmware has `<variant>.nvram` (`3477-FC.nvram`),
+  because each firmware keeps the setup in its own format (observed: the
+  colour 3477 resets a setup saved by the monochrome one).
+- Where the board behaves differently for such a variant, the model picks
+  another description of the same part (`kDisplayLayout3477Colour` in
+  `src/models/board_3477.hpp`); it is still one model class.
 
 ## Selecting
 

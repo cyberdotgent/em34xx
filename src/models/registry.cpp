@@ -27,6 +27,15 @@ const ModelVariant& Model::variant_for(const TerminalOptions& options) const {
     return default_variant();
 }
 
+const ModelVariant& Model::variant_named(const std::string& id) const {
+    if (const ModelVariant* v = id.empty() ? nullptr : find_variant(id)) return *v;
+    return default_variant();
+}
+
+std::string Model::storage_name(const ModelVariant& variant) const {
+    return variant.roms.empty() ? info().name : variant.id;
+}
+
 const ModelVariant* Model::variant_with_colour(bool colour) const {
     for (const ModelVariant& v : info().variants)
         if (v.colour == colour) return &v;

@@ -165,6 +165,7 @@ std::vector<std::string> tls_version_items(const std::string& first) {
   @public
     const UserDirs* _dirs;
     const Model* _required;
+    const ModelVariant* _requiredVariant;
     bool _needAny;
     std::vector<RomStatusRow> _rows;
     NSPanel* _panel;
@@ -175,7 +176,7 @@ std::vector<std::string> tls_version_items(const std::string& first) {
 - (void)build {
     _panel = make_panel(@"ROM Images", NSMakeSize(680, 380));
     NSString* intro =
-        _required && !model_roms_ready(*_required, _dirs->roms())
+        _required && !model_roms_ready(*_required, _dirs->roms(), _requiredVariant)
             ? @"The ROM images the terminal needs are missing or damaged. Import them to continue: choose the "
               @"files, or drop them on the list. Images are recognised by their SHA-256 and stored under the "
               @"names the emulator expects."
@@ -230,8 +231,16 @@ std::vector<std::string> tls_version_items(const std::string& first) {
     select_row(_table, std::min<NSInteger>(keep, NSInteger(_rows.size()) - 1));
     std::string summary;
     for (const Model* m : runnable_models()) {
-        const bool ready = model_roms_ready(*m, _dirs->roms());
-        summary += "IBM " + m->info().name + ": " + (ready ? "ready to run. " : "ROM images missing or damaged. ");
+        // A variant with firmware of its own is a line of its own.
+        bool shared = false;
+        for (const ModelVariant& v : m->info().variants) shared = shared || v.roms.empty();
+        for (const ModelVariant& v : m->info().variants) {
+            if (v.roms.empty() && !shared) continue;
+            const bool ready = model_roms_ready(*m, _dirs->roms(), &v);
+            summary += "IBM " + (v.roms.empty() ? m->info().name : v.id) + ": " +
+                       (ready ? "ready to run. " : "ROM images missing or damaged. ");
+            if (v.roms.empty()) shared = false;   // one line for the variants that share the model's set
+        }
     }
     _summary.stringValue = ns(trim(summary));
 }
@@ -358,29 +367,30 @@ std::vector<std::string> tls_version_items(const std::string& first) {
 @end
 
 bool em34xx::cocoa::rom_manager_dialog(NSWindow* parent, const UserDirs& dirs, const Model* required,
-                                       bool need_any) {
+                                       bool need_any, const ModelVariant* required_variant) {
     EMRomController* c = [EMRomController new];
     c->_dirs = &dirs;
     c->_required = required;
+    c->_requiredVariant = required_variant;
     c->_needAny = need_any;
     [c build];
     run_sheet(c->_panel, parent);
-    if (required) return model_roms_ready(*required, dirs.roms());
+    if (required) return model_roms_ready(*required, dirs.roms(), required_variant);
     return !need_any || !ready_models(dirs.roms()).empty();
 }
 
 bool em34xx::cocoa::ensure_model_roms(NSWindow* parent, const UserDirs& dirs, const Model& model,
-                                      const std::string& what) {
-    if (model_roms_ready(model, dirs.roms())) return true;
-    const std::string name = "IBM " + model.info().name;
+                                      const std::string& what, const ModelVariant* variant) {
+    if (model_roms_ready(model, dirs.roms(), variant)) return true;
+    const std::string name = "IBM " + (variant ? variant->id : model.info().name);
     const std::string message =
         (what.empty() ? "The " + name + " needs" : what + " is for the " + name + ", which needs") +
         " ROM images that are not in the ROM folder.";
-    const std::string detail = unusable_roms_text(model, dirs.roms()) +
+    const std::string detail = unusable_roms_text(model, dirs.roms(), variant) +
                                "\nThe emulator runs the terminal's own firmware and does not include it. "
                                "Import the missing images to use this terminal.";
     if (!ask(parent, message, detail, "Import…", "Not Now", NSAlertStyleWarning)) return false;
-    return rom_manager_dialog(parent, dirs, &model);
+    return rom_manager_dialog(parent, dirs, &model, false, variant);
 }
 
 // ===========================================================================
@@ -803,15 +813,15 @@ std::string tls_summary(const Profile& p, const AppSettings& s) {
     NSInteger sel = 0;
     bool lacking = false;
     for (const Model* m : runnable_models()) {
-        const bool ready = model_roms_ready(*m, _dirs->roms());
         for (const ModelVariant& v : m->info().variants) {
+            const bool ready = model_roms_ready(*m, _dirs->roms(), &v);
             NSMenuItem* item = [[NSMenuItem alloc]
                 initWithTitle:ns("IBM " + v.id + " (" + v.description + (ready ? ")" : ", ROM images needed)"))
                        action:nil
                 keyEquivalent:@""];
             item.enabled = ready;
             if (!ready) {
-                item.toolTip = ns("Needs " + trim(unusable_roms_text(*m, _dirs->roms())));
+                item.toolTip = ns("Needs " + trim(unusable_roms_text(*m, _dirs->roms(), &v)));
                 lacking = true;
             }
             [_model.menu addItem:item];
@@ -1169,7 +1179,11 @@ bool em34xx::cocoa::profile_editor_dialog(NSWindow* parent, Profile& p, ProfileE
         }
         Profile p;
         // A new profile is for a terminal that can run.
-        if (const Model* m = choose_start_model(p.model, _dirs->roms()).model) p.model = m->info().name;
+        const StartModel start = choose_start_model(p.model, _dirs->roms());
+        if (start.model) {
+            p.model = start.model->info().name;
+            if (start.variant) p.variant = start.variant->id;
+        }
         if (!profile_editor_dialog(_panel, p, ProfileEditMode::Save, *_s, *_dirs, "New Profile: " + name)) return;
         std::string error;
         if (!save_profile(_dirs->profile_path(name), p, error)) error_alert(_panel, "Cannot save the profile", error);

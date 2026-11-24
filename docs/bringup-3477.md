@@ -115,6 +115,52 @@ family (FD/FE/FW). The 14" models, colour included, presumably ran a
 different POST ROM, whose decoder maps other strap codes to types 1, 2 and 6
 (hypothesis).
 
+### The colour unit's firmware (`65f2995.bin`, `65f2996.bin`)
+
+That different ROM exists: a pair dumped from a colour 3477 (roms/ROMS.md),
+which the variant `3477-FC` runs on the same board model. Observed with it:
+
+- **Straps.** It reads `2000A` bits 3-1 like the other pair but accepts
+  only `001` (byte `02`), which gives display type 6; any other code makes
+  POST sound the alarm for ever with the picture off. The monochrome pair
+  rejects `02`. The straps are therefore the monitor's sense lines: the
+  tube tells the logic board what it is (documented for the connector:
+  three sense pins with pull-ups, two of them grounded by the colour
+  monitor, flatpack.microwavepizza.co.uk InfoWindow notes).
+- **Picture on.** It keeps `20128` bit 4 clear and writes the register
+  with bit 6 once a screen is ready (`40` in the display test, `C0` in
+  use), as the 3486 family's firmware does. The colour unit's display
+  description takes bit 6 as "picture on" (hypothesis); the monochrome
+  unit's keeps bit 4.
+- **Display test.** Unlike the monochrome pair's type 6 path (no
+  measurements), this firmware measures eight signatures. The values it
+  accepts are, in order: selector 1, 2 and 3 on the first screen `0`, `2`,
+  `2`; the second screen selector 1 `0` and selector 0 non-zero; then `6`
+  (selector 3), `D` and `7` (selector 1) on three more screens. These equal
+  the 3487 colour unit's values for the corresponding screens, which
+  supports one signature function for both families (hypothesis). The
+  temporary shim has entries for them.
+- **Cells.** The 24x80 format has 12-dot cells (the monochrome unit's are
+  16 dots wide).
+- **Keyboard.** After the handshake it sends its echo (`EE`) by writing
+  `20012` while the line is already released (`20013` = `02`) and waits
+  for the answer; the monochrome firmware holds the line (`03`), writes
+  and releases. The keyboard interface sends a byte written in either
+  state. Without that the colour unit shows a keyboard error (`K` in the
+  status line) and resets the keyboard on every key.
+- **Setup.** Its setup block is not the monochrome firmware's: given a
+  battery-backed RAM image saved by the other pair it resets the
+  selections. The emulator keeps `3477-FC.nvram` apart from `3477.nvram`.
+- **On line.** With a station address chosen in Offline Setup it answers
+  the controller as model ID `50` (`ID C2, model 50 (3477), 27x132`) and
+  shows a TN5250 host's sign-on screen in colour.
+
+Untested on this firmware: the second session, printer sessions, 27x132
+and 43x80 pictures, the alarm, and everything listed as open for the
+monochrome unit.
+
+### Earlier experiment on the monochrome pair
+
 Forcing type 6 in RAM after the decoder ran (a private experiment, not an
 emulator setting) brings the station on line with model ID `50` under
 `--twinax-host wsc`. The screen is then blank, because colour mode leaves
@@ -130,7 +176,7 @@ Straps per variant (docs/models.md):
 | Variant | Straps | Reported model, 8C / Read Info ECB | Status |
 | --- | --- | --- | --- |
 | `3477-FG`, any phosphor | `0C` (type 4) | `3477 FE0`, `24` / `C0` | hypothesis |
-| `3477-FC` (stand-in) | `0C` (type 4) | `3477 FE0`, `24` / `C0` | no colour type is reachable in this ROM (observed). Type 4 has the cell heights of the colour type. The emulator warns at start-up and renders the attributes in colour on a unit that identifies as monochrome |
+| `3477-FC` | `02` (type 6) | `3477 FC0`, `50` | observed with the colour unit's own ROM pair (see below) |
 
 The firmware's paper-white type (`0E`, type 5, `3477 FW0`; hypothesis: W =
 white) is not selected by any variant: paper-white is a phosphor of the

@@ -213,7 +213,7 @@ public:
         : InfoWindow2Board("3486", "IBM 3486 InfoWindow II",
                            {
                                // The firmware's VPD suffix for these straps is BA0 [observed].
-                               {"3486-BA", "monochrome", false, false, kDefaultStraps, "IBM-5251-11", tubes()},
+                               {"3486-BA", "monochrome", false, kDefaultStraps, "IBM-5251-11", tubes(), {}},
                            }) {}
 };
 
@@ -222,8 +222,8 @@ public:
     Model3487()
         : InfoWindow2Board("3487", "IBM 3487 InfoWindow II",
                            {
-                               {"3487-HG", "monochrome", false, false, kStraps3487Mono, "IBM-5251-11", tubes()},
-                               {"3487-HC", "colour", true, false, kStraps3487Colour, "IBM-3179-2", {}},
+                               {"3487-HG", "monochrome", false, kStraps3487Mono, "IBM-5251-11", tubes(), {}},
+                               {"3487-HC", "colour", true, kStraps3487Colour, "IBM-3179-2", {}, {}},
                            }) {}
 };
 

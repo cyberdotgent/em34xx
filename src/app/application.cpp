@@ -30,6 +30,11 @@ void list_models() {
             for (const Phosphor& p : v.phosphors) tubes += (tubes.empty() ? "" : ", ") + p.id;
             std::printf("         %-8s %s%s%s%s\n", v.id.c_str(), v.description.c_str(), tubes.empty() ? "" : "; phosphor ",
                         tubes.c_str(), &v == &i.variants.front() ? " (default)" : "");
+            if (!v.roms.empty()) {
+                std::string files;
+                for (const RomSpec& r : v.roms) files += (files.empty() ? "" : ", ") + r.file;
+                std::printf("                  own ROM images: %s\n", files.c_str());
+            }
         }
         for (const ModelOption& o : i.options)
             std::printf("         --set %s=%s  %s (default %s)\n", o.id.c_str(), o.default_on ? "off" : "on",
@@ -37,12 +42,12 @@ void list_models() {
     }
 }
 
-int check_roms(const Model& model, const AppConfig& cfg) {
+int check_roms(const Model& model, const ModelVariant& variant, const AppConfig& cfg) {
     const ModelInfo& info = model.info();
     std::vector<LoadedRom> roms;
     std::vector<std::string> warnings;
     std::string error;
-    const bool ok = load_roms(cfg.rom_dir, info.roms, info.known_bad_roms, true, roms, warnings, error);
+    const bool ok = load_roms(cfg.rom_dir, info.roms_of(variant), info.known_bad_roms, true, roms, warnings, error);
     if (!ok) {
         std::fprintf(stderr, "%s\n", error.c_str());
         return 1;
@@ -134,15 +139,15 @@ bool Application::configure(int argc, char** argv) {
     const ModelVariant* named = nullptr;
     if (!find_model_variant(cfg_.model, model_, named))
         return fail("unknown model or variant '" + cfg_.model + "' (see --list-models)");
-    if (cfg_.check_roms) {
-        exit_code_ = check_roms(*model_, cfg_);
-        return false;
-    }
     error = model_->can_build();
     if (!error.empty()) return fail(error);
     if (model_->info().status == ModelStatus::RomIncomplete && !cfg_.allow_bad_rom)
         return fail("model " + model_->info().name + " has no complete ROM dump yet; use --allow-bad-rom to try anyway");
     if (!select_variant(named, error)) return fail(error);
+    if (cfg_.check_roms) {
+        exit_code_ = check_roms(*model_, model_->variant_for(cfg_.terminal), cfg_);
+        return false;
+    }
     // Switches are the model's own: one it does not have does nothing.
     for (const auto& kv : cfg_.terminal.switches) {
         bool known = false;
@@ -218,7 +223,7 @@ std::unique_ptr<Machine> Application::make_machine(const Model& model, const Ter
     const ModelInfo& info = model.info();
     std::vector<LoadedRom> roms;
     std::vector<std::string> warnings;
-    if (!load_roms(cfg_.rom_dir, info.roms, info.known_bad_roms, cfg_.allow_bad_rom, roms, warnings, error))
+    if (!load_roms(cfg_.rom_dir, info.roms_of(model.variant_for(options)), info.known_bad_roms, cfg_.allow_bad_rom, roms, warnings, error))
         return nullptr;
     for (const std::string& w : warnings) LOG_WARN("rom", "%s", w.c_str());
 

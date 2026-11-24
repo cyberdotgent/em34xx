@@ -65,6 +65,12 @@ if(EXISTS "${PROJECT_SOURCE_DIR}/roms/95f4171.bin" AND EXISTS "${PROJECT_SOURCE_
                    --rc "${CMAKE_CURRENT_SOURCE_DIR}/rc/3477-smoke.rc")
   set_tests_properties(rom_3477_smoke PROPERTIES LABELS "rom")
 endif()
+if(EXISTS "${PROJECT_SOURCE_DIR}/roms/65f2995.bin" AND EXISTS "${PROJECT_SOURCE_DIR}/roms/65f2996.bin")
+  add_test(NAME rom_3477_fc_smoke
+           COMMAND em34xx-headless --model 3477-FC --rom-dir "${PROJECT_SOURCE_DIR}/roms" --batch
+                   --rc "${CMAKE_CURRENT_SOURCE_DIR}/rc/3477-fc-smoke.rc")
+  set_tests_properties(rom_3477_fc_smoke PROPERTIES LABELS "rom")
+endif()
 
 # TN5250 client (src/tn5250): negotiation, data stream, field editing.
 add_executable(em34xx_tn5250_tests

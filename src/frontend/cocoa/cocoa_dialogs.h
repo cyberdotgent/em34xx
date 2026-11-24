@@ -30,14 +30,18 @@ namespace cocoa {
 // `need_any`: no model can run yet and one must (first start). True when
 // `required` is ready at close; without one, when some model is ready
 // (need_any) or always.
-bool rom_manager_dialog(NSWindow* parent, const UserDirs& dirs, const Model* required, bool need_any = false);
+// `required_variant`: the variant of `required` about to run (null: any).
+bool rom_manager_dialog(NSWindow* parent, const UserDirs& dirs, const Model* required, bool need_any = false,
+                        const ModelVariant* required_variant = nullptr);
 
 // True when `model` has its ROM images. Otherwise a warning that names the
 // files it lacks ("`what` is for the IBM 3487, which needs ROM images that
 // are not in the ROM folder"; what = "": "The IBM 3487 needs ...") and
 // offers to import them in the ROM dialog; true when they are there
 // afterwards.
-bool ensure_model_roms(NSWindow* parent, const UserDirs& dirs, const Model& model, const std::string& what);
+// `variant`: the variant to run (null: any variant of the model will do).
+bool ensure_model_roms(NSWindow* parent, const UserDirs& dirs, const Model& model, const std::string& what,
+                       const ModelVariant* variant = nullptr);
 
 // em34xx > Settings: startup profile, speed, default TLS minimum, ROM
 // images, the user folder. Changes apply at once: `settings` is updated and

@@ -1086,7 +1086,7 @@ static NSToolbarItemIdentifier const kTbTermKeys = @"termkeys";
         error_alert(_win, what + " is for the IBM " + p.model + ".", "This version of em34xx cannot emulate it.");
         return nullptr;
     }
-    return ensure_model_roms(_win, [self dirs], *model, what) ? model : nullptr;
+    return ensure_model_roms(_win, [self dirs], *model, what, &model->variant_named(p.variant)) ? model : nullptr;
 }
 
 // Restart the emulator as the profile's model when it is another one:
@@ -1104,8 +1104,10 @@ static NSToolbarItemIdentifier const kTbTermKeys = @"termkeys";
     TerminalOptions options = _emu->with_machine([](Machine& m) { return m.options(); });
     options.variant = want.variant;
     options.phosphor = want.phosphor;
-    options.nvram_path = [self dirs].nvram_file(model->info().name);
-    options.eeprom_path = [self dirs].eeprom_file(model->info().name);
+    // A variant with its own firmware keeps its own (Model::storage_name).
+    const std::string stored_as = model->storage_name(model->variant_named(want.variant));
+    options.nvram_path = [self dirs].nvram_file(stored_as);
+    options.eeprom_path = [self dirs].eeprom_file(stored_as);
     std::string error;
     bool ok = false;
     {
@@ -1783,11 +1785,14 @@ void CocoaFrontend::changed() {
     // model without its images: say which files, offer to import them, and
     // otherwise start without that profile.
     const std::string roms = L.dirs->roms();
-    StartModel choice = choose_start_model(start_name.empty() ? std::string() : start.model, roms);
+    // What the profile asks for: its variant, else its model.
+    const std::string wanted = start.variant.empty() ? start.model : start.variant;
+    StartModel choice = choose_start_model(start_name.empty() ? std::string() : wanted, roms);
     bool declined = false;
     if (choice.wanted_unready) {
-        declined = !ensure_model_roms(nil, *L.dirs, *choice.wanted_unready, "The profile \"" + start_name + "\"");
-        choice = choose_start_model(start.model, roms);
+        declined = !ensure_model_roms(nil, *L.dirs, *choice.wanted_unready, "The profile \"" + start_name + "\"",
+                                      choice.wanted_variant);
+        choice = choose_start_model(wanted, roms);
         if (declined) {
             if (from_pending) _pendingProfiles.erase(_pendingProfiles.begin());
             else _skipStartupProfile = true;
@@ -1796,7 +1801,7 @@ void CocoaFrontend::changed() {
     }
     // First start (or ROMs gone): the ROM dialog, until one model can run.
     if (!choice.model && !declined && rom_manager_dialog(nil, *L.dirs, nullptr, true))
-        choice = choose_start_model(start_name.empty() ? std::string() : start.model, roms);
+        choice = choose_start_model(start_name.empty() ? std::string() : wanted, roms);
     if (!choice.model) {
         [self fail:"em34xx needs the ROM images of at least one terminal model to start."
             detail:"Import them when you start em34xx again."
@@ -1833,17 +1838,22 @@ void CocoaFrontend::changed() {
     Launch& L = *_launch;
     // The profile's model when it can run now, else the one the app
     // started as (the profile's own model is asked for when it connects).
+    // Likewise the variant: the profile's when its images are there, else
+    // the model's first variant that can run.
     const Model* model = _model;
-    for (const Model* m : ready_models(L.dirs->roms()))
-        if (m->info().name == start.model) model = m;
+    const ModelVariant* variant = nullptr;
+    const StartModel pick = choose_start_model(start.variant.empty() ? start.model : start.variant, L.dirs->roms());
+    if (pick.model && pick.model->info().name == start.model) {
+        model = pick.model;
+        variant = pick.variant;
+    }
+    if (!variant) variant = first_ready_variant(*model, L.dirs->roms());
+    if (!variant) variant = &model->default_variant();
+    const std::string stored_as = model->storage_name(*variant);
     const char* log_env = std::getenv("EM34XX_LOG");
     std::vector<std::string> args = {"em34xx",
                                      "--model",
-                                     // The profile's variant of the model that starts;
-                                     // without one, the model's first.
-                                     start.model == model->info().name && !start.variant.empty()
-                                         ? start.variant
-                                         : model->info().name,
+                                     variant->id,
                                      "--rom-dir",
                                      L.dirs->roms(),
                                      "--speed",
@@ -1853,10 +1863,10 @@ void CocoaFrontend::changed() {
                                      // Every terminal of a model shares its battery-backed RAM
                                      // file, as em34xxw instances do (docs/frontend-cocoa.md).
                                      "--nvram",
-                                     L.dirs->nvram_file(model->info().name),
+                                     L.dirs->nvram_file(stored_as),
                                      // The setup EEPROM (monitor alignment values), likewise.
                                      "--eeprom",
-                                     L.dirs->eeprom_file(model->info().name),
+                                     L.dirs->eeprom_file(stored_as),
                                      // An end-user build keeps running on an access the model
                                      // does not decode (the default, stop, is for the debugger).
                                      "--unmapped",
@@ -1877,7 +1887,7 @@ void CocoaFrontend::changed() {
         args.push_back(log_file);
     }
     if (!start.crt) args.push_back("--no-crt");
-    if (start.model == model->info().name && !start.phosphor.empty()) {
+    if (start.model == model->info().name && !start.phosphor.empty() && variant->phosphor(start.phosphor)) {
         args.push_back("--phosphor");
         args.push_back(start.phosphor);
     }
@@ -1923,7 +1933,9 @@ void CocoaFrontend::changed() {
                     "This version of em34xx cannot emulate it.");
         return nullptr;
     }
-    return ensure_model_roms([self dialogParent], *_launch->dirs, *model, what) ? model : nullptr;
+    return ensure_model_roms([self dialogParent], *_launch->dirs, *model, what, &model->variant_named(p.variant))
+               ? model
+               : nullptr;
 }
 
 - (EMMainController*)frontTerminal {

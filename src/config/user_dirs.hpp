@@ -22,6 +22,7 @@
 namespace em34xx {
 
 class Model;
+struct ModelVariant;
 
 class UserDirs {
 public:
@@ -82,30 +83,40 @@ struct RomStatusRow {
 };
 // Every model's ROMs (placeholders without ROM specs have none).
 std::vector<RomStatusRow> rom_status(const std::string& rom_dir);
-// Whether every ROM `model` needs is present and loadable.
-bool model_roms_ready(const Model& model, const std::string& rom_dir);
-// The models that can run now: runnable_models() whose ROMs are all there.
-// A front end needs one of them to start; the others stay selectable once
-// their images are imported.
+// Whether every ROM image `variant` of `model` needs is present and
+// loadable; without a variant, whether any variant's are.
+bool model_roms_ready(const Model& model, const std::string& rom_dir, const ModelVariant* variant = nullptr);
+// The first variant of `model` whose images are all there; null when none.
+const ModelVariant* first_ready_variant(const Model& model, const std::string& rom_dir);
+// The models that can run now: runnable_models() with a variant whose ROMs
+// are all there. A front end needs one of them to start; the others stay
+// selectable once their images are imported.
 std::vector<const Model*> ready_models(const std::string& rom_dir);
-// The ROMs `model` needs and cannot load from rom_dir (missing, unreadable,
-// wrong size, known bad); empty when it is ready.
-std::vector<RomStatusRow> unusable_roms(const Model& model, const std::string& rom_dir);
+// The ROMs `variant` needs and cannot load from rom_dir (missing,
+// unreadable, wrong size, known bad); empty when it is ready. Without a
+// variant: empty when any variant is ready, else the model's first variant's.
+std::vector<RomStatusRow> unusable_roms(const Model& model, const std::string& rom_dir,
+                                        const ModelVariant* variant = nullptr);
 // The same as text for a message, one line per image:
 // "54g0010.bin - system ROM (80000-FFFFF, reset vector): missing".
-std::string unusable_roms_text(const Model& model, const std::string& rom_dir);
+std::string unusable_roms_text(const Model& model, const std::string& rom_dir, const ModelVariant* variant = nullptr);
 
 // Which terminal a front end starts as.
 struct StartModel {
-    // The model to run: the wanted one when it is ready, else the first
-    // ready model; null when no model has its ROMs.
+    // The model and variant to run: the wanted ones when their ROMs are
+    // there, else the first model and variant that are ready; null when no
+    // model has its ROMs.
     const Model* model = nullptr;
-    // The wanted model when it is a runnable model whose ROMs are not all
-    // there (the user is told which files and may import them); else null.
+    const ModelVariant* variant = nullptr;
+    // The wanted model and variant when it is a runnable model whose ROMs
+    // are not all there (the user is told which files and may import them);
+    // else null.
     const Model* wanted_unready = nullptr;
+    const ModelVariant* wanted_variant = nullptr;
 };
-// `wanted`: the model a profile asks for ("" or an unknown or not yet
-// runnable name: no preference).
+// `wanted`: the variant id or model name a profile asks for ("" or an
+// unknown or not yet runnable name: no preference). A bare model name is
+// satisfied by any of its variants.
 StartModel choose_start_model(const std::string& wanted, const std::string& rom_dir);
 
 } // namespace em34xx

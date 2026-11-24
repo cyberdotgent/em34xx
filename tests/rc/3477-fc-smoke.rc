@@ -1,0 +1,25 @@
+# Smoke test for the colour 3477's ROM set (variant 3477-FC) with the
+# modelled hardware (no forced results, apart from the temporary
+# display-test shim). Hardware-visible progress only.
+assert pc==ffff0 "reset vector"
+step
+assert cs==f000 "far jump into the F000 segment"
+assert byte[2000a]==02 "the colour monitor's sense code"
+speed max
+# This firmware accepts no other code; POST passes its display test (which
+# also measures on the colour unit) and, with no saved setup, ends in
+# Offline Setup with the picture on (20128 bit 6).
+run #40000000
+assert byte[20010]!=9b "no alarm: POST passed the strap and display tests"
+assert word[20130]==4200 "main window at C200"
+assert (byte[20128]&40)!=0 "picture on"
+assert byte[c257]==d6&&byte[c25a]==86&&byte[c25d]==86 "row 0 shows 'Off(line Setup)' in EBCDIC"
+# The keyboard: the firmware's echo (written with the line released) is
+# answered, so Enter is taken and opens "Customize workstation".
+key rctrl
+run #20000000
+assert byte[c257]!=d6 "Enter left the Offline Setup menu"
+assert byte[20010]!=9b "no alarm"
+unmapped
+info
+quit

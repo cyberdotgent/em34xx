@@ -45,12 +45,12 @@ struct ModelVariant {
     std::string id;            // "3477-FG": shown, and stored in configuration files
     std::string description;   // "monochrome"
     bool colour = false;       // the host may send colour, and the picture is in colour
-    // A stand-in until the real unit can be emulated (its ROM is missing):
-    // see the model's notes. Front ends may say so.
-    bool stub = false;
     uint8_t straps = 0;        // configuration strap byte the firmware reads
     std::string tn5250_type;   // RFC 1205 terminal type announced to a TN5250 host
     std::vector<Phosphor> phosphors;   // tubes a monochrome variant offers, default first; empty for colour
+    // The firmware of this variant when it has its own (a colour unit with
+    // other ROMs than the monochrome one); empty = the model's (ModelInfo::roms).
+    std::vector<RomSpec> roms;
 
     // The phosphor with this id, or the first one ("" and unknown ids);
     // null for a colour variant.
@@ -84,7 +84,11 @@ struct ModelInfo {
     // The state of a declared switch: what `switches` says, else its default;
     // false for one the model does not declare.
     bool option_on(const std::string& id, const std::map<std::string, bool>& switches) const;
-    std::vector<RomSpec> roms;
+    std::vector<RomSpec> roms;   // the firmware of every variant that names none of its own
+    // The images `variant` runs.
+    const std::vector<RomSpec>& roms_of(const ModelVariant& variant) const {
+        return variant.roms.empty() ? roms : variant.roms;
+    }
     std::vector<KnownBadRom> known_bad_roms;
     std::vector<std::string> notes;  // hypotheses and open questions
 };

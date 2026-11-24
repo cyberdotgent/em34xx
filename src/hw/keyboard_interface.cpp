@@ -67,6 +67,16 @@ void KeyboardInterface::write(unsigned reg, uint8_t v) {
         tx_ = v;
         tx_loaded_ = true;
         wrap_clocks_ = 0;
+        if ((ctl_ & 3) == kClock && !tx_left_) {
+            // Written with the line already released: the byte goes out at
+            // once [observed: the colour 3477's firmware sends its echo
+            // (EE) this way and waits for the answer; the monochrome
+            // firmware holds the line first]. A keyboard transmission in
+            // progress is abandoned and retried.
+            tx_loaded_ = false;
+            tx_left_ = byte_cycles_ ? byte_cycles_ : 1;
+            rx_active_ = false;
+        }
         break;
     case 1: {
         const uint8_t old = ctl_;

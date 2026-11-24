@@ -326,7 +326,7 @@ never polls them.
 ### Connecting at run time
 
 The monitor's `connect` command attaches the bridge while the emulator runs,
-for example with `build/debug/em34xx --model 3477 --color` and no host
+for example with `build/debug/em34xx --model 3477-FC` and no host
 options:
 
 ```

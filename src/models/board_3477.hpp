@@ -18,6 +18,11 @@ constexpr uint8_t kStraps3477Mono = 0x0C;
 // tube is a phosphor of the monochrome unit); reachable with --straps 0E.
 constexpr uint8_t kStraps3477PaperWhite = 0x0E;
 
+// The colour monitor's sense code: the only one the colour unit's firmware
+// accepts (display type 6, FC0) [observed]. The monochrome firmware
+// rejects it.
+constexpr uint8_t kStraps3477Colour = 0x02;
+
 // Station channels of the link engine.
 constexpr unsigned kLinkChannels3477 = 2;
 
@@ -41,6 +46,20 @@ constexpr DisplayLayout kDisplayLayout3477 = {
     {0x28, 0x80},   // cursor_on
     false,          // half_dot_stretch: its strokes are two dots wide in the generator
     0,              // beam_reference_dots: the spread was tuned per dot on this tube
+};
+
+// The colour unit: the same controller, but its firmware keeps 20128 bit 4
+// clear and writes the register with bit 6 once a screen is ready (40 in
+// the display test, C0 in use) [observed], as the 3486 family's does. Bit 6
+// stands in for "picture on" [hypothesis].
+constexpr DisplayLayout kDisplayLayout3477Colour = {
+    90,             // retrace_divisor
+    {0x28, 0x00},   // sync_invert: none
+    5,              // signature_selector_shift
+    {0x28, 0x40},   // video_on
+    {0x28, 0x80},   // cursor_on
+    false,          // half_dot_stretch
+    0,              // beam_reference_dots
 };
 
 } // namespace em34xx

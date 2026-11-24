@@ -472,6 +472,16 @@ constexpr VdoShimEntry kVdoShimTable[] = {
     {1, 0xF93F87A0C99CE579ULL, 0xD, "3487 type 6, test step 68"},
     {1, 0x1DA06DE3C68A2052ULL, 0x7, "3487 type 6, test step 67"},
     {1, 0x82D25E4F809D9DEEULL, 0xA, "3487 type 6, test step 66"},
+    // The colour 3477 (type 6): the values its display test accepts, in
+    // the order it measures. They equal the 3487 colour unit's for the
+    // corresponding screens.
+    {1, 0x435A124BA0C88369ULL, 0x0, "3477 type 6, 24x80 corner cells"},
+    {2, 0x435A124BA0C88369ULL, 0x2, "3477 type 6, 24x80 corner cells"},
+    {3, 0x435A124BA0C88369ULL, 0x2, "3477 type 6, 24x80 corner cells"},
+    {1, 0x4FD934339AFE316BULL, 0x0, "3477 type 6, second screen"},
+    {3, 0x73EAD52D49223EAEULL, 0x6, "3477 type 6, third screen"},
+    {1, 0x274AD2C3BE0853E9ULL, 0xD, "3477 type 6, fourth screen"},
+    {1, 0x86CF80956AF7D2FBULL, 0x7, "3477 type 6, fifth screen"},
 };
 
 constexpr uint64_t kFnvOffset = 0xCBF29CE484222325ull;

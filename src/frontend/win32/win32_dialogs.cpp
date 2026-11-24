@@ -132,6 +132,7 @@ struct RomDlg {
     const Model* required;
     bool need_any;
     std::vector<RomStatusRow> rows;
+    const ModelVariant* required_variant = nullptr;
 };
 
 void rom_fill(HWND dlg, RomDlg& d) {
@@ -157,8 +158,16 @@ void rom_fill(HWND dlg, RomDlg& d) {
     lv_select(lv, std::min(keep, row - 1));
     std::string summary;
     for (const Model* m : runnable_models()) {
-        const bool ready = model_roms_ready(*m, d.dirs->roms());
-        summary += "IBM " + m->info().name + ": " + (ready ? "ready to run. " : "ROM images missing or damaged. ");
+        // A variant with firmware of its own is a line of its own.
+        bool shared = false;
+        for (const ModelVariant& v : m->info().variants) shared = shared || v.roms.empty();
+        for (const ModelVariant& v : m->info().variants) {
+            if (v.roms.empty() && !shared) continue;
+            const bool ready = model_roms_ready(*m, d.dirs->roms(), &v);
+            summary += "IBM " + (v.roms.empty() ? m->info().name : v.id) + ": " +
+                       (ready ? "ready to run. " : "ROM images missing or damaged. ");
+            if (v.roms.empty()) shared = false;   // one line for the variants that share the model's set
+        }
     }
     set_text(dlg, IDC_ROM_SUMMARY, summary);
 }
@@ -174,7 +183,7 @@ INT_PTR CALLBACK rom_proc(HWND dlg, UINT msg, WPARAM wp, LPARAM lp) {
         lv_add_column(lv, 2, L"ROM", dlu_x(dlg, 130));
         lv_add_column(lv, 3, L"Status", dlu_x(dlg, 110));
         set_text(dlg, IDC_ROM_FOLDER, d->dirs->roms());
-        if (d->required && !model_roms_ready(*d->required, d->dirs->roms()))
+        if (d->required && !model_roms_ready(*d->required, d->dirs->roms(), d->required_variant))
             SetDlgItemTextW(dlg, IDC_STATIC_TEXT, load_string(IDS_ROMS_MISSING).c_str());
         else if (d->need_any && ready_models(d->dirs->roms()).empty())
             SetDlgItemTextW(dlg, IDC_STATIC_TEXT, load_string(IDS_ROMS_NONE).c_str());
@@ -226,24 +235,26 @@ INT_PTR CALLBACK rom_proc(HWND dlg, UINT msg, WPARAM wp, LPARAM lp) {
 
 } // namespace
 
-bool rom_manager_dialog(HWND owner, const UserDirs& dirs, const Model* required, bool need_any) {
-    RomDlg d{&dirs, required, need_any, {}};
+bool rom_manager_dialog(HWND owner, const UserDirs& dirs, const Model* required, bool need_any,
+                        const ModelVariant* required_variant) {
+    RomDlg d{&dirs, required, need_any, {}, required_variant};
     DialogBoxParamW(instance(), MAKEINTRESOURCEW(IDD_ROMS), owner, guarded_dialog<rom_proc>,
                     reinterpret_cast<LPARAM>(&d));
-    if (required) return model_roms_ready(*required, dirs.roms());
+    if (required) return model_roms_ready(*required, dirs.roms(), required_variant);
     return !need_any || !ready_models(dirs.roms()).empty();
 }
 
-bool ensure_model_roms(HWND owner, const UserDirs& dirs, const Model& model, const std::string& what) {
-    if (model_roms_ready(model, dirs.roms())) return true;
-    const std::string name = "IBM " + model.info().name;
+bool ensure_model_roms(HWND owner, const UserDirs& dirs, const Model& model, const std::string& what,
+                       const ModelVariant* variant) {
+    if (model_roms_ready(model, dirs.roms(), variant)) return true;
+    const std::string name = "IBM " + (variant ? variant->id : model.info().name);
     const std::string text = (what.empty() ? "The " + name + " needs" : what + " is for the " + name + ", which needs") +
                              " ROM images that are not in the ROM folder:\n\n" +
-                             unusable_roms_text(model, dirs.roms()) +
+                             unusable_roms_text(model, dirs.roms(), variant) +
                              "\nThe emulator runs the terminal's own firmware and does not include it. "
                              "Import the missing images now?";
     if (message_box(owner, text, MB_YESNO | MB_ICONWARNING) != IDYES) return false;
-    return rom_manager_dialog(owner, dirs, &model);
+    return rom_manager_dialog(owner, dirs, &model, false, variant);
 }
 
 // ---------------------------------------------------------------------------
@@ -590,8 +601,8 @@ void profile_fill_models(HWND dlg, ProfileDlg& d, const std::string& select) {
     d.choices.clear();
     int sel = 0;
     for (const Model* m : runnable_models()) {
-        const bool ready = model_roms_ready(*m, d.dirs->roms());
         for (const ModelVariant& v : m->info().variants) {
+            const bool ready = model_roms_ready(*m, d.dirs->roms(), &v);
             combo_add(dlg, IDC_PE_MODEL,
                       "IBM " + v.id + " (" + v.description + (ready ? ")" : ", ROM images needed)"));
             if (v.id == select) sel = int(d.choices.size());
@@ -767,7 +778,7 @@ INT_PTR CALLBACK profile_proc(HWND dlg, UINT msg, WPARAM wp, LPARAM lp) {
                 return TRUE;
             }
             const std::string back = d->choices[size_t(d->model_sel)].variant->id;
-            const bool ok = ensure_model_roms(dlg, *d->dirs, *choice.model, "");
+            const bool ok = ensure_model_roms(dlg, *d->dirs, *choice.model, "", choice.variant);
             profile_fill_models(dlg, *d, ok ? choice.variant->id : back);   // an import can ready several models
             profile_fill_phosphors(dlg, *d, tube);
             d->p.phosphor = profile_phosphor(dlg, *d);
@@ -885,7 +896,11 @@ INT_PTR CALLBACK manager_proc(HWND dlg, UINT msg, WPARAM wp, LPARAM lp) {
             }
             Profile p;
             // A new profile is for a terminal that can run.
-            if (const Model* m = choose_start_model(p.model, d->dirs->roms()).model) p.model = m->info().name;
+            const StartModel start = choose_start_model(p.model, d->dirs->roms());
+            if (start.model) {
+                p.model = start.model->info().name;
+                if (start.variant) p.variant = start.variant->id;
+            }
             if (!profile_editor_dialog(dlg, p, ProfileEditMode::Save, *d->s, *d->dirs, "New Profile: " + name)) return TRUE;
             if (!save_profile(d->dirs->profile_path(name), p, error)) error_box(dlg, error);
             manager_fill(dlg, *d, name);

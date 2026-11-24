@@ -900,7 +900,7 @@ const Model* Win32Frontend::profile_model(const Profile& p, const std::string& w
         error_box(h, what + " is for the IBM " + p.model + ", which this version of em34xx cannot emulate.");
         return nullptr;
     }
-    return ensure_model_roms(h, dirs(), *model, what) ? model : nullptr;
+    return ensure_model_roms(h, dirs(), *model, what, &model->variant_named(p.variant)) ? model : nullptr;
 }
 
 Win32Frontend::ModelSwitch Win32Frontend::switch_model(const Profile& p) {
@@ -917,8 +917,10 @@ Win32Frontend::ModelSwitch Win32Frontend::switch_model(const Profile& p) {
     TerminalOptions options = emu_->with_machine([](Machine& m) { return m.options(); });
     options.variant = want.variant;
     options.phosphor = want.phosphor;
-    options.nvram_path = runtime_path(dirs().nvram_file(model->info().name));
-    options.eeprom_path = runtime_path(dirs().eeprom_file(model->info().name));
+    // A variant with its own firmware keeps its own (Model::storage_name).
+    const std::string stored_as = model->storage_name(model->variant_named(want.variant));
+    options.nvram_path = runtime_path(dirs().nvram_file(stored_as));
+    options.eeprom_path = runtime_path(dirs().eeprom_file(stored_as));
     std::string error;
     bool ok = false;
     {
@@ -1699,12 +1701,14 @@ bool win32_prepare(Win32Launch& launch) {
     // model without its images: say which files, offer to import them, and
     // otherwise start without the profile.
     const std::string roms = launch.dirs->roms();
-    StartModel choice = choose_start_model(start_name.empty() ? std::string() : start.model, roms);
+    // What the profile asks for: its variant, else its model.
+    const std::string wanted = start.variant.empty() ? start.model : start.variant;
+    StartModel choice = choose_start_model(start_name.empty() ? std::string() : wanted, roms);
     bool declined = false;
     if (choice.wanted_unready) {
         declined = !win32::ensure_model_roms(nullptr, *launch.dirs, *choice.wanted_unready,
-                                             "The profile \"" + start_name + "\"");
-        choice = choose_start_model(start.model, roms);
+                                             "The profile \"" + start_name + "\"", choice.wanted_variant);
+        choice = choose_start_model(wanted, roms);
         if (declined) {
             launch.skip_start_profile = true;
             start = Profile();
@@ -1712,7 +1716,7 @@ bool win32_prepare(Win32Launch& launch) {
     }
     // First start (or ROMs gone): the ROM manager, until one model can run.
     if (!choice.model && !declined && win32::rom_manager_dialog(nullptr, *launch.dirs, nullptr, true))
-        choice = choose_start_model(start_name.empty() ? std::string() : start.model, roms);
+        choice = choose_start_model(start_name.empty() ? std::string() : wanted, roms);
     if (!choice.model) {
         error_box(nullptr, "em34xxw needs the ROM images of at least one terminal model to start. Import them "
                            "when you start em34xxw again.");
@@ -1720,6 +1724,8 @@ bool win32_prepare(Win32Launch& launch) {
         return false;
     }
     const Model* model = choice.model;
+    const ModelVariant& variant = choice.variant ? *choice.variant : model->default_variant();
+    const std::string stored_as = model->storage_name(variant);
 
     // The global keymap, when there is one and it loads.
     launch.keymap_path.clear();
@@ -1736,9 +1742,9 @@ bool win32_prepare(Win32Launch& launch) {
 
     launch.args = {"em34xxw",
                    "--model",
-                   // The profile's variant of the model that starts; without
-                   // one, the model's first.
-                   start.model == model->info().name && !start.variant.empty() ? start.variant : model->info().name,
+                   // The profile's variant when it can run, else the first
+                   // variant that can.
+                   variant.id,
                    "--rom-dir",
                    runtime_path(launch.dirs->roms()),
                    "--speed",
@@ -1746,10 +1752,10 @@ bool win32_prepare(Win32Launch& launch) {
                    "--keymap",
                    launch.keymap_path.empty() ? std::string("pcomm") : runtime_path(launch.keymap_path),
                    "--nvram",
-                   runtime_path(launch.dirs->nvram_file(model->info().name)),
+                   runtime_path(launch.dirs->nvram_file(stored_as)),
                    // The setup EEPROM (monitor alignment values) is kept too.
                    "--eeprom",
-                   runtime_path(launch.dirs->eeprom_file(model->info().name)),
+                   runtime_path(launch.dirs->eeprom_file(stored_as)),
                    // An end-user build keeps running on an access the model does
                    // not decode (the default, stop, is for the debugger).
                    "--unmapped",
@@ -1759,7 +1765,7 @@ bool win32_prepare(Win32Launch& launch) {
                    "--log-file",
                    runtime_path(launch.dirs->root() + "\\em34xxw.log")};
     if (!start.crt) launch.args.push_back("--no-crt");
-    if (start.model == model->info().name && !start.phosphor.empty()) {
+    if (start.model == model->info().name && !start.phosphor.empty() && variant.phosphor(start.phosphor)) {
         launch.args.push_back("--phosphor");
         launch.args.push_back(start.phosphor);
     }

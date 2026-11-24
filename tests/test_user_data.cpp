@@ -156,12 +156,51 @@ TEST_CASE("user folder: which model a front end starts as") {
     const auto lacking = unusable_roms(*m3477, dirs.roms());
     REQUIRE(lacking.size() == m3477->info().roms.size() - 1);
     CHECK(lacking[0].spec.file != first.file);
+    // The 3477's variants run different firmware: with the monochrome
+    // pair only, the colour unit is not ready and names its own files.
+    for (const RomSpec& spec : m3477->info().roms)
+        write_bytes(fs::path(dirs.roms()) / spec.file, std::vector<uint8_t>(spec.size, 0x22));
+    const ModelVariant* fg = m3477->find_variant("3477-FG");
+    const ModelVariant* fc = m3477->find_variant("3477-FC");
+    REQUIRE(fg);
+    REQUIRE(fc);
+    CHECK(model_roms_ready(*m3477, dirs.roms()));
+    CHECK(model_roms_ready(*m3477, dirs.roms(), fg));
+    CHECK_FALSE(model_roms_ready(*m3477, dirs.roms(), fc));
+    CHECK(first_ready_variant(*m3477, dirs.roms()) == fg);
+    CHECK(unusable_roms(*m3477, dirs.roms()).empty());
+    const auto colour_lacking = unusable_roms(*m3477, dirs.roms(), fc);
+    REQUIRE(colour_lacking.size() == fc->roms.size());
+    CHECK(colour_lacking[0].model == "3477-FC");
+    CHECK(unusable_roms_text(*m3477, dirs.roms(), fc).find(fc->roms[0].file) != std::string::npos);
+    sm = choose_start_model("3477", dirs.roms());
+    CHECK(sm.model == m3477);
+    CHECK(sm.variant == fg);
+    sm = choose_start_model("3477-FC", dirs.roms());
+    CHECK(sm.model == m3477);              // something that can run: its monochrome variant
+    CHECK(sm.variant == fg);
+    CHECK(sm.wanted_unready == m3477);
+    CHECK(sm.wanted_variant == fc);
+    // With the colour pair only, a bare "3477" starts the colour unit.
+    for (const RomSpec& spec : m3477->info().roms) fs::remove(fs::path(dirs.roms()) / spec.file);
+    for (const RomSpec& spec : fc->roms)
+        write_bytes(fs::path(dirs.roms()) / spec.file, std::vector<uint8_t>(spec.size, 0x33));
+    sm = choose_start_model("3477", dirs.roms());
+    CHECK(sm.model == m3477);
+    CHECK(sm.variant == fc);
+    sm = choose_start_model("3477-FG", dirs.roms());
+    CHECK(sm.wanted_unready == m3477);
+    CHECK(sm.wanted_variant == fg);
+    // The ROM table lists the colour unit's images under its own name.
+    size_t fc_rows = 0;
+    for (const RomStatusRow& r : rom_status(dirs.roms())) fc_rows += r.model == "3477-FC";
+    CHECK(fc_rows == fc->roms.size());
     // Unknown and not yet runnable names are no preference.
     sm = choose_start_model("3489", dirs.roms());
-    CHECK(sm.model == m3486);
+    CHECK(sm.model == m3477);
     CHECK(sm.wanted_unready == nullptr);
     sm = choose_start_model("no-such-model", dirs.roms());
-    CHECK(sm.model == m3486);
+    CHECK(sm.model == m3477);
     CHECK(sm.wanted_unready == nullptr);
 }
 

@@ -174,6 +174,15 @@ bool UserDirs::delete_profile(const std::string& name, std::string& error) const
     return true;
 }
 
+namespace {
+// Every image a model can run on: its own set and its variants' sets.
+std::vector<RomSpec> all_rom_specs(const Model& model) {
+    std::vector<RomSpec> out = model.info().roms;
+    for (const ModelVariant& v : model.info().variants) out.insert(out.end(), v.roms.begin(), v.roms.end());
+    return out;
+}
+} // namespace
+
 bool UserDirs::import_rom(const std::string& source, std::string& stored_as, std::string& note,
                           std::string& error) const {
     std::vector<uint8_t> data;
@@ -197,7 +206,8 @@ bool UserDirs::import_rom(const std::string& source, std::string& stored_as, std
     // One image can serve several models (the 3486 and 3487 share theirs).
     std::string names;
     for (const Model* m : runnable_models()) {
-        if (const RomSpec* spec = rom_spec_for_data(m->info().roms, data)) {
+        const std::vector<RomSpec> specs = all_rom_specs(*m);
+        if (const RomSpec* spec = rom_spec_for_data(specs, data)) {
             if (names.empty()) stored_as = spec->file;
             names += (names.empty() ? "" : "/") + m->info().name;
             note = "IBM " + names + " " + spec->label + " (known good)";
@@ -207,7 +217,7 @@ bool UserDirs::import_rom(const std::string& source, std::string& stored_as, std
         stored_as = ustr(src.filename());
         note = "not a known-good dump of any model; stored under its own name";
         for (const Model* m : runnable_models())
-            for (const RomSpec& spec : m->info().roms)
+            for (const RomSpec& spec : all_rom_specs(*m))
                 if (to_lower(spec.file) == to_lower(stored_as)) {
                     stored_as = spec.file;
                     note = "named like IBM " + m->info().name + " " + spec.label + ", but its hash is not known";
@@ -255,22 +265,47 @@ std::vector<RomStatusRow> rom_status(const std::string& rom_dir) {
     // Only models a user can run: the 3489 dump is known to be bad, so
     // asking for it would only confuse.
     for (const Model* m : runnable_models()) {
-        for (const RomSpec& spec : m->info().roms) {
-            RomStatusRow row;
-            row.model = m->info().name;
-            row.model_status = model_status_name(m->info().status);
-            row.spec = spec;
-            row.status = check_rom_file(rom_dir, spec, m->info().known_bad_roms);
-            out.push_back(std::move(row));
-        }
+        const ModelInfo& info = m->info();
+        auto add = [&](const std::string& name, const std::vector<RomSpec>& specs) {
+            for (const RomSpec& spec : specs) {
+                RomStatusRow row;
+                row.model = name;
+                row.model_status = model_status_name(info.status);
+                row.spec = spec;
+                row.status = check_rom_file(rom_dir, spec, info.known_bad_roms);
+                out.push_back(std::move(row));
+            }
+        };
+        // The model's own set when a variant runs it, then the sets of the
+        // variants that have their own, under the variant's name.
+        bool shared = info.variants.empty();
+        for (const ModelVariant& v : info.variants) shared = shared || v.roms.empty();
+        if (shared) add(info.name, info.roms);
+        for (const ModelVariant& v : info.variants)
+            if (!v.roms.empty()) add(v.id, v.roms);
     }
     return out;
 }
 
-bool model_roms_ready(const Model& model, const std::string& rom_dir) {
-    for (const RomSpec& spec : model.info().roms)
+namespace {
+bool specs_ready(const Model& model, const std::vector<RomSpec>& specs, const std::string& rom_dir) {
+    for (const RomSpec& spec : specs)
         if (!check_rom_file(rom_dir, spec, model.info().known_bad_roms).usable()) return false;
     return true;
+}
+} // namespace
+
+bool model_roms_ready(const Model& model, const std::string& rom_dir, const ModelVariant* variant) {
+    const ModelInfo& info = model.info();
+    if (variant) return specs_ready(model, info.roms_of(*variant), rom_dir);
+    if (info.variants.empty()) return specs_ready(model, info.roms, rom_dir);
+    return first_ready_variant(model, rom_dir) != nullptr;
+}
+
+const ModelVariant* first_ready_variant(const Model& model, const std::string& rom_dir) {
+    for (const ModelVariant& v : model.info().variants)
+        if (specs_ready(model, model.info().roms_of(v), rom_dir)) return &v;
+    return nullptr;
 }
 
 std::vector<const Model*> ready_models(const std::string& rom_dir) {
@@ -280,22 +315,25 @@ std::vector<const Model*> ready_models(const std::string& rom_dir) {
     return out;
 }
 
-std::vector<RomStatusRow> unusable_roms(const Model& model, const std::string& rom_dir) {
+std::vector<RomStatusRow> unusable_roms(const Model& model, const std::string& rom_dir, const ModelVariant* variant) {
     std::vector<RomStatusRow> out;
-    for (const RomSpec& spec : model.info().roms) {
+    const ModelInfo& info = model.info();
+    if (!variant && model_roms_ready(model, rom_dir)) return out;
+    if (!variant && !info.variants.empty()) variant = &info.variants.front();
+    for (const RomSpec& spec : variant ? info.roms_of(*variant) : info.roms) {
         RomStatusRow row;
-        row.model = model.info().name;
-        row.model_status = model_status_name(model.info().status);
+        row.model = variant && !variant->roms.empty() ? variant->id : info.name;
+        row.model_status = model_status_name(info.status);
         row.spec = spec;
-        row.status = check_rom_file(rom_dir, spec, model.info().known_bad_roms);
+        row.status = check_rom_file(rom_dir, spec, info.known_bad_roms);
         if (!row.status.usable()) out.push_back(std::move(row));
     }
     return out;
 }
 
-std::string unusable_roms_text(const Model& model, const std::string& rom_dir) {
+std::string unusable_roms_text(const Model& model, const std::string& rom_dir, const ModelVariant* variant) {
     std::string text;
-    for (const RomStatusRow& r : unusable_roms(model, rom_dir)) {
+    for (const RomStatusRow& r : unusable_roms(model, rom_dir, variant)) {
         text += r.spec.file + " - " + r.spec.label + ": " + rom_file_state_name(r.status.state);
         if (!r.status.note.empty()) text += " (" + r.status.note + ")";
         text += "\n";
@@ -306,11 +344,26 @@ std::string unusable_roms_text(const Model& model, const std::string& rom_dir) {
 StartModel choose_start_model(const std::string& wanted, const std::string& rom_dir) {
     StartModel out;
     const std::vector<const Model*> ready = ready_models(rom_dir);
-    if (!ready.empty()) out.model = ready.front();
-    for (const Model* m : runnable_models()) {
-        if (m->info().name != wanted) continue;
-        if (model_roms_ready(*m, rom_dir)) out.model = m;
-        else out.wanted_unready = m;
+    if (!ready.empty()) {
+        out.model = ready.front();
+        out.variant = first_ready_variant(*out.model, rom_dir);
+    }
+    const Model* model = nullptr;
+    const ModelVariant* variant = nullptr;
+    if (wanted.empty() || !find_model_variant(wanted, model, variant)) return out;
+    bool runnable = false;
+    for (const Model* m : runnable_models()) runnable = runnable || m == model;
+    if (!runnable) return out;
+    // A bare model name asks for any variant of it that can run.
+    const bool bare = to_lower(wanted).find(to_lower(variant->id)) == std::string::npos;
+    if (bare && !model_roms_ready(*model, rom_dir, variant))
+        if (const ModelVariant* v = first_ready_variant(*model, rom_dir)) variant = v;
+    if (model_roms_ready(*model, rom_dir, variant)) {
+        out.model = model;
+        out.variant = variant;
+    } else {
+        out.wanted_unready = model;
+        out.wanted_variant = variant;
     }
     return out;
 }

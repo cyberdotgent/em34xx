@@ -18,7 +18,8 @@
   included (docs/frontend-cocoa.md).
 - Tests: `ctest --preset debug -LE slow` (fast); the CPU vectors need
   `tools/fetch-test-vectors.sh` and take about 3 minutes in release.
-- The 3477 is the primary bring-up target. The 3486 model runs the 3487's
+- The 3477 is the primary bring-up target; its colour variant `3477-FC`
+  runs its own ROM pair (`65f2995.bin`, `65f2996.bin`; docs/models.md). The 3486 model runs the 3487's
   complete image (`54g0010.bin`), also as model 3487, and is in bring-up:
   it passes POST, saves its setup, goes on line and shows a TN5250 host's
   screen; see docs/bringup-3486.md for what is untested.

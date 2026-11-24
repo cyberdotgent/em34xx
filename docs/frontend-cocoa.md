@@ -129,7 +129,7 @@ Shared between the terminals of one app:
      window starts that model; opened in an idle window, or with the
      terminal type changed in Connection Settings (after a confirmation),
      the emulator in that window restarts as the other model
-     (`Application::set_model()`) with its own `<model>.nvram`.
+     (`Application::set_model()`) with its own `<model>.nvram` (`<variant>.nvram` for a variant with its own firmware, e.g. `3477-FC.nvram`; docs/models.md).
    - Not verified on a Mac yet: this behaviour was written against the
      Win32 front end's (docs/frontend-win32.md, observed under Wine) and
      has only been compiled for macOS.
