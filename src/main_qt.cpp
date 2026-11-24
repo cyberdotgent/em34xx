@@ -6,5 +6,9 @@
 
 int main(int argc, char** argv) {
     em34xx::Application app(em34xx::make_qt_frontend(), nullptr);
-    return app.main(argc, argv);
+    if (!app.start(argc, argv)) {
+        if (!app.last_error().empty()) em34xx::qt_error_box(app.last_error());
+        return app.exit_code();
+    }
+    return app.run();
 }

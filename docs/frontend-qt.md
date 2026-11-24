@@ -21,7 +21,7 @@ icon.
 | View | Zoom > 1x / 1.5x / 2x | the picture area becomes the presented frame times the zoom (logical pixels), shrunk to 90% of the desktop if it does not fit; resizing by hand stays possible |
 | Terminal | Attn, SysRq, Reset, Setup | presses the terminal's own key (`Machine::terminal_key`) |
 | Terminal | Reboot (Power Cycle) | `Application::power_on()` |
-| Help | About... | version, Qt version and platform |
+| Help | About... | version, licence (GPL-3.0-or-later), Qt version and platform |
 
 The status bar shows the front end's status note on the left and the run
 state (Running / Stopped) on the right.
@@ -38,7 +38,7 @@ slots (no `Q_OBJECT`), connects to lambdas and overrides event virtuals.
 
 | File | What |
 |------|------|
-| `src/main_qt.cpp` | `Application(make_qt_frontend(), nullptr).main()` |
+| `src/main_qt.cpp` | `Application(make_qt_frontend(), nullptr)`: `start()`, an error box if that fails, `run()` |
 | `src/frontend/qt/qt_frontend.*` | the window, menus, status bar, picture and keyboard |
 | `src/frontend/qt/qt_keys.*` | native scan code to USB HID usage |
 
@@ -48,10 +48,44 @@ the program name only, not the command line: its own options (`-platform`,
 `-style`) are set through the environment (`QT_QPA_PLATFORM`,
 `QT_STYLE_OVERRIDE`).
 
+## Starting and stopping
+
+**No display.** Without a usable platform plugin (no `WAYLAND_DISPLAY` or
+`DISPLAY`, a display that cannot be reached, a bad `QT_QPA_PLATFORM`) the
+`QGuiApplication` constructor does not return an error: it calls `qFatal`,
+which ends the process with `abort()` (documented: QGuiApplication,
+qFatal). Qt has no call that asks first, so `run()` forks a child that
+constructs a `QGuiApplication` and exits; the child's message handler sends
+Qt's messages back through a pipe and leaves with `_exit` on the fatal one,
+so nothing aborts and nothing dumps core. If the child fails, `run()`
+returns false with those messages and the three environment variables in
+the error, and the program ends with exit code 2 through the normal exit
+path. The cost is that the platform plugin is initialised twice on every
+start.
+
+**Signals.** SIGINT (Ctrl+C in the terminal it was started from) and
+SIGTERM (kill, the end of the session) set a flag; the housekeeping timer
+sees it within 100 ms, closes every window and leaves the event loop, also
+from inside a dialog. `run()` then returns as it does when the window is
+closed, and `Application` saves the battery-backed RAM. The previous
+handlers are restored when `run()` returns.
+
+**Errors before the window.** A bad option or missing ROM images end the
+program in `Application::start()`, which writes the error to standard
+error. When standard error is not a terminal (a desktop launcher),
+`qt_error_box()` also shows it in a message box, if there is a display.
+From a terminal there is no box. An error from `run()` itself (no display)
+can only go to standard error.
+
 ## Picture
 
 `Emulator::set_display_callback()` (emulation thread) queues one call to the
-UI thread at a time (`QMetaObject::invokeMethod`, queued). The screen widget
+UI thread at a time (`QMetaObject::invokeMethod`, queued). The callback
+does not hold the widget: it holds a shared `ScreenLink` (a mutex and the
+widget pointer) and uses the pointer only under the mutex. Before the
+window is destroyed the UI thread clears the callback and then, under the
+mutex, the pointer; that waits for a call the emulation thread is in the
+middle of making, and a call already queued finds no widget. The screen widget
 then fetches the raster at most every 15 ms (`render_presented` under the
 machine lock) and has `CrtRenderer` draw the tube at the widget's size in
 device pixels (logical size times `devicePixelRatioF()`), so the scan-line
@@ -79,7 +113,16 @@ Facts and their standing:
 - observed (Fedora 45, GNOME, Qt 6.11.2): the window, menus, picture and
   status bar on the `wayland` and `xcb` platforms; the style is Fusion and,
   on Wayland, the frame is drawn by Qt's Adwaita decoration plugin.
-- hypothesis, not yet tested: the key table against a real keyboard; a
+- observed (same system, `QT_QPA_PLATFORM=offscreen`): SIGINT and SIGTERM
+  end the program with exit code 0 and the `--nvram` file written; with
+  `QT_QPA_PLATFORM=bogus`, with `DISPLAY=:97` on `xcb`, and with no display
+  variables and no Wayland socket, the program reports the error and ends
+  with exit code 2, without `abort()`; a bad option with standard error
+  redirected opens the message box.
+- hypothesis, not yet tested: the shutdown of the display callback under
+  load (the race it closes was not reproduced); the fork in a process whose
+  emulation thread is already running (the child uses only its own thread
+  and `_exit`); the key table against a real keyboard; a
   non-evdev X server (keycodes would differ); FreeBSD.
 - open: the compositor keeps its own shortcuts (Super, Alt+Tab, Alt+F4...).
   Whether Qt can ask a Wayland compositor to give them up has not been

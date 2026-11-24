@@ -12,6 +12,7 @@
 #include <QAction>
 #include <QActionGroup>
 #include <QApplication>
+#include <QByteArray>
 #include <QCloseEvent>
 #include <QGuiApplication>
 #include <QImage>
@@ -30,12 +31,23 @@
 
 #include <algorithm>
 #include <atomic>
+#include <cerrno>
 #include <chrono>
 #include <cmath>
+#include <csignal>
+#include <cstdlib>
 #include <functional>
+#include <memory>
 #include <mutex>
 #include <set>
 #include <vector>
+
+#include <fcntl.h>
+#include <signal.h>
+#include <sys/resource.h>
+#include <sys/types.h>
+#include <sys/wait.h>
+#include <unistd.h>
 
 // No moc: nothing here declares signals or slots (no Q_OBJECT); connections
 // are to lambdas and events are handled by overriding the virtuals.
@@ -56,8 +68,8 @@ constexpr int kHousekeepingMs = 100;
 // centred on black, and the host keyboard while it has the focus.
 class ScreenWidget : public QWidget {
 public:
-    ScreenWidget(Application& app, const CrtParams& crt, QWidget* parent)
-        : QWidget(parent), app_(app), emu_(app.emulator()), crt_params_(crt) {
+    ScreenWidget(Emulator& emu, const CrtParams& crt, QWidget* parent)
+        : QWidget(parent), emu_(emu), crt_params_(crt) {
         setFocusPolicy(Qt::StrongFocus);
         setAttribute(Qt::WA_OpaquePaintEvent);
         setMinimumSize(320, 240);
@@ -194,7 +206,6 @@ private:
         }
     }
 
-    Application& app_;
     Emulator& emu_;
     CrtParams crt_params_;
     Framebuffer fb_;
@@ -226,7 +237,6 @@ public:
 
 private:
     std::atomic<bool> quit_{false};
-    std::atomic<bool> wake_pending_{false};
     std::mutex text_mutex_;
     std::string title_;
     bool have_title_ = false;
@@ -246,24 +256,165 @@ void terminal_key(Emulator& emu, const char* function) {
     if (!ok) LOG_WARN("input", "this keyboard has no %s key", function);
 }
 
-bool QtFrontend::run(Application& app, const FrontendOptions& opts, std::string&) {
+// Qt reads its own options (-platform, -style...) from the command line;
+// the application has already parsed (and would have refused) ours, so Qt
+// gets the program name only.
+char g_arg0[] = "em34xx-qt";
+char* g_qt_argv[] = {g_arg0, nullptr};
+int g_qt_argc = 1;
+
+// --- Can Qt start? ---------------------------------------------------------
+//
+// Without a usable platform plugin (no DISPLAY or WAYLAND_DISPLAY, a
+// display that cannot be reached, a bad QT_QPA_PLATFORM) the QGuiApplication
+// constructor does not fail: it calls qFatal, which ends the process with
+// abort() (documented: QGuiApplication, "-platform"; qFatal). Qt offers no
+// way to ask first, so a child process tries it and reports back.
+
+int g_probe_fd = -1;
+
+void probe_write(const char* p, size_t n) {
+    while (n > 0) {
+        const ssize_t w = ::write(g_probe_fd, p, n);
+        if (w < 0 && errno == EINTR) continue;
+        if (w <= 0) return;
+        p += w;
+        n -= size_t(w);
+    }
+}
+
+// The child's Qt messages go to the parent, one per NUL-terminated string;
+// the fatal one ends the child without abort() (no core dump).
+void probe_message(QtMsgType type, const QMessageLogContext&, const QString& text) {
+    const QByteArray utf8 = text.toUtf8();
+    probe_write(utf8.constData(), size_t(utf8.size()) + 1);
+    if (type == QtFatalMsg) ::_exit(1);
+}
+
+// False, with Qt's own messages in `detail`, when a QGuiApplication cannot
+// be constructed in this environment.
+bool qt_platform_starts(std::string& detail) {
+    int fds[2];
+    if (::pipe(fds) != 0) return true;   // cannot tell: let Qt try
+    const pid_t pid = ::fork();
+    if (pid < 0) {
+        ::close(fds[0]);
+        ::close(fds[1]);
+        return true;
+    }
+    if (pid == 0) {
+        // The child has this thread only; it touches nothing of the
+        // emulator and leaves with _exit.
+        ::close(fds[0]);
+        ::fcntl(fds[1], F_SETFD, FD_CLOEXEC);
+        g_probe_fd = fds[1];
+        struct rlimit no_core = {0, 0};
+        ::setrlimit(RLIMIT_CORE, &no_core);
+        qInstallMessageHandler(probe_message);
+        new QGuiApplication(g_qt_argc, g_qt_argv);
+        ::_exit(0);
+    }
+    ::close(fds[1]);
+    std::string messages;
+    char buf[512];
+    for (;;) {
+        const ssize_t n = ::read(fds[0], buf, sizeof buf);
+        if (n < 0 && errno == EINTR) continue;
+        if (n <= 0) break;
+        messages.append(buf, size_t(n));
+    }
+    ::close(fds[0]);
+    int status = 0;
+    while (::waitpid(pid, &status, 0) < 0 && errno == EINTR) {
+    }
+    if (WIFEXITED(status) && WEXITSTATUS(status) == 0) return true;
+    // One line: the messages, blank-separated.
+    detail.clear();
+    bool gap = false;
+    for (char c : messages) {
+        if (c == '\0' || c == '\n' || c == '\r' || c == ' ' || c == '\t') {
+            gap = !detail.empty();
+        } else {
+            if (gap) detail += ' ';
+            gap = false;
+            detail += c;
+        }
+    }
+    if (detail.empty()) detail = "the platform plugin ended the process";
+    return false;
+}
+
+std::string no_display_error(const std::string& detail) {
+    auto env = [](const char* name) {
+        const char* v = std::getenv(name);
+        return std::string(name) + (v ? std::string("=") + v : std::string(" is not set"));
+    };
+    return "Qt cannot open a display (" + env("WAYLAND_DISPLAY") + ", " + env("DISPLAY") + ", " +
+           env("QT_QPA_PLATFORM") + "): " + detail;
+}
+
+// --- SIGINT and SIGTERM ------------------------------------------------------
+//
+// Ctrl+C in the terminal em34xx-qt was started from, kill, or the end of
+// the session: leave through the normal exit path, which saves the
+// battery-backed RAM, as closing the window does. The handler only sets a
+// flag; the housekeeping timer acts on it.
+
+volatile std::sig_atomic_t g_signal = 0;
+
+extern "C" void qt_frontend_signal(int sig) { g_signal = sig; }
+
+class SignalScope {
+public:
+    SignalScope() {
+        struct sigaction sa = {};
+        sa.sa_handler = qt_frontend_signal;
+        sigemptyset(&sa.sa_mask);
+        sa.sa_flags = SA_RESTART;
+        ::sigaction(SIGINT, &sa, &old_int_);
+        ::sigaction(SIGTERM, &sa, &old_term_);
+    }
+    ~SignalScope() {
+        ::sigaction(SIGINT, &old_int_, nullptr);
+        ::sigaction(SIGTERM, &old_term_, nullptr);
+    }
+
+private:
+    struct sigaction old_int_ = {};
+    struct sigaction old_term_ = {};
+};
+
+// The emulation thread's way to the screen widget. The display callback
+// runs on the emulation thread, and clearing it does not wait for a call
+// that thread is in the middle of making; so the callback holds this, not
+// the widget, and reaches the widget only under the mutex. Once the UI
+// thread has set `screen` to null (before the window goes) nobody touches
+// the widget again.
+struct ScreenLink {
+    std::mutex mutex;
+    ScreenWidget* screen = nullptr;
+    bool wake_pending = false;   // one queued call in flight at a time
+};
+
+bool QtFrontend::run(Application& app, const FrontendOptions& opts, std::string& error) {
     Emulator& emu = app.emulator();
 
-    // Qt reads its own options (-platform, -style...) from the command
-    // line; the application has already parsed (and would have refused)
-    // ours, so Qt gets the program name only.
-    static char arg0[] = "em34xx-qt";
-    static char* qt_argv[] = {arg0, nullptr};
-    static int qt_argc = 1;
+    std::string detail;
+    if (!qt_platform_starts(detail)) {
+        error = no_display_error(detail);
+        return false;
+    }
+
     QApplication::setApplicationName(QStringLiteral("em34xx"));
     QApplication::setApplicationVersion(QStringLiteral(EM34XX_VERSION_STRING));
     QApplication::setDesktopFileName(QStringLiteral("em34xx"));
-    QApplication qapp(qt_argc, qt_argv);
+    QApplication qapp(g_qt_argc, g_qt_argv);
+    SignalScope signals;
     LOG_INFO("video", "Qt %s, platform %s, style %s", qVersion(), qPrintable(QGuiApplication::platformName()),
              qPrintable(QApplication::style()->objectName()));
 
     QMainWindow window;
-    auto* screen = new ScreenWidget(app, opts.crt, &window);
+    auto* screen = new ScreenWidget(emu, opts.crt, &window);
     window.setCentralWidget(screen);
 
     // --- Status bar: the status note on the left, the run state on the right
@@ -327,35 +478,61 @@ bool QtFrontend::run(Application& app, const FrontendOptions& opts, std::string&
     add(help, QStringLiteral("&About..."), [&] {
         QMessageBox::about(
             &window, QStringLiteral("About em34xx"),
-            QStringLiteral("<b>em34xx %1</b><br>Hardware emulator for IBM 34xx-family 5250 terminals.<br><br>"
+            QStringLiteral("<b>em34xx %1</b><br>Hardware emulator for IBM 34xx-family 5250 terminals.<br>"
+                           "Free software under the GNU GPL, version 3 or later; no warranty.<br><br>"
                            "<a href=\"%2\">%2</a><br><br>Qt %3 (%4)")
                 .arg(QStringLiteral(EM34XX_VERSION_STRING), QStringLiteral(EM34XX_HOMEPAGE_URL),
                      QString::fromLatin1(qVersion()), QGuiApplication::platformName()));
     });
 
     // --- Picture: wake the UI thread when the emulator reports a change ----
-    // (emulation thread; one queued call in flight at a time).
-    emu.set_display_callback([this, screen](uint64_t) {
-        if (wake_pending_.exchange(true)) return;
+    // (emulation thread; see ScreenLink).
+    auto link = std::make_shared<ScreenLink>();
+    link->screen = screen;
+    emu.set_display_callback([link](uint64_t) {
+        std::lock_guard<std::mutex> lock(link->mutex);
+        if (!link->screen || link->wake_pending) return;
+        link->wake_pending = true;
         QMetaObject::invokeMethod(
-            screen,
-            [this, screen] {
-                wake_pending_.store(false);
-                screen->picture_changed();
+            link->screen,
+            [link] {
+                // UI thread, the only one that clears link->screen.
+                ScreenWidget* s;
+                {
+                    std::lock_guard<std::mutex> inner(link->mutex);
+                    link->wake_pending = false;
+                    s = link->screen;
+                }
+                if (s) s->picture_changed();
             },
             Qt::QueuedConnection);
     });
-    struct ClearCallback {
+    // Declared after the window, so it runs before the window is destroyed:
+    // no new calls, then wait out a call in progress and cut the link. A
+    // call still queued finds no screen.
+    struct Unlink {
         Emulator& emu;
-        ~ClearCallback() { emu.set_display_callback(nullptr); }
-    } clear_callback{emu};
+        std::shared_ptr<ScreenLink> link;
+        ~Unlink() {
+            emu.set_display_callback(nullptr);
+            std::lock_guard<std::mutex> lock(link->mutex);
+            link->screen = nullptr;
+        }
+    } unlink{emu, link};
 
     // --- Housekeeping: title, status bar, quit requests --------------------
     std::string shown_title, shown_note;
     int shown_running = -1;
+    bool signal_seen = false;
     auto housekeeping = [&] {
-        if (emu.quit_requested() || quit_.load()) {
-            window.close();
+        if (g_signal != 0 && !signal_seen) {
+            signal_seen = true;
+            LOG_INFO("video", "signal %d: closing the window", int(g_signal));
+        }
+        if (emu.quit_requested() || quit_.load() || signal_seen) {
+            // Also out of a dialog's own event loop (About).
+            QApplication::closeAllWindows();
+            QCoreApplication::quit();
             return;
         }
         std::string title, status;
@@ -397,5 +574,15 @@ bool QtFrontend::run(Application& app, const FrontendOptions& opts, std::string&
 } // namespace
 
 std::unique_ptr<Frontend> make_qt_frontend() { return std::make_unique<QtFrontend>(); }
+
+void qt_error_box(const std::string& message) {
+    if (::isatty(STDERR_FILENO)) return;   // the user has read it there
+    std::string detail;
+    if (!qt_platform_starts(detail)) return;
+    QApplication::setApplicationName(QStringLiteral("em34xx"));
+    QApplication::setDesktopFileName(QStringLiteral("em34xx"));
+    QApplication qapp(g_qt_argc, g_qt_argv);
+    QMessageBox::critical(nullptr, QStringLiteral("em34xx"), qstr(message));
+}
 
 } // namespace em34xx
