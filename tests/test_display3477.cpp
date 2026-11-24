@@ -21,7 +21,7 @@ struct Rig {
     Ibm3477Display disp;
 
     explicit Rig(DisplaySubtype subtype = DisplaySubtype::Green)
-        : opts(make_opts(subtype)), disp(bus, opts) {
+        : opts(make_opts(subtype)), disp(bus, opts, kIbm3477DisplayLayout) {
         bus.map_ram("ram", 0, 0x20000);
         bus.map_mmio("display", 0x20100, 0x100, &disp);
     }
@@ -400,7 +400,7 @@ TEST_CASE("3477 display: VDO shim switched off reads the sense nibble") {
     TerminalOptions o;
     o.vdo_shim = false;
     Bus bus{20};
-    Ibm3477Display disp(bus, o);
+    Ibm3477Display disp(bus, o, kIbm3477DisplayLayout);
     CHECK_FALSE(disp.vdo_shim());
     Rig r;
     r.disp.set_vdo_shim(false);

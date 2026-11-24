@@ -166,7 +166,7 @@ public:
         eeprom.attach(i2c.bus(), 0xA0);
         m.set_nvram(&eeprom);
 
-        Ibm3477Display& disp = m.add_device<Ibm3477Display>(bus, opt);
+        Ibm3477Display& disp = m.add_device<Ibm3477Display>(bus, opt, kIbm3477DisplayLayout);
         disp.set_clock_hz(info_.clock_hz);
         disp.set_i2c(&i2c.bus());
         Ibm3477Interrupts& ic = sys.interrupts();

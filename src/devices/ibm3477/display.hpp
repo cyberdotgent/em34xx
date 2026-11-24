@@ -56,13 +56,47 @@ namespace em34xx {
 class I2cBus;
 class Ibm3486AuxPort;
 
+// Where a board keeps the controls of this display chip that differ between
+// the terminal families. Every model states all of them when it builds its
+// display: the fields have no defaults, so a new model cannot take another
+// board's layout by leaving one out. Register numbers are offsets in the
+// controller page (20100 + n).
+struct Ibm3477DisplayLayout {
+    struct Bit {
+        uint8_t reg;    // register offset
+        uint8_t mask;   // bit(s) in it; 0 = the board has no such control
+    };
+    // Vertical retrace lasts 1/divisor of the frame; each family's display
+    // test accepts another length.
+    unsigned retrace_divisor;
+    // Set: the retrace flag read at 2012F bit 3 is inverted.
+    Bit sync_invert;
+    // Position of the 2-bit signature selector in 2012F.
+    unsigned signature_selector_shift;
+    // Set: the picture is shown.
+    Bit video_on;
+    // Set: the cursor is shown.
+    Bit cursor_on;
+};
+
+// The 3477 [observed unless marked]: retrace 1/90 of the frame, no sync
+// polarity control, selector in 2012F bits 6-5, picture on with 20128 bit 4
+// [hypothesis], cursor on with 20128 bit 7 [hypothesis].
+constexpr Ibm3477DisplayLayout kIbm3477DisplayLayout = {
+    90,             // retrace_divisor
+    {0x28, 0x00},   // sync_invert: none
+    5,              // signature_selector_shift
+    {0x28, 0x10},   // video_on
+    {0x28, 0x80},   // cursor_on
+};
+
 class Ibm3477Display : public Device, public DisplaySource {
 public:
     static constexpr uint32_t kRegBase = 0x20100;
     static constexpr uint32_t kWindowBase = 0x8000;   // cell offsets are relative to this
     static constexpr uint32_t kCharGenBase = 0x18000; // four 8 KiB planes
 
-    Ibm3477Display(Bus& bus, const TerminalOptions& opts);
+    Ibm3477Display(Bus& bus, const TerminalOptions& opts, const Ibm3477DisplayLayout& layout);
 
     // Display interrupt line (vector 0Ch); raised once per frame at the start
     // of vertical retrace, lowered by a write to 20136.
@@ -74,22 +108,6 @@ public:
     void set_aux_port(Ibm3486AuxPort* port) { aux_ = port; }
     // CPU clock used to derive frame timing (default 8 MHz).
     void set_clock_hz(uint64_t hz);
-    // Vertical retrace lasts 1/divisor of the frame (default 90, which the
-    // 3477's display test accepts). Other tubes need another length.
-    void set_retrace_divisor(unsigned divisor);
-    // 3486 family: 20128 bit 3 inverts the retrace flag read at 2012F bit 3.
-    void set_sync_polarity_bit(bool on) { sync_polarity_bit_ = on; }
-    // Position of the 2-bit signature selector in 2012F: bits 6-5 on the
-    // 3477 (shift 5), bits 5-4 on the 3486 family (shift 4) [observed: the
-    // values each firmware writes].
-    void set_signature_selector_shift(unsigned shift) { sig_selector_shift_ = shift; }
-    // 3486 family: the picture is on while 20128 bit 6 is set, not bit 4
-    // [hypothesis; see enabled()].
-    void set_video_enable_bit6(bool on) { video_enable_bit6_ = on; }
-    // 3486 family: the cursor is shown while 20127 bit 6 is set, not 20128
-    // bit 7 [observed: the firmware sets the bit with every cursor position
-    // it writes, clears it to hide the cursor and never sets 20128 bit 7].
-    void set_cursor_enable_reg27(bool on) { cursor_enable_reg27_ = on; }
     // Whether the firmware has the cursor switched on.
     bool cursor_on() const;
     // Value of 2012F bits 7..4 when no signature result is latched.
@@ -163,11 +181,7 @@ private:
     uint64_t clock_hz_ = 8000000;
     uint64_t frame_cycles_ = 0;
     uint64_t retrace_cycles_ = 0;
-    unsigned retrace_divisor_ = 90;
-    bool sync_polarity_bit_ = false;
-    unsigned sig_selector_shift_ = 5;
-    bool video_enable_bit6_ = false;
-    bool cursor_enable_reg27_ = false;
+    Ibm3477DisplayLayout layout_;
     uint64_t phase_ = 0;
     uint64_t frames_ = 0;
     bool in_retrace_ = false;

@@ -33,6 +33,7 @@
 #include "devices/battery_ram.hpp"
 #include "devices/ibm3486/alignment_shim.hpp"
 #include "devices/ibm3486/aux_port.hpp"
+#include "devices/ibm3486/display_layout.hpp"
 #include "devices/i2c.hpp"
 #include "devices/ibm3477/display.hpp"
 #include "devices/ibm3477/i2c.hpp"
@@ -72,13 +73,6 @@ uint8_t default_straps(bool is_3487, DisplaySubtype d) {
     default: return is_3487 ? 0x4A : kDefaultStraps;
     }
 }
-
-// Vertical retrace as a fraction of the frame. The display test requires the
-// retrace flag (2012F bit 3) to drop within 3 to 9 status reads of its start
-// and to come back one field later [observed windows]; the 3477's 1/90 lasts
-// 10 reads here. 1/140 (about 120 us) is in the middle [hypothesis: the real
-// length is not known].
-constexpr unsigned kRetraceDivisor = 140;
 
 // An address range where optional hardware is absent: reads float high,
 // writes go nowhere.
@@ -238,13 +232,8 @@ public:
             });
         }
 
-        Ibm3477Display& disp = m.add_device<Ibm3477Display>(bus, opt);
+        Ibm3477Display& disp = m.add_device<Ibm3477Display>(bus, opt, kIbm3486DisplayLayout);
         disp.set_clock_hz(info_.clock_hz);
-        disp.set_retrace_divisor(kRetraceDivisor);
-        disp.set_sync_polarity_bit(true);
-        disp.set_signature_selector_shift(4);
-        disp.set_video_enable_bit6(true);
-        disp.set_cursor_enable_reg27(true);
         disp.set_i2c(&i2c.bus());
         disp.set_irq([&irq](bool on) {
             if (on) irq.raise(Ibm3477Interrupts::Source::Display);

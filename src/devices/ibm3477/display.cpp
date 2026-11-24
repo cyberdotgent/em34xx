@@ -32,7 +32,6 @@ constexpr uint32_t kRegMainRows = 0x15;    // rows above the status line
 constexpr uint32_t kRegCursorCol = 0x17;
 constexpr uint32_t kRegCursorRow = 0x18;
 constexpr uint32_t kRegMode0 = 0x25;       // bit4: 132 columns of 8-pixel cells
-constexpr uint32_t kRegCursorCtl = 0x27;   // 3486 family: bit6 cursor
 constexpr uint32_t kRegControl = 0x28;     // bit4 video on, bit6 status rule, bit7 cursor
 constexpr uint32_t kRegMode5 = 0x2A;       // bit0: 12-pixel cells, else 16
 constexpr uint32_t kRegStatus = 0x2F;
@@ -45,7 +44,6 @@ constexpr uint32_t kRegAuxPort = 0x44;     // 3486 family: second serial port, 4
 constexpr uint8_t kCtlVideo = 0x10;
 constexpr uint8_t kCtlStatusRule = 0x40;
 constexpr uint8_t kCtlCursor = 0x80;
-constexpr uint8_t kCursorCtlOn = 0x40;
 
 constexpr uint64_t kRefreshHz = 60;
 constexpr uint32_t kBlinkFrames = 32;      // half period of character blink
@@ -110,8 +108,9 @@ CellLook decode_attr(uint8_t attr, bool colour) {
 
 } // namespace
 
-Ibm3477Display::Ibm3477Display(Bus& bus, const TerminalOptions& opts)
-    : Device("display"), bus_(bus), opts_(opts), vdo_shim_(opts.vdo_shim) {
+Ibm3477Display::Ibm3477Display(Bus& bus, const TerminalOptions& opts, const Ibm3477DisplayLayout& layout)
+    : Device("display"), bus_(bus), opts_(opts), layout_(layout), vdo_shim_(opts.vdo_shim) {
+    if (!layout_.retrace_divisor) layout_.retrace_divisor = 90;
     reset();
 }
 
@@ -139,13 +138,8 @@ void Ibm3477Display::reset() {
 void Ibm3477Display::recompute_timing() {
     frame_cycles_ = std::max<uint64_t>(clock_hz_ / kRefreshHz, 100);
     // Vertical sync of a few scan lines out of a ~525-line frame [hyp].
-    retrace_cycles_ = std::max<uint64_t>(frame_cycles_ / retrace_divisor_, 1);
+    retrace_cycles_ = std::max<uint64_t>(frame_cycles_ / layout_.retrace_divisor, 1);
     phase_ %= frame_cycles_;
-}
-
-void Ibm3477Display::set_retrace_divisor(unsigned divisor) {
-    retrace_divisor_ = divisor ? divisor : 90;
-    recompute_timing();
 }
 
 void Ibm3477Display::set_irq_line(bool on) {
@@ -169,7 +163,7 @@ void Ibm3477Display::tick(uint64_t cycles) {
         // next vertical retrace, where the result is latched [obs protocol].
         sig_measuring_ = false;
         sig_valid_ = true;
-        sig_result_ = vdo_shim_signature((regs_[kRegStatus] >> sig_selector_shift_) & 3);
+        sig_result_ = vdo_shim_signature((regs_[kRegStatus] >> layout_.signature_selector_shift) & 3);
     }
     if ((frame_started || (retrace && !in_retrace_)) && block_pending_) {
         // A block request completes at the next vertical retrace [hyp].
@@ -187,7 +181,7 @@ uint8_t Ibm3477Display::read_status() const {
     // Bit 3 is the vertical sync line. On the 3486 family 20128 bit 3
     // inverts it [observed: the firmware expects the flag inverted on the
     // tubes for which it sets that bit; hypothesis: sync polarity].
-    const bool invert = sync_polarity_bit_ && (regs_[kRegControl] & 0x08);
+    const bool invert = (regs_[layout_.sync_invert.reg] & layout_.sync_invert.mask) != 0;
     if (in_retrace_ != invert) v |= 0x08;
     return v;
 }
@@ -242,7 +236,7 @@ bool Ibm3477Display::enabled() const {
     // there. The firmware writes the register without bit 6 while it changes
     // the mode and with it when the screen is ready [observed], so bit 6
     // stands in for it [hypothesis].
-    const bool video = (regs_[kRegControl] & (video_enable_bit6_ ? kCtlStatusRule : kCtlVideo)) != 0;
+    const bool video = (regs_[layout_.video_on.reg] & layout_.video_on.mask) != 0;
     return video && regs_[kRegMainRows] <= 64 &&
            regs_[kRegTotalRows] <= 64;
 }
@@ -272,8 +266,7 @@ Ibm3477Display::Geometry Ibm3477Display::geometry() const {
 }
 
 bool Ibm3477Display::cursor_on() const {
-    if (cursor_enable_reg27_) return (regs_[kRegCursorCtl] & kCursorCtlOn) != 0;
-    return (regs_[kRegControl] & kCtlCursor) != 0;
+    return (regs_[layout_.cursor_on.reg] & layout_.cursor_on.mask) != 0;
 }
 
 std::string Ibm3477Display::describe() const {

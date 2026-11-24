@@ -4,6 +4,7 @@
 #include "bus/bus.hpp"
 #include "devices/ibm3486/alignment_shim.hpp"
 #include "devices/ibm3486/aux_port.hpp"
+#include "devices/ibm3486/display_layout.hpp"
 #include "devices/ibm3477/i2c.hpp"
 #include "devices/ibm3477/display.hpp"
 #include "devices/ibm3477/keyboard_if.hpp"
@@ -150,16 +151,18 @@ TEST_CASE("3477 gate array keeps 2000B-2000F and 2001A/B as plain storage") {
     }
 }
 
-TEST_CASE("3486 display: retrace length and the sync polarity bit") {
+// A display of each family on a bus of its own.
+struct DisplayRig {
     Bus bus{20};
     TerminalOptions opts;
-    Ibm3477Display disp(bus, opts);
-    bus.map_ram("ram", 0, 0x20000);
-    bus.map_mmio("display", 0x20100, 0x100, &disp);
-    disp.set_clock_hz(kClock);
-    const uint64_t frame = disp.cycles_per_frame();
+    Ibm3477Display disp;
 
-    auto retrace_cycles = [&]() {
+    explicit DisplayRig(const Ibm3477DisplayLayout& layout) : disp(bus, opts, layout) {
+        bus.map_ram("ram", 0, 0x20000);
+        bus.map_mmio("display", 0x20100, 0x100, &disp);
+        disp.set_clock_hz(kClock);
+    }
+    uint64_t retrace_cycles() {
         while (!disp.in_retrace()) disp.tick(1);
         uint64_t n = 0;
         while (disp.in_retrace()) {
@@ -167,71 +170,10 @@ TEST_CASE("3486 display: retrace length and the sync polarity bit") {
             ++n;
         }
         return n;
-    };
-    retrace_cycles();   // align to a whole retrace
-    CHECK(retrace_cycles() == frame / 90);
-    disp.set_retrace_divisor(140);
-    retrace_cycles();
-    CHECK(retrace_cycles() == frame / 140);
-
-    // 20128 bit 3 inverts the flag only when the board has that bit.
-    while (!disp.in_retrace()) disp.tick(1);
-    bus.mem_write8(0x20128, 0x18);
-    CHECK((bus.mem_read8(0x2012F) & 0x08) != 0);
-    disp.set_sync_polarity_bit(true);
-    CHECK((bus.mem_read8(0x2012F) & 0x08) == 0);
-    bus.mem_write8(0x20128, 0x10);
-    CHECK((bus.mem_read8(0x2012F) & 0x08) != 0);
-
-    // Picture on: 20128 bit 4 on the 3477, bit 6 on the 3486 family (whose
-    // colour tube never sets bit 4).
-    disp.set_sync_polarity_bit(false);
-    bus.mem_write8(0x20114, 25);
-    bus.mem_write8(0x20115, 24);
-    bus.mem_write8(0x20128, 0x10);
-    CHECK(disp.enabled());
-    bus.mem_write8(0x20128, 0x40);
-    CHECK_FALSE(disp.enabled());
-    disp.set_video_enable_bit6(true);
-    CHECK(disp.enabled());
-    bus.mem_write8(0x20128, 0x18);
-    CHECK_FALSE(disp.enabled());
-}
-
-TEST_CASE("3486 display: the cursor is switched by 20127 bit 6") {
-    Bus bus{20};
-    TerminalOptions opts;
-    Ibm3477Display disp(bus, opts);
-    bus.map_ram("ram", 0, 0x20000);
-    bus.map_mmio("display", 0x20100, 0x100, &disp);
-
-    // 3477: 20128 bit 7.
-    bus.mem_write8(0x20127, 0x70);
-    CHECK_FALSE(disp.cursor_on());
-    bus.mem_write8(0x20128, 0xD0);
-    CHECK(disp.cursor_on());
-
-    // 3486 family: the firmware never sets that bit; it writes 20127 with
-    // bit 6 to show the cursor and without it to hide it.
-    disp.set_cursor_enable_reg27(true);
-    bus.mem_write8(0x20128, 0x58);
-    CHECK(disp.cursor_on());
-    bus.mem_write8(0x20127, 0x30);
-    CHECK_FALSE(disp.cursor_on());
-}
-
-TEST_CASE("3486 display: the signature selector is 2012F bits 5-4") {
-    Bus bus{20};
-    TerminalOptions opts;
-    Ibm3477Display disp(bus, opts);
-    bus.map_ram("ram", 0, 0x20000);
-    bus.map_mmio("display", 0x20100, 0x100, &disp);
-    disp.set_clock_hz(kClock);
-    REQUIRE(disp.vdo_shim());
-
-    // Start a measurement with 2012F = 10 then 90 at the start of a retrace
-    // and read the result one field later.
-    auto measure = [&]() {
+    }
+    // Start a signature measurement with 2012F = 10 then 90 at the start of
+    // a retrace and read the result one field later.
+    uint8_t measure() {
         while (disp.in_retrace()) disp.tick(16);
         while (!disp.in_retrace()) disp.tick(16);
         bus.mem_write8(0x2012F, 0x10);
@@ -241,12 +183,72 @@ TEST_CASE("3486 display: the signature selector is 2012F bits 5-4") {
         const uint8_t v = uint8_t(bus.mem_read8(0x2012F) >> 4);
         bus.mem_write8(0x2012F, 0x00);
         return v;
-    };
+    }
+};
+
+TEST_CASE("3486 display: retrace length and the sync polarity bit") {
+    DisplayRig a(kIbm3477DisplayLayout), b(kIbm3486DisplayLayout);
+    a.retrace_cycles();   // align to a whole retrace
+    CHECK(a.retrace_cycles() == a.disp.cycles_per_frame() / 90);
+    b.retrace_cycles();
+    CHECK(b.retrace_cycles() == b.disp.cycles_per_frame() / 140);
+
+    // 20128 bit 3 inverts the flag only when the board has that bit.
+    for (DisplayRig* r : {&a, &b}) {
+        while (!r->disp.in_retrace()) r->disp.tick(1);
+        r->bus.mem_write8(0x20128, 0x18);
+    }
+    CHECK((a.bus.mem_read8(0x2012F) & 0x08) != 0);
+    CHECK((b.bus.mem_read8(0x2012F) & 0x08) == 0);
+    b.bus.mem_write8(0x20128, 0x10);
+    CHECK((b.bus.mem_read8(0x2012F) & 0x08) != 0);
+}
+
+TEST_CASE("3486 display: the picture is on with 20128 bit 6") {
+    // Bit 4 on the 3477, bit 6 on the 3486 family (whose colour tube never
+    // sets bit 4).
+    DisplayRig a(kIbm3477DisplayLayout), b(kIbm3486DisplayLayout);
+    for (DisplayRig* r : {&a, &b}) {
+        r->bus.mem_write8(0x20114, 25);
+        r->bus.mem_write8(0x20115, 24);
+        r->bus.mem_write8(0x20128, 0x10);
+    }
+    CHECK(a.disp.enabled());
+    CHECK_FALSE(b.disp.enabled());
+    for (DisplayRig* r : {&a, &b}) r->bus.mem_write8(0x20128, 0x40);
+    CHECK_FALSE(a.disp.enabled());
+    CHECK(b.disp.enabled());
+    b.bus.mem_write8(0x20128, 0x18);
+    CHECK_FALSE(b.disp.enabled());
+}
+
+TEST_CASE("3486 display: the cursor is switched by 20127 bit 6") {
+    DisplayRig a(kIbm3477DisplayLayout), b(kIbm3486DisplayLayout);
+
+    // 3477: 20128 bit 7.
+    a.bus.mem_write8(0x20127, 0x70);
+    CHECK_FALSE(a.disp.cursor_on());
+    a.bus.mem_write8(0x20128, 0xD0);
+    CHECK(a.disp.cursor_on());
+
+    // 3486 family: the firmware never sets that bit; it writes 20127 with
+    // bit 6 to show the cursor and without it to hide it.
+    b.bus.mem_write8(0x20128, 0xD8);
+    CHECK_FALSE(b.disp.cursor_on());
+    b.bus.mem_write8(0x20128, 0x58);
+    b.bus.mem_write8(0x20127, 0x70);
+    CHECK(b.disp.cursor_on());
+    b.bus.mem_write8(0x20127, 0x30);
+    CHECK_FALSE(b.disp.cursor_on());
+}
+
+TEST_CASE("3486 display: the signature selector is 2012F bits 5-4") {
+    DisplayRig a(kIbm3477DisplayLayout), b(kIbm3486DisplayLayout);
+    REQUIRE(a.disp.vdo_shim());
     // The 3477 reads bits 6-5: selector 0, which never measures 0.
-    CHECK(measure() == disp.vdo_shim_signature(0));
-    disp.set_signature_selector_shift(4);
-    CHECK(measure() == disp.vdo_shim_signature(1));
-    CHECK(disp.vdo_shim_signature(0) != 0);
+    CHECK(a.measure() == a.disp.vdo_shim_signature(0));
+    CHECK(b.measure() == b.disp.vdo_shim_signature(1));
+    CHECK(a.disp.vdo_shim_signature(0) != 0);
 }
 
 TEST_CASE("20025 bit 6 sends two frames only on a three-channel engine") {
