@@ -330,6 +330,14 @@ private:
 
     Framebuffer fb_;
     CrtRenderer crt_;
+    // Screen burn-in: the one tube of the application (present/burn_in.hpp).
+    TubeWear tube_;
+    steady::time_point tube_exposed_ = steady::now();
+    steady::time_point tube_saved_ = steady::now();
+    void burn_tick();
+    void set_burn_speed(BurnSpeed speed);
+    void replace_tube();
+    void save_tube_file();
     CrtParams crt_params_;
     std::vector<uint32_t> image_;
     int img_w_ = 0, img_h_ = 0;
@@ -672,7 +680,8 @@ void Win32Frontend::render_now() {
                      d.top + (dh - out_h) / 2 + out_h};
     const bool moved = !EqualRect(&where, &img_rect_);
     img_rect_ = where;
-    const CrtRenderer::Rows rows = crt_.render(fb_, out_w, out_h, crt_params_, image_);
+    const CrtRenderer::Rows rows =
+        crt_.render(fb_, out_w, out_h, crt_params_, image_, settings().burn_in == BurnSpeed::Off ? nullptr : &tube_);
     if (resized || moved) {
         InvalidateRect(h, &d, FALSE);
     } else if (!rows.empty()) {
@@ -1310,8 +1319,53 @@ void Win32Frontend::edit_settings() {
     s.zoom = settings().zoom;
     settings() = s;
     if (speed_changed) app_->set_speed_percent(s.speed_percent);
+    dirty_ = true;   // the burn-in setting may have changed
+    schedule_render();
     std::string error;
     if (!save_settings(dirs().settings_file(), settings(), error)) error_box(h, error);
+}
+
+// The picture now on the tube has been there since the last tick. A gap
+// longer than a few ticks (the machine slept, a modal dialog) is not
+// counted.
+void Win32Frontend::burn_tick() {
+    const auto now = steady::now();
+    const double seconds = std::min(2.0, std::chrono::duration<double>(now - tube_exposed_).count());
+    tube_exposed_ = now;
+    const uint64_t before = tube_.version();
+    tube_.expose(fb_, seconds, settings().burn_in);
+    if (tube_.version() != before) {
+        dirty_ = true;
+        schedule_render();
+    }
+    if (now - tube_saved_ >= std::chrono::minutes(5)) save_tube_file();
+}
+
+void Win32Frontend::save_tube_file() {
+    tube_saved_ = steady::now();
+    std::string error;
+    if (!save_tube(dirs().tube_file(), tube_, error)) LOG_WARN("ui", "%s", error.c_str());
+}
+
+void Win32Frontend::set_burn_speed(BurnSpeed speed) {
+    settings().burn_in = speed;
+    std::string error;
+    save_settings(dirs().settings_file(), settings(), error);
+    dirty_ = true;
+    schedule_render();
+}
+
+// View > Burn-in > Replace CRT: a new tube.
+void Win32Frontend::replace_tube() {
+    HWND h = hwnd_.load();
+    release_keys();
+    if (MessageBoxW(h, L"Replace the CRT with a new one? The burn-in of this tube is lost.",
+                    load_string(IDS_APP_TITLE).c_str(), MB_OKCANCEL | MB_ICONQUESTION) != IDOK)
+        return;
+    tube_.reset();
+    save_tube_file();
+    dirty_ = true;
+    schedule_render();
 }
 
 void Win32Frontend::command(int id) {
@@ -1341,6 +1395,11 @@ void Win32Frontend::command(int id) {
         save_settings(dirs().settings_file(), settings(), error);
         break;
     }
+    case ID_VIEW_BURN_OFF:
+    case ID_VIEW_BURN_SLOW:
+    case ID_VIEW_BURN_FAST:
+    case ID_VIEW_BURN_HYPER: set_burn_speed(BurnSpeed(id - ID_VIEW_BURN_OFF)); break;
+    case ID_VIEW_BURN_REPLACE: replace_tube(); break;
     case ID_TERM_ATTN: terminal_key("attn"); break;
     case ID_TERM_SYSRQ: terminal_key("sysrq"); break;
     case ID_TERM_RESET: terminal_key("reset"); break;
@@ -1401,6 +1460,7 @@ LRESULT Win32Frontend::handle(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
             }
             handle_trust_requests();   // a prompt that waited for another dialog to close
             update_status();
+            burn_tick();
         }
         return 0;
     case WM_APP_TITLE:
@@ -1502,6 +1562,8 @@ LRESULT Win32Frontend::handle(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
         const double z = settings().zoom;
         CheckMenuRadioItem(m, ID_VIEW_ZOOM_100, ID_VIEW_ZOOM_200,
                            z >= 2.0 ? ID_VIEW_ZOOM_200 : z >= 1.5 ? ID_VIEW_ZOOM_150 : ID_VIEW_ZOOM_100, MF_BYCOMMAND);
+        CheckMenuRadioItem(m, ID_VIEW_BURN_OFF, ID_VIEW_BURN_HYPER, ID_VIEW_BURN_OFF + UINT(settings().burn_in),
+                           MF_BYCOMMAND);
         return 0;
     }
     case WM_CLOSE:
@@ -1519,11 +1581,13 @@ LRESULT Win32Frontend::handle(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
         if (wp) {
             std::string error;
             app_->flush_persistent_state(error);   // logs a failure itself
+            save_tube_file();
             save_placement();
             save_settings(dirs().settings_file(), settings(), error);
         }
         return 0;
     case WM_DESTROY: {
+        save_tube_file();
         save_placement();
         std::string error;
         save_settings(dirs().settings_file(), settings(), error);
@@ -1543,6 +1607,11 @@ bool Win32Frontend::run(Application& app, const FrontendOptions& opts, std::stri
     emu_ = &app.emulator();
     model_name_ = app.model().info().name;
     crt_params_ = opts.crt;
+    {
+        std::string tube_error;
+        if (!load_tube(dirs().tube_file(), tube_, tube_error))
+            LOG_WARN("ui", "%s: %s; starting with a new tube", dirs().tube_file().c_str(), tube_error.c_str());
+    }
     emu_->with_machine([&](Machine& m) { render_presented(m, fb_); });
     base_w_ = std::max(1, fb_.presented_width());
     base_h_ = std::max(1, fb_.presented_height());

@@ -281,6 +281,8 @@ INT_PTR CALLBACK settings_proc(HWND dlg, UINT msg, WPARAM wp, LPARAM lp) {
             combo_add(dlg, IDC_SET_TLSMIN, tls_version_label(kTlsVersions[i]));
             if (kTlsVersions[i] == d->s.tls_min_version) combo_set_sel(dlg, IDC_SET_TLSMIN, int(i));
         }
+        for (const char* label : {"Off", "Slow", "Fast", "Hyper"}) combo_add(dlg, IDC_SET_BURN, label);
+        combo_set_sel(dlg, IDC_SET_BURN, int(d->s.burn_in));
         set_text(dlg, IDC_SET_FOLDER, "Settings, ROMs, keymap and profiles are kept in " + d->dirs->root());
         return TRUE;
     }
@@ -313,6 +315,8 @@ INT_PTR CALLBACK settings_proc(HWND dlg, UINT msg, WPARAM wp, LPARAM lp) {
             if (sp >= 0 && sp < int(sizeof kSpeeds / sizeof kSpeeds[0])) d->s.speed_percent = kSpeeds[sp];
             const int tv = combo_sel(dlg, IDC_SET_TLSMIN);
             if (tv >= 0 && tv < 5) d->s.tls_min_version = kTlsVersions[tv];
+            const int burn = combo_sel(dlg, IDC_SET_BURN);
+            if (burn >= 0 && burn <= int(BurnSpeed::Hyper)) d->s.burn_in = BurnSpeed(burn);
             EndDialog(dlg, IDOK);
             return TRUE;
         }

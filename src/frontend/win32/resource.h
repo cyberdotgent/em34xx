@@ -35,6 +35,11 @@
 #define ID_VIEW_ZOOM_100        1020
 #define ID_VIEW_ZOOM_150        1021
 #define ID_VIEW_ZOOM_200        1022
+#define ID_VIEW_BURN_OFF        1023
+#define ID_VIEW_BURN_SLOW       1024
+#define ID_VIEW_BURN_FAST       1025
+#define ID_VIEW_BURN_HYPER      1026
+#define ID_VIEW_BURN_REPLACE    1027
 #define ID_TERM_ATTN            1030
 #define ID_TERM_SYSRQ           1031
 #define ID_TERM_RESET           1032
@@ -70,6 +75,7 @@
 #define IDC_SET_FOLDER          2026
 #define IDC_SET_STARTUP         2027
 #define IDC_SET_STARTUP_PROFILE 2028
+#define IDC_SET_BURN            2029
 
 #define IDC_PROF_LIST           2040
 #define IDC_PROF_CONNECT        2041
