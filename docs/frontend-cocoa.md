@@ -248,7 +248,9 @@ and timers keep running meanwhile.
   imported; Show in Finder for the ROM folder.
 - **Keymap** and **Key Mapping**: as em34xxw's; Mac key names in the
   capture box (Control, Option), Command is never captured. **Restore
-  Defaults** restores the **mac** map (Return Enter, fn+Return Field Exit).
+  Defaults** restores the **mac** map (Return Enter, fn+Return Field Exit);
+  **Use tn5250 Layout** replaces the entries with the built-in `tn5250`
+  map, after a question.
 - **Untrusted Certificate**: an alert with the certificate details and
   Stop (the default), Connect, Trust Permanently.
 - **Certificate Not Valid**: a critical alert listing every error and the
@@ -314,10 +316,16 @@ Quit, log-out, shutdown and closing the last windows go through
 battery-backed RAM is written, with the settings and the tube's wear
 (docs/burn-in.md); sudden and automatic termination are off.
 SIGTERM ends the app as a quit without questions. A terminal that asks to
-end (the emulator's quit request) closes its window without questions.
+end (the emulator's quit request) closes its window without questions,
+once any sheet or dialog on it has gone.
 
 ## Not done / known gaps
 
+- Written without a Mac, compiled by CI only, and not yet run by hand:
+  Use tn5250 Layout in the keymap editor, New Connection taking the model,
+  variant and tube of the terminal in front, the profile manager after
+  declined ROM images at launch, the quit request waiting for a sheet, and
+  the exception guards on quitting, drawing and menu validation.
 - Screen burn-in (docs/burn-in.md) was written without a Mac: compiled by
   CI, not yet run by hand.
 - Sound: no `AudioSink` yet (the alarm is silent), as in em34xxw.

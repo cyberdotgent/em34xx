@@ -159,6 +159,9 @@ KeymapFile pcomm_keymap_file();
 KeymapFile mac_keymap_file();
 // The built-in "tn5250" map as a file, likewise (keymaps/tn5250.toml).
 KeymapFile tn5250_keymap_file();
+// One sentence for a keymap editor: what the keys a file does not list do,
+// given its base.
+std::string keymap_base_text(const std::string& base);
 // A host key's name as keymap files write it ("Escape", "F1", "a",
 // "KP_Enter"); "0xNN" for keys without a name.
 std::string host_key_name(uint32_t hid);

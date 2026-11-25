@@ -1350,7 +1350,7 @@ void Win32Frontend::save_tube_file() {
 void Win32Frontend::set_burn_speed(BurnSpeed speed) {
     settings().burn_in = speed;
     std::string error;
-    save_settings(dirs().settings_file(), settings(), error);
+    if (!save_settings(dirs().settings_file(), settings(), error)) error_box(hwnd_.load(), error);
     dirty_ = true;
     schedule_render();
 }
@@ -1387,8 +1387,22 @@ void Win32Frontend::command(int id) {
     case ID_EDIT_SETTINGS: edit_settings(); break;
     case ID_VIEW_ZOOM_100:
     case ID_VIEW_ZOOM_150:
-    case ID_VIEW_ZOOM_200: {
-        settings().zoom = id == ID_VIEW_ZOOM_100 ? 1.0 : id == ID_VIEW_ZOOM_150 ? 1.5 : 2.0;
+    case ID_VIEW_ZOOM_200:
+    case ID_VIEW_ZOOM_IN:
+    case ID_VIEW_ZOOM_OUT: {
+        double z = id == ID_VIEW_ZOOM_100 ? 1.0 : id == ID_VIEW_ZOOM_150 ? 1.5 : 2.0;
+        if (id == ID_VIEW_ZOOM_IN || id == ID_VIEW_ZOOM_OUT) {
+            // The next level up, or the one below.
+            z = settings().zoom;
+            for (double level : kZoomLevels) {
+                if (id == ID_VIEW_ZOOM_IN && level > settings().zoom + 0.01) {
+                    z = level;
+                    break;
+                }
+                if (id == ID_VIEW_ZOOM_OUT && level < settings().zoom - 0.01) z = level;
+            }
+        }
+        settings().zoom = z;
         size_for_zoom(true);
         std::string error;
         save_placement();
@@ -1406,6 +1420,16 @@ void Win32Frontend::command(int id) {
     case ID_TERM_SETUP: terminal_key("setup"); break;
     case ID_TERM_POWER_CYCLE: reboot(); break;
     case ID_HELP_ABOUT: release_keys(); about_dialog(h, dirs()); break;
+    case ID_HELP_LOG:
+    case ID_HELP_FOLDER: {
+        // Explorer on the user folder, with the log selected for Show Log.
+        release_keys();
+        const std::wstring folder = widen(dirs().root());
+        const std::wstring args = L"/select,\"" + folder + L"\\em34xxw.log\"";
+        if (id == ID_HELP_LOG) ShellExecuteW(h, L"open", L"explorer.exe", args.c_str(), nullptr, SW_SHOWNORMAL);
+        else ShellExecuteW(h, L"open", folder.c_str(), nullptr, nullptr, SW_SHOWNORMAL);
+        break;
+    }
     default: break;
     }
     SetFocus(h);
@@ -1562,6 +1586,8 @@ LRESULT Win32Frontend::handle(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
         const double z = settings().zoom;
         CheckMenuRadioItem(m, ID_VIEW_ZOOM_100, ID_VIEW_ZOOM_200,
                            z >= 2.0 ? ID_VIEW_ZOOM_200 : z >= 1.5 ? ID_VIEW_ZOOM_150 : ID_VIEW_ZOOM_100, MF_BYCOMMAND);
+        EnableMenuItem(m, ID_VIEW_ZOOM_IN, MF_BYCOMMAND | (z < 2.0 ? MF_ENABLED : MF_GRAYED));
+        EnableMenuItem(m, ID_VIEW_ZOOM_OUT, MF_BYCOMMAND | (z > 1.0 ? MF_ENABLED : MF_GRAYED));
         CheckMenuRadioItem(m, ID_VIEW_BURN_OFF, ID_VIEW_BURN_HYPER, ID_VIEW_BURN_OFF + UINT(settings().burn_in),
                            MF_BYCOMMAND);
         return 0;
@@ -1572,7 +1598,10 @@ LRESULT Win32Frontend::handle(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
         DestroyWindow(hwnd);
         return 0;
     case WM_QUERYENDSESSION:
-        return TRUE;
+        // Log-off or shutdown: an unsaved or changed profile is asked about
+        // first, as on exit; Cancel stops the session from ending.
+        release_keys();
+        return confirm_discard() ? TRUE : FALSE;
     case WM_ENDSESSION:
         // Log-off or shutdown: the process may end as soon as this returns,
         // without WM_DESTROY or a clean exit. Write what a clean exit

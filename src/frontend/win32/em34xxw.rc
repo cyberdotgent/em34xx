@@ -52,6 +52,9 @@ BEGIN
             MENUITEM "&1x",                              ID_VIEW_ZOOM_100
             MENUITEM "1&.5x",                            ID_VIEW_ZOOM_150
             MENUITEM "&2x",                              ID_VIEW_ZOOM_200
+            MENUITEM SEPARATOR
+            MENUITEM "Zoom &In",                         ID_VIEW_ZOOM_IN
+            MENUITEM "Zoom &Out",                        ID_VIEW_ZOOM_OUT
         END
         POPUP "&Burn-in"
         BEGIN
@@ -74,6 +77,9 @@ BEGIN
     END
     POPUP "&Help"
     BEGIN
+        MENUITEM "Show &Log File",                        ID_HELP_LOG
+        MENUITEM "Open &User Folder",                     ID_HELP_FOLDER
+        MENUITEM SEPARATOR
         MENUITEM "&About...",                             ID_HELP_ABOUT
     END
 END
@@ -253,6 +259,7 @@ BEGIN
     PUSHBUTTON      "&Edit...", IDC_KM_EDIT, 313, 37, 60, 14
     PUSHBUTTON      "&Remove", IDC_KM_REMOVE, 313, 55, 60, 14
     PUSHBUTTON      "Reset to &Default (PCOMM)", IDC_KM_RESET, 313, 85, 60, 28, BS_MULTILINE
+    PUSHBUTTON      "Use &tn5250 Layout", IDC_KM_TN5250, 313, 117, 60, 28, BS_MULTILINE
     LTEXT           "", IDC_KM_BASE, 7, 204, 366, 16
     DEFPUSHBUTTON   "OK", IDOK, 259, 222, 54, 14
     PUSHBUTTON      "Cancel", IDCANCEL, 319, 222, 54, 14

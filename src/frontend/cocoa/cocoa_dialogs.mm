@@ -1610,12 +1610,13 @@ bool entry_dialog(NSWindow* parent, KeymapEntry& e) {
     _addRemove.translatesAutoresizingMaskIntoConstraints = NO;
     _edit = push_button(@"Edit…", self, @selector(edit:));
     NSButton* reset = push_button(@"Restore Defaults", self, @selector(reset:));
+    NSButton* tn5250 = push_button(@"Use tn5250 Layout", self, @selector(useTn5250:));
     NSButton* cancel = push_button(@"Cancel", self, @selector(cancel:));
     make_cancel(cancel);
     NSButton* ok = push_button(@"OK", self, @selector(ok:));
     make_default(ok);
     NSStackView* content =
-        vstack(@[ intro, sv, _base, button_row(@[ _addRemove, _edit, reset ], @[ cancel, ok ]) ], 10);
+        vstack(@[ intro, sv, _base, button_row(@[ _addRemove, _edit, reset, tn5250 ], @[ cancel, ok ]) ], 10);
     [content.arrangedSubviews.lastObject.widthAnchor constraintEqualToAnchor:content.widthAnchor].active = YES;
     [sv.widthAnchor constraintEqualToAnchor:content.widthAnchor].active = YES;
     set_content(_panel, content);
@@ -1625,17 +1626,7 @@ bool entry_dialog(NSWindow* parent, KeymapEntry& e) {
 - (void)fill:(NSInteger)select {
     [_table reloadData];
     select_row(_table, std::min(select, NSInteger(_file.entries.size()) - 1));
-    std::string base;
-    if (_file.base == "positional")
-        base = "Keys not listed press the terminal key at the same position; Shift+F1…F12 enter F13…F24 on the "
-               "122-key keyboard.";
-    else if (_file.base == "pcomm")
-        base = "Keys not listed follow the built-in PCOMM layout (base \"pcomm\").";
-    else if (_file.base == "mac")
-        base = "Keys not listed follow the built-in Mac layout (base \"mac\").";
-    else
-        base = "Keys not listed press the terminal key at the same position.";
-    _base.stringValue = ns(base);
+    _base.stringValue = ns(keymap_base_text(_file.base));
     [self updateButtons];
 }
 
@@ -1709,6 +1700,19 @@ bool entry_dialog(NSWindow* parent, KeymapEntry& e) {
                  "Restore Defaults", "Cancel"))
             return;
         _file = _default;
+        [self fill:0];
+    });
+}
+
+- (void)useTn5250:(id)sender {
+    (void)sender;
+    guarded([&] {
+        if (!ask(_panel, "Replace the keymap with the tn5250 layout?",
+                 "Return is Enter, and the 5250 functions are Control and Left Option chords: for keyboards "
+                 "without a Right Control or a keypad.",
+                 "Replace", "Cancel"))
+            return;
+        _file = tn5250_keymap_file();
         [self fill:0];
     });
 }

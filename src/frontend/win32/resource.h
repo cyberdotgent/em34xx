@@ -40,12 +40,16 @@
 #define ID_VIEW_BURN_FAST       1025
 #define ID_VIEW_BURN_HYPER      1026
 #define ID_VIEW_BURN_REPLACE    1027
+#define ID_VIEW_ZOOM_IN         1028
+#define ID_VIEW_ZOOM_OUT        1029
 #define ID_TERM_ATTN            1030
 #define ID_TERM_SYSRQ           1031
 #define ID_TERM_RESET           1032
 #define ID_TERM_POWER_CYCLE     1033
 #define ID_TERM_SETUP           1034
 #define ID_HELP_ABOUT           1040
+#define ID_HELP_LOG             1041
+#define ID_HELP_FOLDER          1042
 
 /* Dialogs */
 #define IDD_ROMS                300
@@ -130,6 +134,7 @@
 #define IDC_KM_REMOVE           2143
 #define IDC_KM_RESET            2144
 #define IDC_KM_BASE             2145
+#define IDC_KM_TN5250           2146
 
 #define IDC_KE_CAPTURE          2160
 #define IDC_KE_HOST             2161

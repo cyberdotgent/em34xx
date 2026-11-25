@@ -261,10 +261,11 @@ startup profile only open files in `profiles\` and do not ask.
 | Edit | Connection Settings... (Ctrl+Shift+E) | | the running profile in the editor (OK, Cancel). A change marks the profile modified (`*`; saved with Save, asked about on exit or when another profile is opened) and applies at once: the CRT type and scan lines as in "Applying a profile's terminal settings", connection changes (hosts, ports, devices, TLS) by reconnecting with the terminal running. Without a profile it is New Connection |
 | Edit | Keymap... | yes | the keymap editor |
 | Edit | Settings... | yes | startup profile, speed, default TLS minimum, screen burn-in, ROM images, file association |
-| View | Zoom > 1x / 1.5x / 2x | | radio items; the picture area becomes the presented frame times the zoom times the DPI scale (shrunk to the work area if it does not fit); manual resizing stays possible and choosing a zoom snaps back. Saved in settings.toml |
+| View | Zoom > 1x / 1.5x / 2x, Zoom In, Zoom Out | | radio items, and the next level up or down; the picture area becomes the presented frame times the zoom times the DPI scale (shrunk to the work area if it does not fit); manual resizing stays possible and choosing a zoom snaps back. Saved in settings.toml |
 | View | Burn-in > Off / Slow / Fast / Hyper, Replace CRT... | | screen burn-in (docs/burn-in.md): radio items for the speed, saved in settings.toml; Replace CRT asks, then starts a new tube |
 | Terminal | Attn, SysRq, Reset, Setup | yes (text buttons) | press the terminal's own key through the keyboard model (`Machine::terminal_key()`, set-3 position with the Shift/Alt its legend needs), so the firmware and the controller see the real key |
 | Terminal | Reboot (Power Cycle) | yes | switch the terminal off and on; its sessions end and it comes back to a new sign-on (see "Connecting") |
+| Help | Show Log File, Open User Folder | | Explorer on the user folder, with `em34xxw.log` selected for the first |
 | Help | About... | | version, user folder, TLS backend, project page, third-party notices |
 
 The window title is `<profile>[*] - IBM 3477 - em34xx`; `*` marks a
@@ -377,7 +378,8 @@ clear that text (known gap).
 
 ## End of the Windows session
 
-`WM_QUERYENDSESSION` is answered TRUE; on `WM_ENDSESSION` the terminal's
+On `WM_QUERYENDSESSION` an unsaved or changed profile is asked about, as on
+exit, and Cancel refuses the end of the session; on `WM_ENDSESSION` the terminal's
 battery-backed RAM and setup EEPROM are written at once
 (`Application::flush_persistent_state()`) with the tube's wear
 (docs/burn-in.md), the window placement and the settings, since
@@ -414,7 +416,10 @@ default (`pcomm_keymap_file()`, the same rules as
 capture box and press the key with its modifiers, or pick the key from the
 list; the terminal key is a name from `terminal_function_names()` (or
 `0x5A`, `none`, `positional`); keyboard type and tap are optional. Remove
-and **Reset to Default (PCOMM)**. OK writes `keymap.toml`
+and **Reset to Default (PCOMM)**. **Use tn5250 Layout** replaces the
+entries with the built-in `tn5250` map (docs/keyboard.md), after a
+question. The line under the list says what unlisted keys do for the
+file's base (`keymap_base_text()`). OK writes `keymap.toml`
 (`keymap_file_to_toml()`) and applies it at once (`Machine::set_keymap()`).
 
 ## DPI

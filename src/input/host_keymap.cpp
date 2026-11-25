@@ -837,6 +837,16 @@ KeymapFile pcomm_keymap_file() { return builtin_keymap_file("pcomm"); }
 KeymapFile mac_keymap_file() { return builtin_keymap_file("mac"); }
 KeymapFile tn5250_keymap_file() { return builtin_keymap_file("tn5250"); }
 
+std::string keymap_base_text(const std::string& base) {
+    if (base == "positional")
+        return "Keys not listed press the terminal key at the same position; Shift+F1..F12 enter F13..F24 on the "
+               "122-key keyboard.";
+    if (base == "pcomm") return "Keys not listed follow the built-in PCOMM layout (base \"pcomm\").";
+    if (base == "mac") return "Keys not listed follow the built-in Mac layout (base \"mac\").";
+    if (base == "tn5250") return "Keys not listed follow the built-in tn5250 layout (base \"tn5250\").";
+    return "Keys not listed press the terminal key at the same position.";
+}
+
 // --- Engine ------------------------------------------------------------------
 
 void HostKeymapEngine::reset() {

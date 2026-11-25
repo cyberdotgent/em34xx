@@ -1237,15 +1237,7 @@ void keymap_fill(HWND dlg, KeymapDlg& d, int select) {
         ++row;
     }
     lv_select(lv, std::min(select, row - 1));
-    std::string base;
-    if (d.file.base == "positional")
-        base = "Keys not listed press the terminal key at the same position; Shift+F1..F12 enter F13..F24 on the "
-               "122-key keyboard.";
-    else if (d.file.base == "pcomm")
-        base = "Keys not listed follow the built-in PCOMM layout (base \"pcomm\").";
-    else
-        base = "Keys not listed press the terminal key at the same position.";
-    set_text(dlg, IDC_KM_BASE, base);
+    set_text(dlg, IDC_KM_BASE, keymap_base_text(d.file.base));
 }
 
 INT_PTR CALLBACK keymap_proc(HWND dlg, UINT msg, WPARAM wp, LPARAM lp) {
@@ -1297,6 +1289,14 @@ INT_PTR CALLBACK keymap_proc(HWND dlg, UINT msg, WPARAM wp, LPARAM lp) {
                             MB_YESNO | MB_ICONQUESTION) != IDYES)
                 return TRUE;
             d->file = pcomm_keymap_file();
+            keymap_fill(dlg, *d, 0);
+            return TRUE;
+        case IDC_KM_TN5250:
+            if (message_box(dlg, "Replace the keymap with the tn5250 layout? Return is Enter, and the 5250 functions "
+                                 "are Ctrl and Left Alt chords: for keyboards without a Right Ctrl or a keypad.",
+                            MB_YESNO | MB_ICONQUESTION) != IDYES)
+                return TRUE;
+            d->file = tn5250_keymap_file();
             keymap_fill(dlg, *d, 0);
             return TRUE;
         case IDOK:

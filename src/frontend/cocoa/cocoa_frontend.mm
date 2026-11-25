@@ -341,6 +341,9 @@ private:
 // Take this profile and connect it (after a power cycle).
 - (void)adoptProfile:(const Profile&)p path:(const std::string&)path untitled:(bool)untitled;
 - (bool)confirmDiscard;
+// The model, variant and tube this terminal runs, as a new profile's
+// defaults.
+- (void)fillDefaults:(Profile&)p;
 // Close the sessions, stop the terminal and write its battery-backed RAM.
 - (void)shutdownTerminal;
 - (void)setKeymapSpec:(const std::string&)spec;
@@ -381,7 +384,7 @@ private:
     [self.controller flagsEvent:e];
 }
 - (void)drawRect:(NSRect)dirty {
-    [self.controller drawPicture:dirty inView:self];
+    guarded([&] { [self.controller drawPicture:dirty inView:self]; });
 }
 - (void)setFrameSize:(NSSize)size {
     [super setFrameSize:size];
@@ -644,6 +647,13 @@ static NSToolbarItemIdentifier const kTbTermKeys = @"termkeys";
     return !_cur.active && !_quitting;
 }
 
+- (void)fillDefaults:(Profile&)p {
+    if (!_app) return;
+    p.model = _modelName;
+    p.variant = _app->variant().id;
+    p.phosphor = _app->config().terminal.phosphor;
+}
+
 - (std::string)profilePath {
     return _cur.active && !_cur.untitled ? _cur.path : std::string();
 }
@@ -700,9 +710,11 @@ static NSToolbarItemIdentifier const kTbTermKeys = @"termkeys";
     _trust->close();
     _emu->set_display_callback(nullptr);
     _app->host_link().set_tls_trust_handler(nullptr);
-    std::string error;
-    save_settings([self dirs].settings_file(), [self settings], error);
-    [self saveTube];
+    guarded([&] {
+        std::string error;
+        save_settings([self dirs].settings_file(), [self settings], error);
+        [self saveTube];
+    });
     // As at a clean exit: the sessions and the emulation thread wind down
     // and the battery-backed RAM is written (Application::finish()).
     guarded([&] {
@@ -719,6 +731,9 @@ static NSToolbarItemIdentifier const kTbTermKeys = @"termkeys";
 // this window closes.
 - (void)quitRequested {
     if (_quitting) return;
+    // A sheet or a dialog is up: the window cannot close under it. The
+    // status tick comes back here once it has gone.
+    if (_win.attachedSheet || NSApp.modalWindow) return;
     _quitting = true;
     _cur.modified = false;
     [_win performClose:nil];
@@ -1102,19 +1117,22 @@ static NSToolbarItemIdentifier const kTbTermKeys = @"termkeys";
 }
 
 - (BOOL)validateToolbarItem:(NSToolbarItem*)item {
-    return [self enabled:item.action];
+    return guarded(NO, [&]() -> BOOL { return [self enabled:item.action]; });
 }
 
 - (BOOL)validateMenuItem:(NSMenuItem*)item {
-    if (item.action == @selector(toggleConnection:)) item.title = [self connected] ? @"Disconnect" : @"Reconnect";
-    if (item.action == @selector(zoomLevel:)) {
-        const double z = [self settings].zoom;
-        const NSInteger cur = z >= 2.0 ? 200 : z >= 1.5 ? 150 : 100;
-        item.state = item.tag == cur ? NSControlStateValueOn : NSControlStateValueOff;
-    }
-    if (item.action == @selector(zoomIn:)) return [self settings].zoom < 2.0;
-    if (item.action == @selector(zoomOut:)) return [self settings].zoom > 1.0;
-    return [self enabled:item.action];
+    if (!_app) return NO;   // the terminal has shut down; its window is going
+    return guarded(NO, [&]() -> BOOL {
+        if (item.action == @selector(toggleConnection:)) item.title = [self connected] ? @"Disconnect" : @"Reconnect";
+        if (item.action == @selector(zoomLevel:)) {
+            const double z = [self settings].zoom;
+            const NSInteger cur = z >= 2.0 ? 200 : z >= 1.5 ? 150 : 100;
+            item.state = item.tag == cur ? NSControlStateValueOn : NSControlStateValueOff;
+        }
+        if (item.action == @selector(zoomIn:)) return [self settings].zoom < 2.0;
+        if (item.action == @selector(zoomOut:)) return [self settings].zoom > 1.0;
+        return [self enabled:item.action];
+    });
 }
 
 // --- profiles and connections --------------------------------------------------------
@@ -1853,7 +1871,7 @@ void CocoaFrontend::changed() {
         choice = choose_start_model(wanted, roms);
         if (declined) {
             if (from_pending) _pendingProfiles.erase(_pendingProfiles.begin());
-            else _skipStartupProfile = true;
+            _skipStartupProfile = true;   // whichever profile it was: the profile manager comes next
             start = Profile();
         }
     }
@@ -2106,6 +2124,7 @@ void CocoaFrontend::changed() {
         [front releaseKeys];
         Profile p;
         p.model = _model->info().name;
+        [front fillDefaults:p];   // the terminal in front, when there is one
         if (!profile_editor_dialog(front.window, p, ProfileEditMode::Connect, _launch->settings, *_launch->dirs,
                                    "New Connection"))
             return;
@@ -2221,13 +2240,16 @@ void CocoaFrontend::changed() {
 }
 
 - (BOOL)validateMenuItem:(NSMenuItem*)item {
-    if (item.action == @selector(burnSpeed:) && _launch)
-        item.state = item.tag == NSInteger(_launch->settings.burn_in) ? NSControlStateValueOn : NSControlStateValueOff;
-    return [self validAction:item.action];
+    return guarded(NO, [&]() -> BOOL {
+        if (item.action == @selector(burnSpeed:) && _launch)
+            item.state =
+                item.tag == NSInteger(_launch->settings.burn_in) ? NSControlStateValueOn : NSControlStateValueOff;
+        return [self validAction:item.action];
+    });
 }
 
 - (BOOL)validateToolbarItem:(NSToolbarItem*)item {
-    return [self validAction:item.action];
+    return guarded(NO, [&]() -> BOOL { return [self validAction:item.action]; });
 }
 
 - (BOOL)validAction:(SEL)action {
@@ -2277,15 +2299,21 @@ void CocoaFrontend::changed() {
 // (sessions closed, battery-backed RAM written).
 - (NSApplicationTerminateReply)applicationShouldTerminate:(NSApplication*)sender {
     (void)sender;
-    for (EMMainController* t in [_terminals copy]) {
-        if (t.quitting) continue;
-        [t.window makeKeyAndOrderFront:nil];
-        if (![t confirmDiscard]) return NSTerminateCancel;
-    }
+    // An exception while asking leaves the app running; one while a terminal
+    // winds down does not stop the others from being saved.
+    const NSApplicationTerminateReply asked = guarded(NSTerminateCancel, [&]() -> NSApplicationTerminateReply {
+        for (EMMainController* t in [_terminals copy]) {
+            if (t.quitting) continue;
+            [t.window makeKeyAndOrderFront:nil];
+            if (![t confirmDiscard]) return NSTerminateCancel;
+        }
+        return NSTerminateNow;
+    });
+    if (asked != NSTerminateNow) return asked;
     _terminating = true;
     for (EMMainController* t in [_terminals copy]) {
         t.quitting = true;
-        [t shutdownTerminal];
+        guarded([&] { [t shutdownTerminal]; });
         [t.window orderOut:nil];
     }
     [_terminals removeAllObjects];
