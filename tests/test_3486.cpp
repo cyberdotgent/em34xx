@@ -135,6 +135,13 @@ TEST_CASE("3486 third Twinax channel: registers, programs at 0200, descriptor at
     CHECK(sys->mmio_read8(0x0F) == 0x5A);
     w(0x0D, 0xFF);
     CHECK(sys->mmio_read8(0x0D) == 0);
+    // As on the first two channels, acknowledging "command queued" (02)
+    // drops "end of message" (08) with it; other acknowledges do not.
+    ic.request2(0x0E);
+    w(0x0D, 0x04);
+    CHECK(sys->mmio_read8(0x0D) == 0x0A);
+    w(0x0D, 0x02);
+    CHECK(sys->mmio_read8(0x0D) == 0);
 
     // Control register 2000B: bit 7 drops busy.
     CHECK(eng.busy(2));

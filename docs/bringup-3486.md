@@ -146,7 +146,7 @@ and `20030-20031` (observed). The new registers (observed accesses,
 
 | Address | Use |
 | --- | --- |
-| `2000D` | Written `FF` when the third Twinax channel is set up. Hypothesis: channel 2 request register (write 1 to clear), the counterpart of `20002/3`. |
+| `2000D` | Written `FF` when the third Twinax channel is set up. Hypothesis: channel 2 request register (write 1 to clear, with the same `02`/`08` coupling), the counterpart of `20002/3`. |
 | `2000F` | Saved and restored together with the 16-bit mask `20004` by the interrupt code, written 0 at channel 2 set-up. Hypothesis: channel 2 enable mask (third mask byte). |
 | `20017` | Written `20` at reset. |
 | `2001A` | Station address of the third Twinax channel (written next to `20008`, bits 2-0). |
@@ -231,7 +231,8 @@ display block request to finish while the interrupt landed on the stub
   runs every sub-test on all three channels): station address `2001A`,
   enable `2001B` bit 0 (written `06` with the channel off and `07` with it
   on; bits 1-2 unknown), channel control `2000B` (bit 7 drops busy, as
-  `20000/1`), request register `2000D` (write 1 to clear) and mask `2000F`.
+  `20000/1`), request register `2000D` (write 1 to clear; `02` takes `08` with it as on
+  `20002/3`, hypothesis, see bringup-3477.md "Channel events") and mask `2000F`.
   Its programs are at `0200-027F`, not at the stride of the first two.
 - Frame generator: for the third channel the test writes `42` to `20025`
   where it writes `06` and `0B` for the first two, and expects a two-frame

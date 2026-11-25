@@ -239,6 +239,9 @@ TEST_CASE("3477 interrupt registers in the gate array") {
     s.w(0x20003, 0x08);
     CHECK(s.r(0x20003) == 0x02);
     s.w(0x20003, 0x02);
+    s.sys->interrupts().request(0x0A00);   // the same rule on channel 1
+    s.w(0x20003, 0x02);
+    CHECK(s.r(0x20003) == 0x00);
     s.sys->interrupts().request(0x000C);
     s.w(0x20002, 0x04);   // activate done: the end of the Activate Write stays
     CHECK(s.r(0x20002) == 0x08);

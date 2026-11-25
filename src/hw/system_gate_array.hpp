@@ -22,7 +22,9 @@ namespace em34xx {
 class KeyboardInterface;
 
 // Interrupt controller of the gate array. There is no 8259: a 16-bit
-// request register (read at 20002, write 1 to clear) and a 16-bit enable
+// request register (read at 20002, write 1 to clear; clearing a Twinax
+// channel's "command queued" also clears its "end of message", see
+// mmio_write8) and a 16-bit enable
 // mask (20004, 1 = enabled) cover the timer and the Twinax sources; the
 // display and keyboard have their own request lines. Each source has a fixed
 // vector, presented on the interrupt-acknowledge cycle. The 3486 family's

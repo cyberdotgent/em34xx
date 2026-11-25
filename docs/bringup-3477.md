@@ -32,7 +32,7 @@ the two Twinax channels the even byte is channel 0 and the odd byte channel 1
 | --- | --- | --- | --- |
 | `20000/1` | R/W | Twinax channel control (ch 0 / ch 1), see [Twinax engine](#twinax-engine-20000-20009-20015-20020-2002b) | Observed access, hypothesis meaning. |
 | `20002/3` | R | Interrupt request register (16 bits); also read as per-channel status | Observed. |
-| `20002/3` | W | Acknowledge: write 1 to clear | Hypothesis, strong (`FFFF` clears all at init; handlers write their own bit). |
+| `20002/3` | W | Acknowledge: write 1 to clear. Clearing a channel's `02` also clears its `08` (see [Channel events](#channel-events)). | Hypothesis, strong (`FFFF` clears all at init; handlers write their own bit); the `02`/`08` coupling is a hypothesis. |
 | `20004/5` | R/W | Interrupt enable mask, 1 = enabled; readable | Observed use; bit map hypothesis. |
 | `20006` | W | Written `FF` at init; function unknown | Stored. |
 | `20007` | R/W | Bit 0: keyboard interrupt enable | Observed. |
@@ -648,7 +648,9 @@ channel handler; the 3477 image shows the same fault and the same cure):
   only when a later Write Data and Load Cursor redraws the screen.
 
 So after Write Data the `08` of the queue load must be gone by the time
-the queue is reset. The model drops `08` when `02` is acknowledged
+the queue is reset. The model drops `08` when `02` is acknowledged, on
+each channel's request register (`20002`, `20003` and the 3486 family's
+`2000D`); this is the one exception to "write 1 to clear" there
 [hypothesis; the real adapter may equally not raise it once the queue has
 been reset]. Before this, a repaint made only of Activate Writes left the
 screen stale (seen with a TN5250 host: a panel sent as full-width rows
