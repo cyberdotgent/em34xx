@@ -3,8 +3,13 @@
 
 #import <Carbon/Carbon.h>   // kVK_* key codes, KBGetLayoutType
 
+#include "util/log.hpp"
+
+#include <cxxabi.h>
+#include <exception>
 #include <filesystem>
 #include <system_error>
+#include <typeinfo>
 
 namespace em34xx {
 namespace cocoa {
@@ -368,6 +373,43 @@ void report_exception(const char* what) noexcept {
     } @catch (NSException*) {
     }
     showing = false;
+}
+
+namespace {
+// A C++ type name as written in the source, or the mangled one.
+std::string type_name(const std::type_info* t) {
+    if (!t) return "unknown type";
+    int status = 0;
+    char* d = abi::__cxa_demangle(t->name(), nullptr, nullptr, &status);
+    std::string out = status == 0 && d ? d : t->name();
+    std::free(d);
+    return out;
+}
+} // namespace
+
+void report_current_exception() noexcept {
+    std::string what;
+    try {
+        try {
+            throw;
+        } catch (NSException* e) {
+            what = "Objective-C exception " + str(e.name) + ": " + str(e.reason);
+            log_write("cocoa", LogLevel::Error, "%s", what.c_str());
+            for (NSString* line in e.callStackSymbols) log_write("cocoa", LogLevel::Error, "  %s", str(line).c_str());
+        } catch (const std::exception& e) {
+            what = e.what() && *e.what() ? std::string(e.what()) : "(no description)";
+            what += " [" + type_name(abi::__cxa_current_exception_type()) + "]";
+            log_write("cocoa", LogLevel::Error, "unexpected exception: %s", what.c_str());
+        } catch (...) {
+            what = "Exception of type " + type_name(abi::__cxa_current_exception_type());
+            log_write("cocoa", LogLevel::Error, "unexpected exception: %s", what.c_str());
+        }
+    } catch (...) {
+        // Out of memory while describing it: report it bare.
+        report_exception(nullptr);
+        return;
+    }
+    report_exception(what.c_str());
 }
 
 } // namespace cocoa

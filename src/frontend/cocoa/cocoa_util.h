@@ -94,16 +94,19 @@ void reveal_in_finder(const std::string& path);
 // --- exceptions ---------------------------------------------------------------
 // No C++ exception may unwind through AppKit frames: actions, timers and
 // dispatched blocks run their body through guarded(), which reports the
-// exception in an alert (one at a time) and returns `fallback`.
+// exception in an alert (one at a time) and returns `fallback`. catch (...)
+// also catches Objective-C exceptions (NSException): the report names
+// whichever it was and writes it, with an NSException's backtrace, to the
+// log.
 void report_exception(const char* what) noexcept;
+// Call from a catch block only: reports the exception being handled.
+void report_current_exception() noexcept;
 template <class R, class F>
 R guarded(R fallback, F&& body) noexcept {
     try {
         return body();
-    } catch (const std::exception& e) {
-        report_exception(e.what());
     } catch (...) {
-        report_exception(nullptr);
+        report_current_exception();
     }
     return fallback;
 }
@@ -111,10 +114,8 @@ template <class F>
 void guarded(F&& body) noexcept {
     try {
         body();
-    } catch (const std::exception& e) {
-        report_exception(e.what());
     } catch (...) {
-        report_exception(nullptr);
+        report_current_exception();
     }
 }
 
