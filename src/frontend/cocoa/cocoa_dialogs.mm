@@ -209,7 +209,7 @@ std::vector<std::string> tls_version_items(const std::string& first) {
         text, sv, hstack(@[ folder, show ]),
         button_row(@[ import, remove, recheck ], @[ done ])
     ], 10);
-    [content.arrangedSubviews[4].widthAnchor constraintEqualToAnchor:content.widthAnchor].active = YES;
+    [content.arrangedSubviews.lastObject.widthAnchor constraintEqualToAnchor:content.widthAnchor].active = YES;
     [sv.widthAnchor constraintEqualToAnchor:content.widthAnchor].active = YES;
     set_content(_panel, content);
     [self fill];
