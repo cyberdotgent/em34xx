@@ -469,6 +469,19 @@ TEST_CASE("tn5250 keymap: Return is Enter, functions on Ctrl and Alt chords") {
         // The more specific rules still win: Alt+Delete is Insert.
         CHECK(chord(kLAltKey, kDelete) == alt(pcomm(kInsert)));
 
+        // Right Alt (AltGr) has no chords: it is the terminal's Alt, as in
+        // PCOMM, so AltGr+1 and AltGr+M are not F1 and Field Minus.
+        {
+            constexpr uint32_t kRAltKey = 0xE6, kM = 0x10;
+            for (uint32_t k : {k1, kMinus, kM, kR}) {
+                pc.key(kRAltKey, true);
+                pc.tap(k);
+                pc.key(kRAltKey, false);
+                CHECK(chord(kRAltKey, k) == pc.take());
+            }
+            CHECK(chord(kRAltKey, k1) != chord(kLAltKey, k1));
+        }
+
         // Ctrl+I: Next Field, the Tab key.
         CHECK(chord(kLCtrlKey, kI) == pcomm(kTab));
         CHECK(chord(kRCtrlKey, kI) == pcomm(kTab));

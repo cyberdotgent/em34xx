@@ -45,7 +45,7 @@ to = "enter"
 
 [[map]]
 host = "j"
-mods = "ctrl alt"
+mods = "ctrl lalt"
 to = "newline"
 
 [[map]]
@@ -122,12 +122,12 @@ to = "insert"
 
 [[map]]
 host = "i"
-mods = "alt"
+mods = "lalt"
 to = "insert"
 
 [[map]]
 host = "Delete"
-mods = "alt"
+mods = "lalt"
 to = "insert"
 
 [[map]]
@@ -142,7 +142,7 @@ to = "reset"
 
 [[map]]
 host = "r"
-mods = "alt"
+mods = "lalt"
 to = "reset"
 
 [[map]]
@@ -152,12 +152,12 @@ to = "print"
 
 [[map]]
 host = "p"
-mods = "alt"
+mods = "lalt"
 to = "print"
 
 [[map]]
 host = "h"
-mods = "alt"
+mods = "lalt"
 to = "help"
 
 [[map]]
@@ -167,12 +167,12 @@ to = "sysrq"
 
 [[map]]
 host = "s"
-mods = "alt"
+mods = "lalt"
 to = "sysrq"
 
 [[map]]
 host = "c"
-mods = "alt"
+mods = "lalt"
 to = "clear"
 
 [[map]]
@@ -182,7 +182,7 @@ to = "fieldexit"
 
 [[map]]
 host = "x"
-mods = "alt"
+mods = "lalt"
 to = "fieldexit"
 
 [[map]]
@@ -202,12 +202,12 @@ to = "attn"
 
 [[map]]
 host = "a"
-mods = "alt"
+mods = "lalt"
 to = "attn"
 
 [[map]]
 host = "d"
-mods = "alt"
+mods = "lalt"
 to = "dup"
 
 [[map]]
@@ -217,7 +217,7 @@ to = "field+"
 
 [[map]]
 host = "m"
-mods = "alt"
+mods = "lalt"
 to = "field-"
 
 [[map]]
@@ -241,122 +241,122 @@ to = "field-"
 
 [[map]]
 host = "1"
-mods = "alt"
+mods = "lalt"
 to = "f1"
 
 [[map]]
 host = "2"
-mods = "alt"
+mods = "lalt"
 to = "f2"
 
 [[map]]
 host = "3"
-mods = "alt"
+mods = "lalt"
 to = "f3"
 
 [[map]]
 host = "4"
-mods = "alt"
+mods = "lalt"
 to = "f4"
 
 [[map]]
 host = "5"
-mods = "alt"
+mods = "lalt"
 to = "f5"
 
 [[map]]
 host = "6"
-mods = "alt"
+mods = "lalt"
 to = "f6"
 
 [[map]]
 host = "7"
-mods = "alt"
+mods = "lalt"
 to = "f7"
 
 [[map]]
 host = "8"
-mods = "alt"
+mods = "lalt"
 to = "f8"
 
 [[map]]
 host = "9"
-mods = "alt"
+mods = "lalt"
 to = "f9"
 
 [[map]]
 host = "0"
-mods = "alt"
+mods = "lalt"
 to = "f10"
 
 [[map]]
 host = "Minus"
-mods = "alt"
+mods = "lalt"
 to = "f11"
 
 [[map]]
 host = "Equals"
-mods = "alt"
+mods = "lalt"
 to = "f12"
 
 [[map]]
 host = "1"
-mods = "alt shift"
+mods = "lalt shift"
 to = "f13"
 
 [[map]]
 host = "2"
-mods = "alt shift"
+mods = "lalt shift"
 to = "f14"
 
 [[map]]
 host = "3"
-mods = "alt shift"
+mods = "lalt shift"
 to = "f15"
 
 [[map]]
 host = "4"
-mods = "alt shift"
+mods = "lalt shift"
 to = "f16"
 
 [[map]]
 host = "5"
-mods = "alt shift"
+mods = "lalt shift"
 to = "f17"
 
 [[map]]
 host = "6"
-mods = "alt shift"
+mods = "lalt shift"
 to = "f18"
 
 [[map]]
 host = "7"
-mods = "alt shift"
+mods = "lalt shift"
 to = "f19"
 
 [[map]]
 host = "8"
-mods = "alt shift"
+mods = "lalt shift"
 to = "f20"
 
 [[map]]
 host = "9"
-mods = "alt shift"
+mods = "lalt shift"
 to = "f21"
 
 [[map]]
 host = "0"
-mods = "alt shift"
+mods = "lalt shift"
 to = "f22"
 
 [[map]]
 host = "Minus"
-mods = "alt shift"
+mods = "lalt shift"
 to = "f23"
 
 [[map]]
 host = "Equals"
-mods = "alt shift"
+mods = "lalt shift"
 to = "f24"
 
 [[map]]

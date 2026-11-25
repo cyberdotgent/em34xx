@@ -259,6 +259,9 @@ const BuiltinRule kTn5250Rules[] = {
     // keyboard) at the start of every chord.
     {"lctrl", "*", "none", false, ""},
     {"rctrl", "*", "none", false, ""},
+    // The Alt chords are on the Left Alt only [ours]. Right Alt is AltGr on
+    // most national keyboards and stays the terminal's Alt, as in "pcomm",
+    // so the characters on a key's third legend can still be typed.
     // Return and Delete with any modifier: a rule with no modifiers would
     // leave Ctrl+Return, Shift+Delete and the like to the keys at those
     // positions (Field Exit, New Line). The rules that name a modifier
@@ -267,7 +270,7 @@ const BuiltinRule kTn5250Rules[] = {
     {"kpenter", "*", "enter", false, ""},
     {"j", "ctrl", "enter", false, ""},
     {"m", "ctrl", "enter", false, ""},
-    {"j", "ctrl alt", "newline", false, ""},
+    {"j", "ctrl lalt", "newline", false, ""},
     {"enter", "shift", "newline", false, ""},     // ours
     {"tab", "shift", "backtab", false, ""},
     {"i", "ctrl", "tab", false, ""},              // Next Field
@@ -282,42 +285,42 @@ const BuiltinRule kTn5250Rules[] = {
     {"end", "*", "none", false, "122"},           // End of field: no such terminal key
     {"end", "*", "positional", false, "enhanced"},
     {"insert", "*", "insert", false, ""},
-    {"i", "alt", "insert", false, ""},
-    {"delete", "alt", "insert", false, ""},
+    {"i", "lalt", "insert", false, ""},
+    {"delete", "lalt", "insert", false, ""},
     {"delete", "*", "delete", false, ""},
     {"r", "ctrl", "reset", false, ""},
-    {"r", "alt", "reset", false, ""},
+    {"r", "lalt", "reset", false, ""},
     {"p", "ctrl", "print", false, ""},
-    {"p", "alt", "print", false, ""},
-    {"h", "alt", "help", false, ""},
+    {"p", "lalt", "print", false, ""},
+    {"h", "lalt", "help", false, ""},
     {"c", "ctrl", "sysrq", false, ""},
-    {"s", "alt", "sysrq", false, ""},
-    {"c", "alt", "clear", false, ""},
+    {"s", "lalt", "sysrq", false, ""},
+    {"c", "lalt", "clear", false, ""},
     {"k", "ctrl", "fieldexit", false, ""},
-    {"x", "alt", "fieldexit", false, ""},
+    {"x", "lalt", "fieldexit", false, ""},
     {"t", "ctrl", "test", false, ""},
     {"e", "ctrl", "erinp", false, ""},
     {"a", "ctrl", "attn", false, ""},
-    {"a", "alt", "attn", false, ""},
-    {"d", "alt", "dup", false, ""},
+    {"a", "lalt", "attn", false, ""},
+    {"d", "lalt", "dup", false, ""},
     {"x", "ctrl", "field+", false, ""},
-    {"m", "alt", "field-", false, ""},
+    {"m", "lalt", "field-", false, ""},
     {"escape", "", "attn", false, ""},            // ours (pcomm)
     {"escape", "shift", "sysrq", false, ""},      // ours (pcomm)
     {"kpplus", "*", "field+", false, ""},         // ours (pcomm)
     {"kpminus", "*", "field-", false, ""},        // ours (pcomm)
-    {"1", "alt", "f1", false, ""}, {"2", "alt", "f2", false, ""}, {"3", "alt", "f3", false, ""},
-    {"4", "alt", "f4", false, ""}, {"5", "alt", "f5", false, ""}, {"6", "alt", "f6", false, ""},
-    {"7", "alt", "f7", false, ""}, {"8", "alt", "f8", false, ""}, {"9", "alt", "f9", false, ""},
-    {"0", "alt", "f10", false, ""},               // hypothesis
-    {"minus", "alt", "f11", false, ""}, {"equals", "alt", "f12", false, ""},
+    {"1", "lalt", "f1", false, ""}, {"2", "lalt", "f2", false, ""}, {"3", "lalt", "f3", false, ""},
+    {"4", "lalt", "f4", false, ""}, {"5", "lalt", "f5", false, ""}, {"6", "lalt", "f6", false, ""},
+    {"7", "lalt", "f7", false, ""}, {"8", "lalt", "f8", false, ""}, {"9", "lalt", "f9", false, ""},
+    {"0", "lalt", "f10", false, ""},               // hypothesis
+    {"minus", "lalt", "f11", false, ""}, {"equals", "lalt", "f12", false, ""},
     // M-! to M-+: Alt with the shifted digit row.
-    {"1", "alt shift", "f13", false, ""}, {"2", "alt shift", "f14", false, ""},
-    {"3", "alt shift", "f15", false, ""}, {"4", "alt shift", "f16", false, ""},
-    {"5", "alt shift", "f17", false, ""}, {"6", "alt shift", "f18", false, ""},
-    {"7", "alt shift", "f19", false, ""}, {"8", "alt shift", "f20", false, ""},
-    {"9", "alt shift", "f21", false, ""}, {"0", "alt shift", "f22", false, ""},
-    {"minus", "alt shift", "f23", false, ""}, {"equals", "alt shift", "f24", false, ""},
+    {"1", "lalt shift", "f13", false, ""}, {"2", "lalt shift", "f14", false, ""},
+    {"3", "lalt shift", "f15", false, ""}, {"4", "lalt shift", "f16", false, ""},
+    {"5", "lalt shift", "f17", false, ""}, {"6", "lalt shift", "f18", false, ""},
+    {"7", "lalt shift", "f19", false, ""}, {"8", "lalt shift", "f20", false, ""},
+    {"9", "lalt shift", "f21", false, ""}, {"0", "lalt shift", "f22", false, ""},
+    {"minus", "lalt shift", "f23", false, ""}, {"equals", "lalt shift", "f24", false, ""},
     {"f13", "*", "f13", false, ""}, {"f14", "*", "f14", false, ""}, {"f15", "*", "f15", false, ""},
     {"f16", "*", "f16", false, ""}, {"f17", "*", "f17", false, ""}, {"f18", "*", "f18", false, ""},
     {"f19", "*", "f19", false, ""}, {"f20", "*", "f20", false, ""}, {"f21", "*", "f21", false, ""},

@@ -397,6 +397,12 @@ are Reset and Enter when tapped), and Ctrl with a key that has no rule
 presses that key. The PC's Alt still presses the terminal's Alt, which the
 rules release around their key, as `pcomm`'s Alt+F1 does.
 
+"Alt" in the table is the **Left Alt** (`lalt`) only [ours]. Right Alt is
+AltGr on most national keyboards; it has no chords here and presses the
+terminal's Alt, as in `pcomm`, so AltGr with a digit types that key's Alt
+legend instead of sending F1-F12. On Windows the Ctrl that AltGr reports
+with it is ignored.
+
 Differences from tn5250:
 
 - **Hypothesis:** Alt+0 for F10. The manual's row for F1–F10 reads
