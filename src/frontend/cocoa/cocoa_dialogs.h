@@ -43,12 +43,13 @@ bool rom_manager_dialog(NSWindow* parent, const UserDirs& dirs, const Model* req
 bool ensure_model_roms(NSWindow* parent, const UserDirs& dirs, const Model& model, const std::string& what,
                        const ModelVariant* variant = nullptr);
 
-// em34xx > Settings: startup profile, speed, default TLS minimum, ROM
-// images, the user folder. Changes apply at once: `settings` is updated and
+// em34xx > Settings: startup profile, speed, default TLS minimum, screen
+// burn-in, ROM images, the user folder. Changes apply at once: `settings` is updated and
 // `changed(before)` called (the caller applies and saves them).
 void show_settings_window(const UserDirs& dirs, AppSettings& settings,
                           std::function<void(const AppSettings& before)> changed);
-// Refill the startup profile list (profiles were added or renamed).
+// Reload the window from the settings (profiles were added or renamed, or a
+// setting was changed from a menu).
 void refresh_settings_window();
 
 enum class ProfileEditMode {

@@ -393,6 +393,7 @@ bool em34xx::cocoa::ensure_model_roms(NSWindow* parent, const UserDirs& dirs, co
     NSPopUpButton* _startupProfile;
     NSPopUpButton* _speed;
     NSPopUpButton* _tlsMin;
+    NSPopUpButton* _burn;
 }
 
 - (void)build {
@@ -412,6 +413,8 @@ bool em34xx::cocoa::ensure_model_roms(NSWindow* parent, const UserDirs& dirs, co
     for (unsigned s : kSpeeds) speeds.push_back(s ? format("%u %%", s) : std::string("Unthrottled"));
     _speed = popup(speeds, self, @selector(changed:));
     _tlsMin = popup(tls_version_items(""), self, @selector(changed:));
+    _burn = popup({"Off", "Slow", "Fast", "Hyper"}, self, @selector(changed:));
+    NSTextField* burnNote = small_label(@"How fast the picture wears the tube. View > Burn-in > Replace CRT fits a new one.");
     NSTextField* speedNote = small_label(@"Of the terminal's own clock; applies at once.");
     NSTextField* tlsNote = small_label(@"For profiles that set none; applies at the next connection.");
     NSButton* roms = push_button(@"ROM Images…", self, @selector(roms:));
@@ -427,12 +430,15 @@ bool em34xx::cocoa::ensure_model_roms(NSWindow* parent, const UserDirs& dirs, co
         @[ empty(), speedNote ],
         @[ label(@"Minimum TLS version:"), _tlsMin ],
         @[ empty(), tlsNote ],
+        @[ label(@"Screen burn-in:"), _burn ],
+        @[ empty(), burnNote ],
         @[ label(@"ROM images:"), roms ],
         @[ label(@"User folder:"), vstack(@[ folder, show ], 4) ],
     ]);
     [g rowAtIndex:2].topPadding = -4;
     [g rowAtIndex:4].topPadding = -4;
-    [g rowAtIndex:5].topPadding = 8;
+    [g rowAtIndex:6].topPadding = -4;
+    [g rowAtIndex:7].topPadding = 8;
     NSTextField* note = small_label(@"Settings, ROM images, the keymap and the connection profiles are kept in "
                                     @"the user folder.");
     set_content(_window, vstack(@[ g, note ], 14));
@@ -458,6 +464,7 @@ bool em34xx::cocoa::ensure_model_roms(NSWindow* parent, const UserDirs& dirs, co
     for (size_t i = 0; i < kTlsVersionCount; ++i)
         if (kTlsVersions[i] == _settings->tls_min_version) tls = NSInteger(i);
     [_tlsMin selectItemAtIndex:tls];
+    [_burn selectItemAtIndex:NSInteger(_settings->burn_in)];
 }
 
 - (void)changed:(id)sender {
@@ -475,6 +482,8 @@ bool em34xx::cocoa::ensure_model_roms(NSWindow* parent, const UserDirs& dirs, co
         if (sp >= 0 && size_t(sp) < kSpeedCount) s.speed_percent = kSpeeds[sp];
         const NSInteger tv = _tlsMin.indexOfSelectedItem;
         if (tv >= 0 && size_t(tv) < kTlsVersionCount) s.tls_min_version = kTlsVersions[tv];
+        const NSInteger burn = _burn.indexOfSelectedItem;
+        if (burn >= 0 && burn <= NSInteger(BurnSpeed::Hyper)) s.burn_in = BurnSpeed(burn);
         if (_changed) _changed(before);
     });
 }

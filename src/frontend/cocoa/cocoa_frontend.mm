@@ -168,6 +168,10 @@ struct SessionIndicator {
 struct Launch {
     std::unique_ptr<UserDirs> dirs;
     AppSettings settings;
+    // Screen burn-in: the one tube of the application, shared by every
+    // terminal window (present/burn_in.hpp).
+    TubeWear tube;
+    steady::time_point tube_saved = steady::now();
     std::string keymap_path;    // the global keymap file, or "" for the built-in Mac map
     std::string log_file;       // the process's log
 };
@@ -339,6 +343,8 @@ private:
 - (void)shutdownTerminal;
 - (void)setKeymapSpec:(const std::string&)spec;
 - (void)setSpeed:(unsigned)pct;
+// The burn-in setting or the tube changed: draw the picture again.
+- (void)tubeChanged;
 - (void)displayChanged;
 - (void)titleChanged;
 - (void)quitRequested;
@@ -424,6 +430,8 @@ static NSToolbarItemIdentifier const kTbTermKeys = @"termkeys";
     int _baseW, _baseH;
     bool _dirty;
     steady::time_point _lastRaster;
+    steady::time_point _tubeExposed;   // burn-in: when this picture was last counted
+    uint64_t _tubeVersion;             // the tube version this window has drawn
     std::shared_ptr<std::atomic<bool>> _displayPending;
 
     std::set<uint32_t> _held;
@@ -619,6 +627,8 @@ static NSToolbarItemIdentifier const kTbTermKeys = @"termkeys";
     }
     [self updateUi];
     [_win makeKeyAndOrderFront:nil];
+    _tubeExposed = steady::now();
+    _tubeVersion = _launch->tube.version();
     __weak EMMainController* weak = self;
     _statusTimer = [NSTimer timerWithTimeInterval:0.5
                                           repeats:YES
@@ -645,7 +655,33 @@ static NSToolbarItemIdentifier const kTbTermKeys = @"termkeys";
         }
         [self handleTrustRequests];   // a prompt that waited for another dialog to close
         [self updateStatus];
+        [self burnTick];
     });
+}
+
+// The picture now on the tube has been there since the last tick. A gap
+// longer than a few ticks (the Mac slept, a modal dialog) is not counted.
+// Every window ages the one tube, and draws again when another has.
+- (void)burnTick {
+    const auto now = steady::now();
+    const double seconds = std::min(2.0, std::chrono::duration<double>(now - _tubeExposed).count());
+    _tubeExposed = now;
+    TubeWear& tube = _launch->tube;
+    tube.expose(_fb, seconds, [self settings].burn_in);
+    if (tube.version() != _tubeVersion) [self tubeChanged];
+    if (now - _launch->tube_saved >= std::chrono::minutes(5)) [self saveTube];
+}
+
+- (void)saveTube {
+    _launch->tube_saved = steady::now();
+    std::string error;
+    if (!save_tube([self dirs].tube_file(), _launch->tube, error)) LOG_WARN("ui", "%s", error.c_str());
+}
+
+- (void)tubeChanged {
+    _tubeVersion = _launch->tube.version();
+    _dirty = true;
+    [self scheduleRender];
 }
 
 - (void)shutdownTerminal {
@@ -660,6 +696,7 @@ static NSToolbarItemIdentifier const kTbTermKeys = @"termkeys";
     _app->host_link().set_tls_trust_handler(nullptr);
     std::string error;
     save_settings([self dirs].settings_file(), [self settings], error);
+    [self saveTube];
     // As at a clean exit: the sessions and the emulation thread wind down
     // and the battery-backed RAM is written (Application::finish()).
     guarded([&] {
@@ -737,7 +774,8 @@ static NSToolbarItemIdentifier const kTbTermKeys = @"termkeys";
     const NSRect where = NSMakeRect(x0 / scale, y0 / scale, out_w / scale, out_h / scale);
     const bool moved = !NSEqualRects(where, _imgRect);
     _imgRect = where;
-    const CrtRenderer::Rows rows = _crt.render(_fb, out_w, out_h, _crtParams, _image);
+    const CrtRenderer::Rows rows = _crt.render(_fb, out_w, out_h, _crtParams, _image,
+                                               [self settings].burn_in == BurnSpeed::Off ? nullptr : &_launch->tube);
     if (resized || moved) {
         _view.needsDisplay = YES;
     } else if (!rows.empty()) {
@@ -1640,6 +1678,18 @@ void CocoaFrontend::changed() {
     [self add:@"Zoom In" action:@selector(zoomIn:) key:@"+" to:view];
     [self add:@"Zoom Out" action:@selector(zoomOut:) key:@"-" to:view];
     [view addItem:NSMenuItem.separatorItem];
+    // Burn-in is the application's, not a window's: these go to the delegate.
+    NSMenu* burn = [[NSMenu alloc] initWithTitle:@"Burn-in"];
+    [self add:@"Burn-in" action:nil key:nil to:view].submenu = burn;
+    NSInteger burnTag = 0;
+    for (NSString* title in @[ @"Off", @"Slow", @"Fast", @"Hyper" ]) {
+        NSMenuItem* it = [self add:title action:@selector(burnSpeed:) key:nil to:burn];
+        it.target = self;
+        it.tag = burnTag++;
+    }
+    [burn addItem:NSMenuItem.separatorItem];
+    [self add:@"Replace CRT…" action:@selector(replaceTube:) key:nil to:burn].target = self;
+    [view addItem:NSMenuItem.separatorItem];
     [self add:@"Show Toolbar" action:@selector(toggleToolbarShown:) key:@"t" to:view].keyEquivalentModifierMask =
         NSEventModifierFlagCommand | NSEventModifierFlagOption;
     [self add:@"Customize Toolbar…" action:@selector(runToolbarCustomizationPalette:) key:nil to:view];
@@ -1741,6 +1791,8 @@ void CocoaFrontend::changed() {
         error_alert(nil, "The settings cannot be read; default settings are used.", error);
         L.settings = AppSettings();
     }
+    if (!load_tube(L.dirs->tube_file(), L.tube, error))
+        LOG_WARN("ui", "%s: %s; starting with a new tube", L.dirs->tube_file().c_str(), error.c_str());
 
     // Profiles from Finder, else from the command line (em34xx.app/Contents/
     // MacOS/em34xx PROFILE.em34xx ...). Arguments starting with '-' are left
@@ -2073,10 +2125,42 @@ void CocoaFrontend::changed() {
             const AppSettings& now = d->_launch->settings;
             if (now.speed_percent != before.speed_percent)
                 for (EMMainController* t in d->_terminals) [t setSpeed:now.speed_percent];
+            if (now.burn_in != before.burn_in)
+                for (EMMainController* t in d->_terminals) [t tubeChanged];
             std::string error;
             if (!save_settings(d->_launch->dirs->settings_file(), now, error))
                 error_alert(nil, "Cannot save the settings", error);
         });
+    });
+}
+
+// View > Burn-in: the speed at which the tube wears, or off.
+- (void)burnSpeed:(NSMenuItem*)sender {
+    guarded([&] {
+        if (sender.tag < 0 || sender.tag > NSInteger(BurnSpeed::Hyper)) return;
+        _launch->settings.burn_in = BurnSpeed(sender.tag);
+        std::string error;
+        if (!save_settings(_launch->dirs->settings_file(), _launch->settings, error))
+            error_alert(nil, "Cannot save the settings", error);
+        for (EMMainController* t in _terminals) [t tubeChanged];
+        refresh_settings_window();
+    });
+}
+
+// View > Burn-in > Replace CRT: a new tube.
+- (void)replaceTube:(id)sender {
+    (void)sender;
+    guarded([&] {
+        EMMainController* front = [self frontTerminal];
+        [front releaseKeys];
+        if (!ask(front.window, "Replace the CRT with a new one?", "The burn-in of this tube is lost.", "Replace",
+                 "Cancel", NSAlertStyleWarning, true))
+            return;
+        _launch->tube.reset();
+        _launch->tube_saved = steady::now();
+        std::string error;
+        if (!save_tube(_launch->dirs->tube_file(), _launch->tube, error)) error_alert(nil, "Cannot save the tube", error);
+        for (EMMainController* t in _terminals) [t tubeChanged];
     });
 }
 
@@ -2127,6 +2211,8 @@ void CocoaFrontend::changed() {
 }
 
 - (BOOL)validateMenuItem:(NSMenuItem*)item {
+    if (item.action == @selector(burnSpeed:) && _launch)
+        item.state = item.tag == NSInteger(_launch->settings.burn_in) ? NSControlStateValueOn : NSControlStateValueOff;
     return [self validAction:item.action];
 }
 
