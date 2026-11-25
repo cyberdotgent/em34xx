@@ -165,6 +165,7 @@ terminal settings" in [frontend-win32.md](frontend-win32.md)).
   roms/                ROM images
   profiles/*.em34xx    connection profiles (the same format as em34xxw's)
   3477.nvram           battery-backed RAM of the terminal
+  tube.burn            the wear of the tube (docs/burn-in.md)
 ~/Library/Logs/em34xx.log   the log of the last run (Console shows it)
 ```
 
@@ -193,6 +194,7 @@ other key, Control and Option included, does.
 | File | Disconnect / Reconnect (⌘D) | (File > Disconnect / Reconnect) |
 | Edit | Undo, Redo, Cut, Copy, Paste, Select All | for the text fields of the dialogs |
 | View | Actual Size (⌘0), Zoom 1.5×, Zoom 2×, Zoom In (⌘+), Zoom Out (⌘-) | (View > Zoom) |
+| View | Burn-in > Off, Slow, Fast, Hyper, Replace CRT… | screen burn-in (docs/burn-in.md); the application's, so they work with no window open (View > Burn-in) |
 | View | Show Toolbar, Customize Toolbar…, Enter Full Screen (⌃⌘F) | standard; in full screen the picture is letterboxed in black |
 | Terminal | Attn, SysRq, Reset, Setup, Reboot (Power Cycle) | (Terminal menu) |
 | Window | Minimize, Zoom, the terminals, Bring All to Front | standard |
@@ -315,6 +317,8 @@ end (the emulator's quit request) closes its window without questions.
 
 ## Not done / known gaps
 
+- Screen burn-in (docs/burn-in.md) was written without a Mac: compiled by
+  CI, not yet run by hand.
 - Sound: no `AudioSink` yet (the alarm is silent), as in em34xxw.
 - Copy and paste of the screen text: not in em34xxw either.
 - Signing with a Developer ID and notarisation are release steps

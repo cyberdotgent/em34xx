@@ -79,6 +79,7 @@ stdin (when it is not a terminal), and from GDB's `monitor` command.
 | `echo text` | Print text. |
 | `source file` | Run another script. |
 | `screenshot file.bmp\|file.ppm [raw]` | Save the display, stretched to the tube's proportions (4:3 on the 3477) unless `raw`. |
+| `burnin [off\|slow\|fast\|hyper\|expose SECONDS\|reset]` | Screen burn-in of the monitor's own tube (docs/burn-in.md): set the speed, leave the current picture on the tube for that long, or fit a new tube. Off at start and never saved; it shows in `screenshot`. |
 | `quit [code]` | Exit. The default code is 1 if any assertion failed, otherwise 0. |
 
 A script stops at the first command error. With `--batch`, a failed script
