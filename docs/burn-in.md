@@ -61,8 +61,9 @@ hours. Wear from any speed is kept; Replace CRT is the way back.
   five minutes when changed, on exit and at log-off, to a temporary file
   that replaces the old one. A file of another version or size is ignored
   and the tube starts new.
-- **Several windows** (em34xx.app) share the tube: each wears it and each
-  shows it.
+- **Several windows** (em34xx.app) share the tube and each shows it. The
+  tube ages with the time the application runs, not with the number of
+  windows: each window's picture counts for its share of the time.
 
 ## Status
 

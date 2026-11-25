@@ -320,6 +320,8 @@ private:
 // The app delegate, told when a terminal window has closed.
 @protocol EMTerminalHost
 - (void)terminalClosed:(EMMainController*)terminal;
+// Terminal windows open now.
+- (NSUInteger)terminalCount;
 @end
 
 // One terminal window: its own emulated terminal (an Application with its
@@ -661,13 +663,16 @@ static NSToolbarItemIdentifier const kTbTermKeys = @"termkeys";
 
 // The picture now on the tube has been there since the last tick. A gap
 // longer than a few ticks (the Mac slept, a modal dialog) is not counted.
-// Every window ages the one tube, and draws again when another has.
+// The one tube ages with the time the application runs, not with the
+// number of windows: each window's picture counts for its share of the
+// time. A window draws again when another has aged the tube.
 - (void)burnTick {
     const auto now = steady::now();
     const double seconds = std::min(2.0, std::chrono::duration<double>(now - _tubeExposed).count());
     _tubeExposed = now;
     TubeWear& tube = _launch->tube;
-    tube.expose(_fb, seconds, [self settings].burn_in);
+    const NSUInteger windows = std::max<NSUInteger>(1, [(id<EMTerminalHost>)NSApp.delegate terminalCount]);
+    tube.expose(_fb, seconds / double(windows), [self settings].burn_in);
     if (tube.version() != _tubeVersion) [self tubeChanged];
     if (now - _launch->tube_saved >= std::chrono::minutes(5)) [self saveTube];
 }
@@ -1969,6 +1974,10 @@ void CocoaFrontend::changed() {
 
 - (void)terminalClosed:(EMMainController*)terminal {
     [_terminals removeObject:terminal];
+}
+
+- (NSUInteger)terminalCount {
+    return _terminals.count;
 }
 
 // The terminal in front, if any: the frontmost terminal window (a sheet
