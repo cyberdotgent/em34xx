@@ -10,6 +10,10 @@
 
 <!-- For changes users see in a window: which two front ends were validated by hand, and which is untested. Otherwise: not applicable. -->
 
+## Fun features
+
+<!-- Declare any easter egg or other "fun" feature here, and name the setting that turns it off. Otherwise: none. -->
+
 ## AI assistance
 
 <!-- Required. Tool, exact model and provider, e.g. "Claude Code, Claude Fable 5.2 (Anthropic)". List every model used, or write "none". -->

@@ -22,6 +22,28 @@ order the maintainer sets.
   Windows.
 - **Documented.** Tests and the documents in `docs/` change with the code.
 
+## Fun features, and serious ones
+
+em34xx is not a commercial product, and some fun is welcome: easter eggs
+and the like, in the spirit of the Christmas hat on VLC's icon.
+
+A pull request with a fun feature must:
+
+- **declare it** in the description, and not hide it in other work;
+- **let the user turn it off**, with a setting in the Settings dialogs and
+  in the configuration file;
+- **stay out of the way**: it must not harm or annoy the user, or get
+  between them and their work.
+
+The maintainer's test is "does it spark joy". That is subjective, and the
+decision is the maintainer's alone. A feature that sparks joy may be
+accepted even where it bends the rules above.
+
+Fun does not crowd out serious use. Enterprise and business features, such
+as central management and deployment, Kerberos or client certificates, are
+just as welcome and are reviewed on whether they make sense for the
+project.
+
 ## Front ends
 
 The front ends are Cocoa (macOS), Win32 and Qt (once merged). macOS is a
@@ -90,3 +112,11 @@ AI tools are welcome. The rules:
 - A review may ask you to explain any part of the change.
 - "Changes requested" is answered with commits on the same pull request,
   not a new one.
+
+## Pull requests opened before these rules
+
+Pull requests that were open on 25 November 2026, when these rules were
+written, are not required to comply with them, though they are encouraged
+to. This is a one-off relaxation to carry existing work over and keep the
+load down for everyone; it is not a free pass. The maintainer has the final
+say and may still ask such a pull request to comply.
