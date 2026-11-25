@@ -116,6 +116,7 @@ private:
     bool cmd_eeprom(const std::vector<std::string>& a);
     bool cmd_speed(const std::vector<std::string>& a);
     bool cmd_screenshot(const std::vector<std::string>& a);
+    bool cmd_burnin(const std::vector<std::string>& a);
     bool cmd_twinax(const std::vector<std::string>& a);
     bool cmd_connect(const std::vector<std::string>& a);
     bool cmd_disconnect(const std::vector<std::string>& a);
@@ -141,6 +142,10 @@ private:
     bool have_next_unasm_ = false;
 
     CrtParams crt_params_;
+    // Screen burn-in of the monitor's own tube: off unless asked for, never
+    // saved, so scripts and screenshots stay repeatable.
+    TubeWear tube_;
+    BurnSpeed burn_speed_ = BurnSpeed::Off;
 };
 
 } // namespace em34xx

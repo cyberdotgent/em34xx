@@ -54,6 +54,8 @@ public:
     // Hours of exposure this tube has had, at any speed.
     double hours() const { return hours_; }
     bool fresh() const { return peak_ == 0.0f; }
+    // Depth of the most worn spot.
+    float peak_depth() const;
     // True when the map has changed since it was read or marked as saved.
     bool unsaved() const { return unsaved_; }
     void mark_saved() { unsaved_ = false; }

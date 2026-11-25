@@ -330,6 +330,7 @@ void Monitor::register_commands() {
     add("disconnect", {}, "[station]", "close the TN5250 session(s): the controller leaves the line until the next connect or reset",
         [this](A a) { return cmd_disconnect(a); });
     add("key", {}, "[+|-]name ...", "press and release host keys (HID names, e.g. enter f3 a 0x28)", [this](A a) { return cmd_key(a); });
+    add("burnin", {}, "[off|slow|fast|hyper|expose SECONDS|reset]", "screen burn-in of the monitor's tube (screenshots): speed, age the tube with the current picture, or a new tube", [this](A a) { return cmd_burnin(a); });
     add("eeprom", {"nvram"}, "[dump|save [file]|set addr byte]", "show, dump, save or edit the EEPROM (hex)", [this](A a) { return cmd_eeprom(a); });
     add("assert", {}, "expr [message]", "fail the script if expr is zero", [this](A a) { return cmd_assert(a); });
     add("echo", {}, "text", "print text", [this](A a) { return cmd_echo(a); });
@@ -922,12 +923,35 @@ bool Monitor::cmd_screenshot(const std::vector<std::string>& a) {
         crt_fit(fb, 1 << 16, target_h, out_w, out_h);
         Framebuffer out;
         out.resize(out_w, out_h);
-        crt_render(fb, out_w, out_h, crt_params_, out.pixels);
+        crt_render(fb, out_w, out_h, crt_params_, out.pixels, burn_speed_ == BurnSpeed::Off ? nullptr : &tube_);
         fb = std::move(out);
     }
     std::string err;
     if (!write_image(a[1], fb, err)) return fail(err);
     out(format("saved %dx%d screenshot to %s\n", fb.width, fb.height, a[1].c_str()));
+    return true;
+}
+
+bool Monitor::cmd_burnin(const std::vector<std::string>& a) {
+    const std::string sub = a.size() > 1 ? to_lower(a[1]) : "status";
+    BurnSpeed speed;
+    if (parse_burn_speed(sub, speed)) {
+        burn_speed_ = speed;
+    } else if (sub == "reset") {
+        tube_.reset();
+    } else if (sub == "expose") {
+        // The current picture stays on the tube for that long.
+        uint64_t seconds = 0;
+        if (a.size() != 3 || !parse_uint(a[2], seconds, 10)) return fail("usage: burnin expose SECONDS");
+        if (burn_speed_ == BurnSpeed::Off) return fail("burn-in is off (burnin slow|fast|hyper)");
+        Framebuffer fb;
+        emu_.with_machine([&](Machine& m) { render_presented(m, fb); });
+        tube_.expose(fb, double(seconds), burn_speed_);
+    } else if (sub != "status") {
+        return fail("usage: burnin [off|slow|fast|hyper|expose SECONDS|reset]");
+    }
+    out(format("burn-in %s; tube: %.2f hours, deepest wear %.0f%% of the light lost\n", burn_speed_name(burn_speed_),
+               tube_.hours(), 100.0 * kMaxLoss * double(tube_.peak_depth())));
     return true;
 }
 

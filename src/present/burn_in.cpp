@@ -117,6 +117,8 @@ void TubeWear::expose(const Framebuffer& fb, double seconds, BurnSpeed speed) {
     }
 }
 
+float TubeWear::peak_depth() const { return depth_of(peak_); }
+
 float TubeWear::depth(double u, double v) const {
     if (peak_ == 0.0f) return 0.0f;
     const double fx = std::min(std::max(u * kWidth - 0.5, 0.0), double(kWidth - 1));
