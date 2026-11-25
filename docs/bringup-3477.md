@@ -448,8 +448,9 @@ dim state looked like a keystroke lost on the way to the host.
 
 A queue load from the controller also ends the dim state (observed with
 `--twinax-host script`: a Write Data and Load Cursor while dimmed brings
-`20129` back to `40`). Not tested: whether a real 3477 passes the
-restoring key on.
+`20129` back to `40`). A real 3477 swallows the restoring key as well
+[observed by the owner]: it lets the user wake the display without
+affecting the running application.
 
 ### Keyboard interface (`20012-20014`)
 
