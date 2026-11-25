@@ -151,3 +151,16 @@ add_test(NAME tn5250 COMMAND em34xx_tn5250_tests)
 # dependency direction of the CMake libraries.
 add_test(NAME layering COMMAND ${CMAKE_COMMAND} -DSOURCE_DIR=${PROJECT_SOURCE_DIR}
          -P ${PROJECT_SOURCE_DIR}/cmake/check_layers.cmake)
+
+# em34xx-qt end to end on Qt's offscreen platform (docs/frontend-qt.md,
+# "Testing"): needs the 3477 ROM images, like the ROM smoke tests.
+if(EM34XX_HAVE_QT)
+  add_executable(em34xx_qt_gui_test qt_gui_test.cpp)
+  target_link_libraries(em34xx_qt_gui_test PRIVATE em34xx_frontend_qt Qt6::Widgets em34xx_warnings)
+  if(EXISTS "${PROJECT_SOURCE_DIR}/roms/95f4171.bin" AND EXISTS "${PROJECT_SOURCE_DIR}/roms/95f4172.bin")
+    foreach(_scenario IN ITEMS first-start profiles foreign trust burn-in)
+      add_test(NAME qt_gui_${_scenario} COMMAND em34xx_qt_gui_test ${_scenario} "${PROJECT_SOURCE_DIR}/roms")
+      set_tests_properties(qt_gui_${_scenario} PROPERTIES LABELS "rom;qt" TIMEOUT 120 SKIP_RETURN_CODE 77)
+    endforeach()
+  endif()
+endif()

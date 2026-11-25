@@ -56,10 +56,11 @@ no Right Ctrl (PCOMM's Enter), so Return is the 5250 Enter and fn+Return
 (keypad Enter) is Field Exit. More in
 [docs/frontend-cocoa.md](docs/frontend-cocoa.md).
 
-On Linux and FreeBSD, em34xx-qt is the Qt 6 GUI. It is at an early stage:
-the screen, the keyboard, a menu bar and a status bar, driven by the same
-command line as `em34xx`; profiles and the dialogs are still to come. More
-in [docs/frontend-qt.md](docs/frontend-qt.md).
+On Linux and FreeBSD, em34xx-qt is the Qt 6 GUI, with em34xxw's functions
+and layout: connection profiles, the ROM manager, the keymap editor, the TLS
+trust prompts, screen burn-in and the session status. Its files live in
+`~/.local/share/em34xx` (`$XDG_DATA_HOME/em34xx`); `em34xx-qt PROFILE.em34xx`
+opens a profile at start. More in [docs/frontend-qt.md](docs/frontend-qt.md).
 
 ## Building
 

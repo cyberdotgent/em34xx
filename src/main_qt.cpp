@@ -4,11 +4,21 @@
 #include "app/application.hpp"
 #include "frontend/qt/qt_frontend.hpp"
 
+#include <exception>
+
 int main(int argc, char** argv) {
-    em34xx::Application app(em34xx::make_qt_frontend(), nullptr);
-    if (!app.start(argc, argv)) {
-        if (!app.last_error().empty()) em34xx::qt_error_box(app.last_error());
-        return app.exit_code();
+    // Nothing may throw out of main; menu commands and dialogs catch their
+    // own exceptions (qt::guarded).
+    try {
+        em34xx::QtLaunch launch;
+        if (!em34xx::qt_prepare(argc, argv, launch)) return launch.exit_code;
+        em34xx::Application app(em34xx::make_qt_frontend(launch), nullptr);
+        return em34xx::qt_run(app, launch);
+    } catch (const std::exception& e) {
+        em34xx::qt_fatal_box(std::string("em34xx-qt ran into an unexpected error and has to close.\n\n") + e.what());
+        return 3;
+    } catch (...) {
+        em34xx::qt_fatal_box("em34xx-qt ran into an unexpected error and has to close.");
+        return 3;
     }
-    return app.run();
 }

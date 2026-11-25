@@ -428,10 +428,13 @@ endif()
 #
 # em34xx-qt: the Qt 6 Widgets GUI for Linux and the BSDs (docs/frontend-qt.md).
 # No moc or uic: the front end declares no signals or slots. rcc embeds the
-# window icon only (PNGs from tools/gen_linux_assets.py).
+# icons and glyphs (PNGs from tools/gen_linux_assets.py), the third-party
+# notices, the .em34xx file type and the desktop entry.
 if(EM34XX_HAVE_QT)
   em34xx_library(em34xx_frontend_qt
     src/frontend/qt/qt_frontend.cpp
+    src/frontend/qt/qt_dialogs.cpp
+    src/frontend/qt/qt_util.cpp
     src/frontend/qt/qt_keys.cpp
   )
   target_link_libraries(em34xx_frontend_qt PUBLIC em34xx_runtime
@@ -440,19 +443,28 @@ if(EM34XX_HAVE_QT)
   add_executable(${EM34XX_EXE_QT} src/main_qt.cpp)
   target_link_libraries(${EM34XX_EXE_QT} PRIVATE em34xx_frontend_qt em34xx_warnings)
 
-  # The icon: embedded for the window (":/icons/<n>x<n>/apps/em34xx.png"), and
-  # installed into the hicolor theme with the desktop entry that names it.
+  # Embedded: the window icon (":/icons/<n>x<n>/apps/em34xx.png"), the
+  # toolbar and status glyphs (":/glyphs/<name>-<n>.png"), and the files
+  # About and Settings > Open .em34xx files use. Installed: the executable,
+  # the desktop entry, the file type and the icons in the hicolor theme.
   set(_em34xx_qt_res ${PROJECT_SOURCE_DIR}/src/frontend/qt/res)
   set(_em34xx_qt_icons)
   foreach(_size IN ITEMS 16 24 32 48 64 96 128 192 256)
     list(APPEND _em34xx_qt_icons ${_em34xx_qt_res}/hicolor/${_size}x${_size}/apps/em34xx.png)
   endforeach()
-  qt_add_resources(${EM34XX_EXE_QT} em34xx_qt_icons PREFIX /icons BASE ${_em34xx_qt_res}/hicolor
+  file(GLOB _em34xx_qt_glyphs CONFIGURE_DEPENDS ${_em34xx_qt_res}/glyphs/*.png)
+  qt_add_resources(em34xx_frontend_qt em34xx_qt_icons PREFIX /icons BASE ${_em34xx_qt_res}/hicolor
     FILES ${_em34xx_qt_icons})
+  qt_add_resources(em34xx_frontend_qt em34xx_qt_glyphs PREFIX /glyphs BASE ${_em34xx_qt_res}/glyphs
+    FILES ${_em34xx_qt_glyphs})
+  qt_add_resources(em34xx_frontend_qt em34xx_qt_files PREFIX / BASE ${_em34xx_qt_res}
+    FILES ${_em34xx_qt_res}/notices.txt ${_em34xx_qt_res}/em34xx-mime.xml ${_em34xx_qt_res}/em34xx.desktop)
 
   include(GNUInstallDirs)
   install(TARGETS ${EM34XX_EXE_QT} RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
   install(FILES ${_em34xx_qt_res}/em34xx.desktop DESTINATION ${CMAKE_INSTALL_DATADIR}/applications)
+  install(FILES ${_em34xx_qt_res}/em34xx-mime.xml DESTINATION ${CMAKE_INSTALL_DATADIR}/mime/packages
+    RENAME em34xx.xml)
   install(DIRECTORY ${_em34xx_qt_res}/hicolor DESTINATION ${CMAKE_INSTALL_DATADIR}/icons
     FILES_MATCHING PATTERN "*.png")
 endif()
