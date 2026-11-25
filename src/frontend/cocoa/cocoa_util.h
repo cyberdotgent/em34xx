@@ -33,6 +33,12 @@ NSWindow* sheet_host(NSWindow* w);
 // Whether a sheet, modal window or alert is up (the main window then stays
 // as it is: the TLS trust prompt waits until it is gone).
 bool modal_ui_active(NSWindow* main);
+// Whether any window of the program has a modal window or sheet up.
+bool any_modal_ui();
+// Bring the program forward for a question it must ask. macOS 14 and later
+// may refuse to activate a program in the background; the Dock icon then
+// bounces until the user comes to it.
+void come_forward();
 
 // --- alerts -----------------------------------------------------------------
 // An alert as a sheet on `parent` (or app-modal without one); returns

@@ -77,7 +77,13 @@ its own profile. Several terminals run side by side in one process.
   Profile) or the File menu opens a terminal again.
 - **Quit** (⌘Q), log-out and shutdown ask about every edited profile (its
   window comes forward for the question), then end every terminal as
-  Close does.
+  Close does. A quit from outside (the Dock menu, log-out, another
+  program) brings the program forward for that question; when macOS
+  refuses to activate it, the Dock icon bounces. AppKit drops such a quit
+  while a dialog or sheet is open (observed on macOS 26), so em34xx takes
+  the quit Apple event itself: the dialog comes forward and the quit
+  happens once it is closed, without throwing away what is in it. A
+  log-out or shutdown is told the program has not quit yet.
 - Windows can be merged into tabs (**Window > Merge All Windows**, or
   "Prefer tabs" in System Settings > Desktop & Dock); the Window menu
   lists the terminals.

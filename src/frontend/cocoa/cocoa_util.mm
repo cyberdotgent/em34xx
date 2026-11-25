@@ -51,6 +51,28 @@ void end_modal(NSModalResponse code) { [NSApp stopModalWithCode:code]; }
 
 bool modal_ui_active(NSWindow* main) { return NSApp.modalWindow != nil || (main && main.attachedSheet != nil); }
 
+bool any_modal_ui() {
+    if (NSApp.modalWindow) return true;
+    for (NSWindow* w in NSApp.windows)
+        if (w.attachedSheet) return true;
+    return false;
+}
+
+void come_forward() {
+    if (NSApp.active) return;
+    if (@available(macOS 14.0, *)) {
+        [NSApp activate];
+    } else {
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
+        [NSApp activateIgnoringOtherApps:YES];
+#pragma clang diagnostic pop
+    }
+    // Activation takes effect later, if at all; the request ends by itself
+    // once the program is active.
+    [NSApp requestUserAttention:NSCriticalRequest];
+}
+
 // --- alerts -----------------------------------------------------------------------
 
 NSModalResponse run_alert(NSAlert* alert, NSWindow* parent) {

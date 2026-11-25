@@ -1430,6 +1430,9 @@ static NSToolbarItemIdentifier const kTbTermKeys = @"termkeys";
 - (bool)confirmDiscard {
     if (!_cur.active || !_cur.modified) return true;
     [self releaseKeys];
+    // A quit from the Dock reaches a program in the background: the
+    // question must not wait unseen behind other programs' windows.
+    come_forward();
     NSAlert* a = [NSAlert new];
     a.messageText = ns("Do you want to save the changes to the profile \"" + [self profileName] + "\"?");
     a.informativeText = @"Your changes will be lost if you don't save them.";
@@ -1622,6 +1625,7 @@ void CocoaFrontend::changed() {
     bool _logOpen;
     bool _terminating;
     int _exitCode;
+    NSTimer* _quitWhenFree;   // a quit waits for a dialog to close
 }
 
 - (instancetype)initWithArgs:(std::vector<std::string>)args {
@@ -1765,6 +1769,54 @@ void CocoaFrontend::changed() {
     // The battery-backed RAM is written at a clean exit.
     [NSProcessInfo.processInfo disableSuddenTermination];
     [NSProcessInfo.processInfo disableAutomaticTermination:@"the terminal is running"];
+    [NSAppleEventManager.sharedAppleEventManager setEventHandler:self
+                                                     andSelector:@selector(quitEvent:reply:)
+                                                   forEventClass:kCoreEventClass
+                                                      andEventID:kAEQuitApplication];
+}
+
+// The quit Apple event: Quit in the Dock menu, log-out, shutdown, another
+// program. AppKit's own handler drops it while a modal dialog or sheet is
+// up (observed on macOS 26: applicationShouldTerminate: is never called),
+// and the program then silently keeps running. Here a quit during a dialog
+// brings the dialog forward and happens once it has been closed; what is in
+// the dialog is not thrown away. A log-out or shutdown is told the quit has
+// not happened (yet), as for a cancelled one.
+- (void)quitEvent:(NSAppleEventDescriptor*)event reply:(NSAppleEventDescriptor*)reply {
+    (void)event;
+    guarded([&] {
+        if (!any_modal_ui()) {
+            [NSApp terminate:nil];   // returns only when the quit was cancelled
+        } else {
+            LOG_INFO("ui", "quit requested while a dialog is open: it happens once the dialog is closed");
+            come_forward();
+            if (NSWindow* m = NSApp.modalWindow) [m makeKeyAndOrderFront:nil];
+            [self quitWhenFree];
+        }
+        [reply setParamDescriptor:[NSAppleEventDescriptor descriptorWithInt32:userCanceledErr]
+                       forKeyword:keyErrorNumber];
+    });
+}
+
+// Quit as soon as no dialog or sheet is up. The timer runs in the modal
+// run loop mode too, but acts only from a run loop with no dialog on it.
+- (void)quitWhenFree {
+    if (_quitWhenFree) return;
+    __weak EMAppDelegate* weak = self;
+    _quitWhenFree = [NSTimer timerWithTimeInterval:0.25
+                                           repeats:YES
+                                             block:^(NSTimer* t) {
+                                               EMAppDelegate* d = weak;
+                                               if (!d || d->_terminating) {
+                                                   [t invalidate];
+                                                   return;
+                                               }
+                                               if (any_modal_ui()) return;
+                                               [t invalidate];
+                                               d->_quitWhenFree = nil;
+                                               guarded([] { [NSApp terminate:nil]; });
+                                             }];
+    [NSRunLoop.mainRunLoop addTimer:_quitWhenFree forMode:NSRunLoopCommonModes];
 }
 
 // .em34xx files double-clicked or dropped on the Dock icon: each opens in a
