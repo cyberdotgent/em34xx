@@ -39,6 +39,12 @@ using steady = std::chrono::steady_clock;
 
 namespace {
 
+// File > Open Recent and the Dock's recent items: the system keeps the list
+// (NSDocumentController, for the profile type in Info.plist).
+void note_recent_profile(const std::string& path) {
+    [NSDocumentController.sharedDocumentController noteNewRecentDocumentURL:[NSURL fileURLWithPath:ns(path)]];
+}
+
 constexpr auto kMinRasterInterval = std::chrono::milliseconds(15);
 constexpr CGFloat kStatusBarHeight = 24;
 
@@ -1352,6 +1358,7 @@ static NSToolbarItemIdentifier const kTbTermKeys = @"termkeys";
         if (!untitled) {
             _cur.name = stem_of(path);
             _cur.path = path;
+            note_recent_profile(path);
         }
         [self connectProfile:_cur.p powerCycle:true];
         [_win makeFirstResponder:_view];
@@ -1388,6 +1395,7 @@ static NSToolbarItemIdentifier const kTbTermKeys = @"termkeys";
         _cur.name = name;
         _cur.path = dirs.profile_path(name);
         _cur.untitled = false;
+        note_recent_profile(_cur.path);
         refresh_settings_window();
     } else {
         std::string error;
@@ -1599,8 +1607,8 @@ void CocoaFrontend::changed() {
 // ===========================================================================
 // Application delegate: menus, launch, Finder's open requests, termination
 
-@interface EMAppDelegate : NSObject <NSApplicationDelegate, NSMenuItemValidation, NSToolbarItemValidation,
-                                     EMTerminalHost>
+@interface EMAppDelegate : NSObject <NSApplicationDelegate, NSMenuDelegate, NSMenuItemValidation,
+                                     NSToolbarItemValidation, EMTerminalHost>
 @end
 
 @implementation EMAppDelegate {
@@ -1677,13 +1685,17 @@ void CocoaFrontend::changed() {
     NSMenu* file = [self menu:@"File" in:bar];
     [self add:@"New Connection…" action:@selector(newConnection:) key:@"n" to:file];
     [self add:@"Connect to Profile…" action:@selector(connectToProfile:) key:@"o" to:file];
+    // Filled from the system's recent documents each time it opens.
+    NSMenu* recent = [[NSMenu alloc] initWithTitle:@"Open Recent"];
+    recent.delegate = self;
+    [self add:@"Open Recent" action:nil key:nil to:file].submenu = recent;
     [file addItem:NSMenuItem.separatorItem];
-    [self add:@"Close Window" action:@selector(performClose:) key:@"w" to:file];
+    // "Close": AppKit makes it Close Tab in a window with tabs.
+    [self add:@"Close" action:@selector(performClose:) key:@"w" to:file];
     [self add:@"Save" action:@selector(saveProfile:) key:@"s" to:file];
     [self add:@"Save As…" action:@selector(saveProfileAs:) key:@"S" to:file];
     [file addItem:NSMenuItem.separatorItem];
     [self add:@"Connection Settings…" action:@selector(editConnection:) key:@"i" to:file];
-    [self add:@"Disconnect" action:@selector(toggleConnection:) key:@"d" to:file];
 
     // Standard editing commands, for the text fields of the dialogs.
     NSMenu* edit = [self menu:@"Edit" in:bar];
@@ -1722,6 +1734,9 @@ void CocoaFrontend::changed() {
         NSEventModifierFlagCommand | NSEventModifierFlagControl;
 
     NSMenu* term = [self menu:@"Terminal" in:bar];
+    // The session, not the profile: here rather than in File.
+    [self add:@"Disconnect" action:@selector(toggleConnection:) key:@"d" to:term];
+    [term addItem:NSMenuItem.separatorItem];
     [self add:@"Attn" action:@selector(attn:) key:nil to:term];
     [self add:@"SysRq" action:@selector(sysRq:) key:nil to:term];
     [self add:@"Reset" action:@selector(terminalReset:) key:nil to:term];
@@ -2141,6 +2156,53 @@ void CocoaFrontend::changed() {
         const std::string name = profile_manager_dialog(front.window, *_launch->dirs, _launch->settings);
         if (!name.empty()) [self openPath:_launch->dirs->profile_path(name) foreign:false];
     });
+}
+
+// File > Open Recent: the recent profiles that still exist, most recent
+// first, by name (with the folder only when two share a name).
+- (void)menuNeedsUpdate:(NSMenu*)menu {
+    guarded([&] {
+        [menu removeAllItems];
+        NSFileManager* fm = NSFileManager.defaultManager;
+        NSMutableArray<NSURL*>* urls = [NSMutableArray array];
+        for (NSURL* u in NSDocumentController.sharedDocumentController.recentDocumentURLs)
+            if (u.fileURL && [fm fileExistsAtPath:u.path]) [urls addObject:u];
+        NSCountedSet<NSString*>* names = [NSCountedSet set];
+        for (NSURL* u in urls) [names addObject:[fm displayNameAtPath:u.path]];
+        for (NSURL* u in urls) {
+            NSString* title = [fm displayNameAtPath:u.path];
+            if ([names countForObject:title] > 1)
+                title = [NSString stringWithFormat:@"%@ — %@", title,
+                                                   [fm displayNameAtPath:u.URLByDeletingLastPathComponent.path]];
+            NSMenuItem* it = [menu addItemWithTitle:title action:@selector(openRecent:) keyEquivalent:@""];
+            it.target = self;
+            it.representedObject = u;
+            NSImage* icon = [NSWorkspace.sharedWorkspace iconForFile:u.path];
+            icon.size = NSMakeSize(16, 16);
+            it.image = icon;
+        }
+        if (urls.count) [menu addItem:NSMenuItem.separatorItem];
+        [menu addItemWithTitle:@"Clear Menu" action:@selector(clearRecentDocuments:) keyEquivalent:@""].target =
+            NSDocumentController.sharedDocumentController;
+    });
+}
+
+- (void)openRecent:(NSMenuItem*)sender {
+    guarded([&] {
+        NSURL* u = sender.representedObject;
+        if (![u isKindOfClass:NSURL.class] || !u.fileURL) return;
+        [[self frontTerminal] releaseKeys];
+        // As from the Finder: a profile from outside the profiles folder is
+        // asked about.
+        [self openPath:str(u.path) foreign:true];
+    });
+}
+
+// The document controller behind Open Recent opens no untitled documents:
+// a new terminal comes from New Connection or the profile manager.
+- (BOOL)applicationShouldOpenUntitledFile:(NSApplication*)sender {
+    (void)sender;
+    return NO;
 }
 
 - (void)showSettings:(id)sender {

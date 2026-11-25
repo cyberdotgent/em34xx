@@ -69,14 +69,15 @@ its own profile. Several terminals run side by side in one process.
 - A profile that is already open in a window: **Show Window** brings that
   window forward; **Open Another Session** opens a second terminal with
   the same profile (another device on the same systems).
-- **File > Close Window** (⌘W) or the close button ends that terminal only,
+- **File > Close** (⌘W; Close Tab in a window with tabs) or the close
+  button ends that terminal only,
   after asking about its edited profile: the sessions close and its
   battery-backed RAM is written. The app keeps running without windows,
   as Mac apps do; the Dock icon, the Dock menu (New Connection, Connect to
   Profile) or the File menu opens a terminal again.
 - **Quit** (⌘Q), log-out and shutdown ask about every edited profile (its
   window comes forward for the question), then end every terminal as
-  Close Window does.
+  Close does.
 - Windows can be merged into tabs (**Window > Merge All Windows**, or
   "Prefer tabs" in System Settings > Desktop & Dock); the Window menu
   lists the terminals.
@@ -188,14 +189,15 @@ other key, Control and Option included, does.
 | em34xx | Hide, Hide Others, Show All, Services, Quit (⌘Q) | standard |
 | File | New Connection… (⌘N) | (File > New Connection) |
 | File | Connect to Profile… (⌘O) | the profile manager (File > Connect to Profile) |
-| File | Close Window (⌘W) | ends the terminal in front (File > Exit for its window) |
+| File | Open Recent | profiles opened or saved lately, from the system's recent documents (also in the Dock menu); one outside the profiles folder is asked about, as from the Finder; Clear Menu (none) |
+| File | Close (⌘W) | ends the terminal in front; AppKit titles it Close Tab in a window with tabs (File > Exit for its window) |
 | File | Save (⌘S), Save As… (⇧⌘S) | (File > Save, Save As) |
-| File | Connection Settings… (⌘I) | the running profile in the editor (Edit > Connection Settings): on the Mac the Edit menu is for editing text |
-| File | Disconnect / Reconnect (⌘D) | (File > Disconnect / Reconnect) |
+| File | Connection Settings… (⌘I) | the running profile in the editor (Edit > Connection Settings): the HIG puts document settings in File, and the Edit menu is for editing content |
 | Edit | Undo, Redo, Cut, Copy, Paste, Select All | for the text fields of the dialogs |
 | View | Actual Size (⌘0), Zoom 1.5×, Zoom 2×, Zoom In (⌘+), Zoom Out (⌘-) | (View > Zoom) |
 | View | Burn-in > Off, Slow, Fast, Hyper, Replace CRT… | screen burn-in (docs/burn-in.md); the application's, so they work with no window open (View > Burn-in) |
 | View | Show Toolbar, Customize Toolbar…, Enter Full Screen (⌃⌘F) | standard; in full screen the picture is letterboxed in black |
+| Terminal | Disconnect / Reconnect (⌘D) | the session, so not in File, which the HIG keeps for documents (File > Disconnect / Reconnect) |
 | Terminal | Attn, SysRq, Reset, Setup, Reboot (Power Cycle) | (Terminal menu) |
 | Window | Minimize, Zoom, the terminals, Bring All to Front | standard |
 | Help | em34xx Project Page (when set), Show Log in Finder | |
@@ -263,7 +265,7 @@ and timers keep running meanwhile.
 
 The trust prompts never open over another sheet or dialog: the request
 waits (orange orb) until it is gone, as in em34xxw. Disconnect, a new
-connection, Close Window and Quit answer a waiting request with Stop.
+connection, Close and Quit answer a waiting request with Stop.
 
 ## Picture
 
