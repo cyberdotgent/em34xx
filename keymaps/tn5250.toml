@@ -1,0 +1,420 @@
+# em34xx host keymap: the built-in "tn5250" map written out.
+#
+# Loading this file (--keymap keymaps/tn5250.toml) gives the same result as
+# --keymap tn5250; a unit test keeps the two in step. Copy it and edit, or
+# write a short file with base = "tn5250" that only lists your changes.
+#
+# The rules follow the key bindings of the tn5250 terminal emulator
+# (tn5250(1), "Keyboard Mapping"), for keyboards without a Right Ctrl or a
+# keypad: Return is Enter, and the 5250 functions are Ctrl and Alt chords
+# (Ctrl+K Field Exit, Ctrl+R Reset, Ctrl+A Attn, Alt+1..0 F1..F10, ...).
+# The Ctrl keys only select rules. See docs/keyboard.md ("tn5250
+# assignments") for the table and for what is ours, and
+# keymaps/pcomm-like.toml for the syntax.
+base = "positional"
+
+[[map]]
+host = "LCtrl"
+mods = "*"
+to = "none"
+
+[[map]]
+host = "RCtrl"
+mods = "*"
+to = "none"
+
+[[map]]
+host = "Enter"
+mods = "*"
+to = "enter"
+
+[[map]]
+host = "KP_Enter"
+mods = "*"
+to = "enter"
+
+[[map]]
+host = "j"
+mods = "ctrl"
+to = "enter"
+
+[[map]]
+host = "m"
+mods = "ctrl"
+to = "enter"
+
+[[map]]
+host = "j"
+mods = "ctrl alt"
+to = "newline"
+
+[[map]]
+host = "Enter"
+mods = "shift"
+to = "newline"
+
+[[map]]
+host = "Tab"
+mods = "shift"
+to = "backtab"
+
+[[map]]
+host = "i"
+mods = "ctrl"
+to = "tab"
+
+[[map]]
+host = "PageDown"
+mods = "*"
+to = "rollup"
+
+[[map]]
+host = "d"
+mods = "ctrl"
+to = "rollup"
+
+[[map]]
+host = "f"
+mods = "ctrl"
+to = "rollup"
+
+[[map]]
+host = "PageUp"
+mods = "*"
+to = "rolldown"
+
+[[map]]
+host = "b"
+mods = "ctrl"
+to = "rolldown"
+
+[[map]]
+host = "u"
+mods = "ctrl"
+to = "rolldown"
+
+[[map]]
+host = "Home"
+mods = "*"
+to = "home"
+
+[[map]]
+host = "o"
+mods = "ctrl"
+to = "home"
+
+[[map]]
+host = "End"
+mods = "*"
+to = "none"
+keyboard = "122"
+
+[[map]]
+host = "End"
+mods = "*"
+to = "positional"
+keyboard = "enhanced"
+
+[[map]]
+host = "Insert"
+mods = "*"
+to = "insert"
+
+[[map]]
+host = "i"
+mods = "alt"
+to = "insert"
+
+[[map]]
+host = "Delete"
+mods = "alt"
+to = "insert"
+
+[[map]]
+host = "Delete"
+mods = "*"
+to = "delete"
+
+[[map]]
+host = "r"
+mods = "ctrl"
+to = "reset"
+
+[[map]]
+host = "r"
+mods = "alt"
+to = "reset"
+
+[[map]]
+host = "p"
+mods = "ctrl"
+to = "print"
+
+[[map]]
+host = "p"
+mods = "alt"
+to = "print"
+
+[[map]]
+host = "h"
+mods = "alt"
+to = "help"
+
+[[map]]
+host = "c"
+mods = "ctrl"
+to = "sysrq"
+
+[[map]]
+host = "s"
+mods = "alt"
+to = "sysrq"
+
+[[map]]
+host = "c"
+mods = "alt"
+to = "clear"
+
+[[map]]
+host = "k"
+mods = "ctrl"
+to = "fieldexit"
+
+[[map]]
+host = "x"
+mods = "alt"
+to = "fieldexit"
+
+[[map]]
+host = "t"
+mods = "ctrl"
+to = "test"
+
+[[map]]
+host = "e"
+mods = "ctrl"
+to = "erinp"
+
+[[map]]
+host = "a"
+mods = "ctrl"
+to = "attn"
+
+[[map]]
+host = "a"
+mods = "alt"
+to = "attn"
+
+[[map]]
+host = "d"
+mods = "alt"
+to = "dup"
+
+[[map]]
+host = "x"
+mods = "ctrl"
+to = "field+"
+
+[[map]]
+host = "m"
+mods = "alt"
+to = "field-"
+
+[[map]]
+host = "Escape"
+to = "attn"
+
+[[map]]
+host = "Escape"
+mods = "shift"
+to = "sysrq"
+
+[[map]]
+host = "KP_Plus"
+mods = "*"
+to = "field+"
+
+[[map]]
+host = "KP_Minus"
+mods = "*"
+to = "field-"
+
+[[map]]
+host = "1"
+mods = "alt"
+to = "f1"
+
+[[map]]
+host = "2"
+mods = "alt"
+to = "f2"
+
+[[map]]
+host = "3"
+mods = "alt"
+to = "f3"
+
+[[map]]
+host = "4"
+mods = "alt"
+to = "f4"
+
+[[map]]
+host = "5"
+mods = "alt"
+to = "f5"
+
+[[map]]
+host = "6"
+mods = "alt"
+to = "f6"
+
+[[map]]
+host = "7"
+mods = "alt"
+to = "f7"
+
+[[map]]
+host = "8"
+mods = "alt"
+to = "f8"
+
+[[map]]
+host = "9"
+mods = "alt"
+to = "f9"
+
+[[map]]
+host = "0"
+mods = "alt"
+to = "f10"
+
+[[map]]
+host = "Minus"
+mods = "alt"
+to = "f11"
+
+[[map]]
+host = "Equals"
+mods = "alt"
+to = "f12"
+
+[[map]]
+host = "1"
+mods = "alt shift"
+to = "f13"
+
+[[map]]
+host = "2"
+mods = "alt shift"
+to = "f14"
+
+[[map]]
+host = "3"
+mods = "alt shift"
+to = "f15"
+
+[[map]]
+host = "4"
+mods = "alt shift"
+to = "f16"
+
+[[map]]
+host = "5"
+mods = "alt shift"
+to = "f17"
+
+[[map]]
+host = "6"
+mods = "alt shift"
+to = "f18"
+
+[[map]]
+host = "7"
+mods = "alt shift"
+to = "f19"
+
+[[map]]
+host = "8"
+mods = "alt shift"
+to = "f20"
+
+[[map]]
+host = "9"
+mods = "alt shift"
+to = "f21"
+
+[[map]]
+host = "0"
+mods = "alt shift"
+to = "f22"
+
+[[map]]
+host = "Minus"
+mods = "alt shift"
+to = "f23"
+
+[[map]]
+host = "Equals"
+mods = "alt shift"
+to = "f24"
+
+[[map]]
+host = "F13"
+mods = "*"
+to = "f13"
+
+[[map]]
+host = "F14"
+mods = "*"
+to = "f14"
+
+[[map]]
+host = "F15"
+mods = "*"
+to = "f15"
+
+[[map]]
+host = "F16"
+mods = "*"
+to = "f16"
+
+[[map]]
+host = "F17"
+mods = "*"
+to = "f17"
+
+[[map]]
+host = "F18"
+mods = "*"
+to = "f18"
+
+[[map]]
+host = "F19"
+mods = "*"
+to = "f19"
+
+[[map]]
+host = "F20"
+mods = "*"
+to = "f20"
+
+[[map]]
+host = "F21"
+mods = "*"
+to = "f21"
+
+[[map]]
+host = "F22"
+mods = "*"
+to = "f22"
+
+[[map]]
+host = "F23"
+mods = "*"
+to = "f23"
+
+[[map]]
+host = "F24"
+mods = "*"
+to = "f24"

@@ -3,6 +3,7 @@
 #include "input/set3_keyboard.hpp"
 #include "util/strings.hpp"
 
+#include <algorithm>
 #include <doctest/doctest.h>
 
 #include <memory>
@@ -373,12 +374,139 @@ TEST_CASE("keymap files: built-ins written out match") {
         REQUIRE(load_keymap(dir + "pcomm-like.toml", sf, file, error));
         REQUIRE(builtin_keymap("pcomm", sf, builtin));
         check_same_keymap(file, builtin);
+        Keymap tn_file, tn_builtin;
+        REQUIRE(load_keymap(dir + "tn5250.toml", sf, tn_file, error));
+        REQUIRE(builtin_keymap("tn5250", sf, tn_builtin));
+        check_same_keymap(tn_file, tn_builtin);
     }
     Keymap file, builtin;
     std::string error;
     REQUIRE(load_keymap(dir + "positional.toml", true, file, error));
     REQUIRE(builtin_keymap("positional", true, builtin));
     check_same_keymap(file, builtin);
+}
+
+TEST_CASE("tn5250 keymap: Return is Enter, functions on Ctrl and Alt chords") {
+    constexpr uint32_t kLCtrlKey = 0xE0, kRCtrlKey = 0xE4, kLAltKey = 0xE2, kLShiftKey = 0xE1;
+    constexpr uint32_t kC = 0x06, kH = 0x0B, kI = 0x0C, kJ = 0x0D, kK = 0x0E, kR = 0x15, kX = 0x1B, kZ = 0x1D;
+    constexpr uint32_t k1 = 0x1E, kMinus = 0x2D, kKpEnter = 0x58, kKpPlus = 0x57, kF11 = 0x44;
+    for (KeyboardType type : {KeyboardType::Terminal122, KeyboardType::Enhanced}) {
+        Rig tn(type, "tn5250"), pc(type, "pcomm");
+        auto chord = [&](uint32_t mod, uint32_t key) {
+            tn.key(mod, true);
+            tn.tap(key);
+            tn.key(mod, false);
+            return tn.take();
+        };
+        auto pcomm = [&](uint32_t key) {
+            pc.tap(key);
+            return pc.take();
+        };
+        // The terminal's Alt, pressed by the PC's Alt and released around
+        // the function key.
+        auto alt = [](Ev inner) {
+            Ev v{"+19", "-19"};
+            v.insert(v.end(), inner.begin(), inner.end());
+            v.insert(v.end(), {"+19", "-19"});
+            return v;
+        };
+
+        // Return and keypad Enter are the terminal's Enter (PCOMM: Right Ctrl).
+        const Ev enter = pcomm(kRCtrlKey);
+        tn.tap(kEnter);
+        CHECK(tn.take() == enter);
+        tn.tap(kKpEnter);
+        CHECK(tn.take() == enter);
+        CHECK(chord(kLCtrlKey, kJ) == enter);
+
+        // Ctrl only selects rules: alone it sends nothing, and it does not
+        // press the Reset or Enter key at its position before a chord.
+        tn.tap(kLCtrlKey);
+        tn.tap(kRCtrlKey);
+        CHECK(tn.take().empty());
+        CHECK(chord(kLCtrlKey, kZ) == pcomm(kZ));   // no rule: the letter
+
+        const Ev field_exit = pcomm(kEnter);
+        CHECK(chord(kLCtrlKey, kK) == field_exit);
+        CHECK(chord(kRCtrlKey, kK) == field_exit);
+        CHECK(chord(kLAltKey, kX) == alt(field_exit));
+        CHECK(chord(kLCtrlKey, kR) == pcomm(kLCtrlKey));             // Reset
+        CHECK(chord(kLCtrlKey, kA) == pcomm(kEsc));                  // Attn
+        CHECK(chord(kLCtrlKey, kX) == pcomm(kKpPlus));               // Field +
+        CHECK(chord(kLAltKey, k1) == alt(pcomm(kF1)));               // F1
+        CHECK(chord(kLAltKey, kMinus) == alt(pcomm(kF11)));          // F11
+
+        // System Request and Help: what PCOMM's Shift+Esc and Alt+F1 send,
+        // without the PC modifiers' own terminal keys.
+        pc.key(kLAltKey, true);
+        pc.tap(kF1);
+        pc.key(kLAltKey, false);
+        CHECK(chord(kLAltKey, kH) == pc.take());
+        const Ev sysrq = chord(kLCtrlKey, kC);
+        CHECK_FALSE(sysrq.empty());
+        CHECK(sysrq.front() != "+11");
+
+        // Return and Delete keep their terminal key whatever modifier is
+        // held (review of PR 3: with a modifier they fell through to the
+        // keys at their positions, Field Exit and New Line). A held Shift
+        // or Alt presses its own terminal key, released around the function
+        // key; Ctrl presses nothing.
+        auto held = [](const char* mod, Ev inner) {
+            Ev v{std::string("+") + mod, std::string("-") + mod};
+            v.insert(v.end(), inner.begin(), inner.end());
+            v.insert(v.end(), {std::string("+") + mod, std::string("-") + mod});
+            return v;
+        };
+        tn.tap(kDelete);
+        const Ev del = tn.take();
+        CHECK(del == pcomm(kDelete));
+        CHECK(chord(kLCtrlKey, kDelete) == del);
+        CHECK(chord(kRCtrlKey, kDelete) == del);
+        CHECK(chord(kLShiftKey, kDelete) == held("12", del));
+        CHECK(chord(kLCtrlKey, kEnter) == enter);
+        CHECK(chord(kRCtrlKey, kEnter) == enter);
+        CHECK(chord(kLAltKey, kEnter) == alt(enter));
+        // The more specific rules still win: Alt+Delete is Insert.
+        CHECK(chord(kLAltKey, kDelete) == alt(pcomm(kInsert)));
+
+        // Ctrl+I: Next Field, the Tab key.
+        CHECK(chord(kLCtrlKey, kI) == pcomm(kTab));
+        CHECK(chord(kRCtrlKey, kI) == pcomm(kTab));
+
+        // Ctrl+Alt+J: New Line, as PCOMM's Shift+Enter between the Shift keys.
+        pc.key(kLShiftKey, true);
+        pc.take();
+        pc.tap(kEnter);
+        Ev newline = pc.take();
+        pc.key(kLShiftKey, false);
+        pc.take();
+        tn.key(kLCtrlKey, true);
+        tn.key(kLAltKey, true);
+        tn.take();
+        tn.tap(kJ);
+        Ev got = tn.take();
+        tn.key(kLAltKey, false);
+        tn.key(kLCtrlKey, false);
+        tn.take();
+        // Each engine releases and restores its own held modifier (Shift
+        // there, Alt here) around the same terminal keys.
+        auto core = [](Ev v, const char* mod) {
+            v.erase(std::remove_if(v.begin(), v.end(), [&](const std::string& e) { return e.substr(1) == mod; }),
+                    v.end());
+            return v;
+        };
+        if (type == KeyboardType::Terminal122) CHECK(core(got, "19") == core(newline, "12"));
+    }
+
+    // The file form builds the built-in map, and "tn5250" is a valid base.
+    Keymap from_text, builtin, km;
+    std::string error;
+    INFO(error);
+    REQUIRE(parse_keymap(keymap_file_to_toml(tn5250_keymap_file()), "tn5250.toml", true, from_text, error));
+    REQUIRE(builtin_keymap("tn5250", true, builtin));
+    check_same_keymap(from_text, builtin);
+    CHECK(load_keymap("tn5250", true, km, error));
+    CHECK(parse_keymap("base = \"tn5250\"\n", "k.toml", true, km, error));
 }
 
 TEST_CASE("keymap files: base, extension and names") {
