@@ -1326,8 +1326,8 @@ void Win32Frontend::edit_settings() {
 }
 
 // The picture now on the tube has been there since the last tick. A gap
-// longer than a few ticks (the machine slept, a modal dialog) is not
-// counted.
+// longer than a few ticks (the machine slept) is not counted. The timer
+// also runs while a dialog is up, so that time counts: the tube is lit.
 void Win32Frontend::burn_tick() {
     const auto now = steady::now();
     const double seconds = std::min(2.0, std::chrono::duration<double>(now - tube_exposed_).count());

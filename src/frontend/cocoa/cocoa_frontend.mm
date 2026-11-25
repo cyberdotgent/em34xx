@@ -662,7 +662,8 @@ static NSToolbarItemIdentifier const kTbTermKeys = @"termkeys";
 }
 
 // The picture now on the tube has been there since the last tick. A gap
-// longer than a few ticks (the Mac slept, a modal dialog) is not counted.
+// longer than a few ticks (the Mac slept) is not counted; the timer also
+// runs while a sheet or dialog is up, so that time counts: the tube is lit.
 // The one tube ages with the time the application runs, not with the
 // number of windows: each window's picture counts for its share of the
 // time. A window draws again when another has aged the tube.

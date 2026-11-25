@@ -44,7 +44,8 @@ hours. Wear from any speed is kept; Replace CRT is the way back.
 - **Wear.** A map of 1024 x 768 values covers the whole glass, border
   included. Twice a second the front end adds the picture on the tube to
   it: mean brightness of each spot (the brightest gun), times the seconds
-  since the last tick (2 at most, so sleep and dialogs do not count),
+  since the last tick (2 at most, so sleep does not count; time with a
+  dialog open does, the tube is lit),
   times the speed. Wear only grows.
 - **Depth.** `depth = 1 - exp(-wear / 271)`, in hours of full brightness at
   Slow. A lit spot gives `1 - 0.35 * depth` of its light: a worn-out tube

@@ -238,8 +238,8 @@ and timers keep running meanwhile.
   the sheet may close first), **name prompt**: as em34xxw's, laid out with
   Auto Layout.
 - **Settings** is a window of its own, not a sheet: startup profile,
-  speed, default TLS minimum, ROM Images…, the user folder (Show in
-  Finder). Changes apply and are saved at once, with no OK or Cancel, as
+  speed, default TLS minimum, screen burn-in, ROM Images…, the user
+  folder (Show in Finder). Changes apply and are saved at once, with no OK or Cancel, as
   Mac settings windows do. There is no file association button: the
   bundle declares the `.em34xx` type (`gent.cyber.em34xx.profile`,
   conforming to plain text) and macOS registers it when the app is first
@@ -311,7 +311,8 @@ usages by position (`hid_from_keycode()`); modifiers come from
 
 Quit, log-out, shutdown and closing the last windows go through
 `Application::request_quit()` and `finish()` for each terminal, so the
-battery-backed RAM is written; sudden and automatic termination are off.
+battery-backed RAM is written, with the settings and the tube's wear
+(docs/burn-in.md); sudden and automatic termination are off.
 SIGTERM ends the app as a quit without questions. A terminal that asks to
 end (the emulator's quit request) closes its window without questions.
 

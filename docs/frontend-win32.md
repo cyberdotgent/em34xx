@@ -379,7 +379,8 @@ clear that text (known gap).
 
 `WM_QUERYENDSESSION` is answered TRUE; on `WM_ENDSESSION` the terminal's
 battery-backed RAM and setup EEPROM are written at once
-(`Application::flush_persistent_state()`) with the window placement, since
+(`Application::flush_persistent_state()`) with the tube's wear
+(docs/burn-in.md), the window placement and the settings, since
 the process may be ended without a clean exit.
 
 ## Picture
