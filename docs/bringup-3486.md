@@ -346,6 +346,15 @@ procedure once it is understood.
   mode flag, so it may be the cursor's style or blink (hypothesis). The
   cursor is drawn as a steady block, as on the 3477 model.
 
+## Auto dim
+
+As on the 3477 (docs/bringup-3477.md, "Auto dim"; observed on the 3487
+with the same register values): after the setup's interval without a key
+the firmware sets `20129` bit 7, takes the cursor away and shows the dim
+indicator on the status line; the next key ends it and is not posted to
+the controller. The model blanks the rows above the status line while the
+bit is set (hypothesis, from the 3489's documented behaviour).
+
 ## Stroke weight (dot widening and beam width)
 
 - The character generator the firmware loads has strokes one dot wide in

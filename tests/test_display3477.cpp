@@ -168,6 +168,40 @@ TEST_CASE("3477 display: attributes, font 2 and the status line") {
     CHECK(px(fb, 30, 24 * 21) == kBlack);   // not on the status row itself
 }
 
+// Auto dim: the firmware sets 20129 bit 7 after its interval without a key
+// and clears it at the next key, which it does not pass on to the
+// controller. Shown with the data left on the screen, that key looks lost.
+TEST_CASE("3477 display: auto dim blanks the data area and keeps the status line") {
+    Rig r;
+    r.mode_80x24_12px();
+    r.glyph(0x18000, 0xC1);
+    r.cell(0xC200, 0, 0, 0xC1, 0x20);
+    r.cell(0xC200, 23, 5, 0xC1, 0x20);
+    r.cell(0xEE00, 0, 0, 0xC1, 0x00);
+    r.reg(0x17, 2);      // cursor at row 0, column 2
+    r.reg(0x18, 0);
+    r.reg(0x28, 0xD0);   // video on, rule, cursor
+    r.reg(0x29, 0x40);   // as the firmware leaves it on line
+    Framebuffer fb;
+    r.disp.render(fb);
+    CHECK(px(fb, 0, 0) == kGrey);
+    CHECK(px(fb, 5 * 12, 23 * 21) == kGrey);
+    CHECK(px(fb, 2 * 12 + 3, 5) == kGrey);   // cursor
+
+    r.reg(0x29, 0xC0);
+    r.disp.render(fb);
+    for (int y = 0; y < 24 * 21; ++y) {
+        if (y == 23 * 21 + 18 || y == 23 * 21 + 19) continue;   // the rule
+        for (int x = 0; x < fb.width; ++x) REQUIRE(px(fb, x, y) == kBlack);
+    }
+    CHECK(px(fb, 30, 23 * 21 + 18) == kGrey);   // rule above the status line
+    CHECK(px(fb, 0, 24 * 21) == kGrey);         // status line
+
+    r.reg(0x29, 0x40);
+    r.disp.render(fb);
+    CHECK(px(fb, 0, 0) == kGrey);
+}
+
 TEST_CASE("3477 display: colour attributes") {
     // The colour unit: picture on with 20128 bit 6, two pixels per dot.
     Rig r(true);

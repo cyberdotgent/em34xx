@@ -417,6 +417,40 @@ screen (observed unless marked):
   colour from attribute bits 4-1 and hid cells with 7 in bits 2-0. That
   drew blue as green and red as white, and showed non-display fields.
 
+### Auto dim (`20129` bit 7)
+
+On line, about 600 s after the last key or, with no key, after power-on
+(the interval of the saved setup used), the firmware (observed, with
+`--twinax-host wsc`, the same on the 3477, the 3477-FC and the 3487):
+
+- writes `20129` = `C0` (`40` until then) and `20127` = `20` (`60`);
+- puts a screen-shaped symbol in column 50 of the status line and removes
+  the row/column indicator there. The cells of the data area are not
+  touched.
+
+At the next key it writes `40` and `60` back and restores the status
+line. **That key is not posted to the controller**: poll byte 2 stays
+`00` and the keys after it arrive as usual. `20129` bit 7 is set at no
+other time from power-on to that point.
+
+This is the terminal's auto dim. Documented for the 3489 (3489 UG 5.2.7 and
+3.2.2): after 5, 10 or 20 minutes without a key the data area and the
+message line are blanked, the dim indicator is shown on the status line,
+whose other symbols are not affected, and the screen comes back when a key
+is pressed or host communication resumes. No 3477 guide is on hand.
+
+The model blanks every row above the status line while `20129` bit 7 is
+set (hypothesis: the register and bit are observed, their effect on the
+tube is inferred from the 3489's documented behaviour). The rule above the
+status line stays (hypothesis). Before this was modelled the data stayed
+on the screen with the indicator next to it, and the key that ended the
+dim state looked like a keystroke lost on the way to the host.
+
+A queue load from the controller also ends the dim state (observed with
+`--twinax-host script`: a Write Data and Load Cursor while dimmed brings
+`20129` back to `40`). Not tested: whether a real 3477 passes the
+restoring key on.
+
 ### Keyboard interface (`20012-20014`)
 
 A byte-wide shift register on the keyboard's clock and data lines, connected

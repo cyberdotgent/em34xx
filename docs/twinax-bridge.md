@@ -230,6 +230,10 @@ fig. 105 (Shift as make/break codes, a CMD prefix `6F` for Alt and F1-F24);
 the controller decodes them to key positions (docs/keyboard.md, "5250 scan
 codes on the cable"). National layouts are not typed in yet.
 
+Not every key reaches the controller: the key that ends the terminal's
+auto dim state is used by the terminal itself, and poll byte 2 stays `00`
+for it [obs; docs/bringup-3477.md, "Auto dim"].
+
 ## The controller without a host session
 
 `--twinax-host wsc` runs the same controller (link scheduler and one

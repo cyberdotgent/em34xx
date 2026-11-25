@@ -33,6 +33,7 @@ constexpr uint32_t kRegCursorCol = 0x17;
 constexpr uint32_t kRegCursorRow = 0x18;
 constexpr uint32_t kRegMode0 = 0x25;       // bit4: 132 columns of 8-pixel cells
 constexpr uint32_t kRegControl = 0x28;     // bit4 video on, bit6 status rule, bit7 cursor
+constexpr uint32_t kRegDim = 0x29;         // bit7: data area blanked (auto dim)
 constexpr uint32_t kRegMode5 = 0x2A;       // bit0: 12-pixel cells, else 16
 constexpr uint32_t kRegStatus = 0x2F;
 constexpr uint32_t kRegStart = 0x30;
@@ -44,6 +45,7 @@ constexpr uint32_t kRegAuxPort = 0x44;     // 3486 family: second serial port, 4
 constexpr uint8_t kCtlVideo = 0x10;
 constexpr uint8_t kCtlStatusRule = 0x40;
 constexpr uint8_t kCtlCursor = 0x80;
+constexpr uint8_t kDimData = 0x80;
 
 constexpr uint64_t kRefreshHz = 60;
 constexpr uint32_t kBlinkFrames = 32;      // half period of character blink
@@ -271,7 +273,7 @@ std::string DisplayController::describe() const {
     const Geometry g = geometry();
     return format("  %s, %dx%d+%d cells of %dx%d px, main %05X, status %05X\n"
                   "  cursor row %u col %u (%s), frame %llu, retrace %d, irq %d, block pending %d\n",
-                  enabled() ? "enabled" : "blanked", g.cols, g.rows, g.status_rows, g.cell_w, g.cell_h,
+                  !enabled() ? "blanked" : (regs_[kRegDim] & kDimData) ? "dimmed" : "enabled", g.cols, g.rows, g.status_rows, g.cell_w, g.cell_h,
                   g.main_start, g.status_start, regs_[kRegCursorRow], regs_[kRegCursorCol],
                   cursor_on() ? "on" : "off", (unsigned long long)frames_,
                   in_retrace_ ? 1 : 0, irq_pending_ ? 1 : 0, block_pending_ ? 1 : 0) +
@@ -352,12 +354,22 @@ void DisplayController::render(Framebuffer& fb) {
     ram_ = bus_.region_at(kWindowBase);
     if (ram_ && ram_->kind != Region::Kind::Ram) ram_ = nullptr;
 
+    // Auto dim: after the setup's interval without a key the firmware sets
+    // 20129 bit 7, and clears it at the next key [observed on the 3477,
+    // 3477-FC and 3487; set at no other time]. A dimmed terminal shows only
+    // its status line [doc 3489 UG 5.2.7], so the bit is taken to blank the
+    // rows above it [hypothesis].
+    const bool dimmed = (regs_[kRegDim] & kDimData) != 0;
     const bool blink_phase = (frames_ / kBlinkFrames) % 2 == 0;
     const int cur_row = cursor_on() ? int(regs_[kRegCursorRow]) : -1;
     const int cur_col = regs_[kRegCursorCol];
     const uint32_t stride = uint32_t(g.cols) * 3;
     for (int r = 0; r < g.rows + g.status_rows; ++r) {
         const bool status = r >= g.rows;
+        if (dimmed && !status) {
+            std::fill_n(fb.row(r * g.cell_h), size_t(w) * size_t(g.cell_h), kBlack);
+            continue;
+        }
         const uint32_t base = status ? g.status_start + uint32_t(r - g.rows) * stride
                                      : g.main_start + uint32_t(r) * stride;
         draw_row(fb, base, r * g.cell_h, g.cols, g.cell_w, g.cell_h, r == cur_row ? cur_col : -1,
