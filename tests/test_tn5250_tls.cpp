@@ -768,19 +768,25 @@ struct TestCert {
 
     // Self-signed, or signed by `ca`; valid from now + `from_s` to now +
     // `until_s` seconds. `san` null: a CA certificate ("em34xx test CA").
-    explicit TestCert(const char* san, long from_s = -3600, long until_s = 86400, const TestCert* ca = nullptr) {
-        key = EVP_EC_gen("P-256");
+    // `rsa`: an RSA key, which RSA key exchange needs, instead of P-256.
+    explicit TestCert(const char* san, long from_s = -3600, long until_s = 86400, const TestCert* ca = nullptr,
+                      bool rsa = false) {
+        key = rsa ? EVP_RSA_gen(2048) : EVP_EC_gen("P-256");
         cert = X509_new();
         X509_set_version(cert, 2);
         ASN1_INTEGER_set(X509_get_serialNumber(cert), san ? (ca ? 2 : 1) : 100);
         X509_gmtime_adj(X509_getm_notBefore(cert), from_s);
         X509_gmtime_adj(X509_getm_notAfter(cert), until_s);
         X509_set_pubkey(cert, key);
-        X509_NAME* name = X509_get_subject_name(cert);
+        // Built apart and copied in: OpenSSL 4 returns the certificate's own
+        // names as const.
+        X509_NAME* name = X509_NAME_new();
         X509_NAME_add_entry_by_txt(name, "CN", MBSTRING_ASC,
                                    reinterpret_cast<const unsigned char*>(san ? "em34xx test" : "em34xx test CA"),
                                    -1, -1, 0);
+        X509_set_subject_name(cert, name);
         X509_set_issuer_name(cert, ca ? X509_get_subject_name(ca->cert) : name);
+        X509_NAME_free(name);
         X509V3_CTX ctx;
         X509V3_set_ctx_nodb(&ctx);
         X509V3_set_ctx(&ctx, ca ? ca->cert : cert, cert, nullptr, nullptr, 0);
@@ -847,7 +853,10 @@ struct TestServer {
     bool handshake_ok = false;
     std::vector<unsigned char> staple_;
 
-    TestServer(const TestCert& tc, int min_version, int max_version, std::vector<unsigned char> staple = {})
+    // `ciphers`: an OpenSSL cipher list for TLS 1.2 and below, or null for
+    // the library's default.
+    TestServer(const TestCert& tc, int min_version, int max_version, std::vector<unsigned char> staple = {},
+               const char* ciphers = nullptr)
         : staple_(std::move(staple)) {
         listen_fd = ::socket(AF_INET, SOCK_STREAM, 0);
         sockaddr_in a{};
@@ -864,6 +873,7 @@ struct TestServer {
         SSL_CTX_set_min_proto_version(ctx, min_version);
         SSL_CTX_set_max_proto_version(ctx, max_version);
         if (min_version < TLS1_2_VERSION) SSL_CTX_set_security_level(ctx, 0);
+        if (ciphers) SSL_CTX_set_cipher_list(ctx, ciphers);
         if (!staple_.empty()) {
             SSL_CTX_set_tlsext_status_cb(ctx, staple_callback);
             SSL_CTX_set_tlsext_status_arg(ctx, &staple_);
@@ -1062,15 +1072,33 @@ TEST_CASE("TLS transport (OpenSSL): handshake with a self-signed server certific
             CHECK(o.error.find("tls_min_version") != std::string::npos);
         }
         {
-            TestServer srv(tc, TLS1_VERSION, TLS1_VERSION);
+            // RSA key exchange: nothing in the handshake is signed, so this
+            // works whatever the system thinks of SHA-1 signatures.
+            const TestCert rsa("DNS:localhost", -3600, 86400, nullptr, true);
+            TestServer srv(rsa, TLS1_VERSION, TLS1_VERSION, {}, "kRSA:@SECLEVEL=0");
             Tn5250Config c = base;
             c.tls_verify = TlsVerify::None;
             c.tls_min_version = TlsVersion::Tls1_0;
             Outcome o = run_client(c, "127.0.0.1", srv.port);
+            INFO("client error: " << o.error);
             CHECK(o.connected);
             CHECK(o.data == "hello");
             CHECK(o.log.has("legacy protocol"));
             CHECK(o.log.has("TLS negotiated TLSv1 "));
+        }
+        {
+            // Ephemeral key exchange is signed with MD5 and SHA-1 in TLS
+            // 1.0. A system that forbids SHA-1 signatures (Fedora and RHEL
+            // by crypto policy) can neither make nor check that signature:
+            // there the handshake fails, and the error says why.
+            TestServer srv(tc, TLS1_VERSION, TLS1_VERSION, {}, "kECDHE:kDHE:@SECLEVEL=0");
+            Tn5250Config c = base;
+            c.tls_verify = TlsVerify::None;
+            c.tls_min_version = TlsVersion::Tls1_0;
+            Outcome o = run_client(c, "127.0.0.1", srv.port);
+            if (o.connected) CHECK(o.log.has("TLS negotiated TLSv1 "));
+            else if (o.error.find("invalid digest") != std::string::npos)
+                CHECK(o.error.find("SHA-1 signatures") != std::string::npos);
         }
     }
 }
