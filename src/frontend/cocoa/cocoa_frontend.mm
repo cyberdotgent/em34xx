@@ -869,7 +869,7 @@ static NSToolbarItemIdentifier const kTbTermKeys = @"termkeys";
 }
 
 - (bool)connected {
-    return _app->host_link().controller_kind() == "tn5250";
+    return _app->host_link().bridging();
 }
 
 - (std::string)tlsStateText:(const TwinaxSessionStatus*)s {

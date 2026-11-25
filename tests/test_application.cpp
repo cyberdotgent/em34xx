@@ -166,6 +166,7 @@ TEST_CASE("application: another variant rebuilds and power-cycles; new sessions 
     REQUIRE(app.set_model(app.model(), options, error));
     CHECK(instructions(app) < before);   // a new machine, from the reset vector
     CHECK(app.host_link().controller_kind() == "none");   // the sessions were closed
+    CHECK_FALSE(app.host_link().bridging());
     CHECK(app.variant().id == "3477-FC");
     CHECK(app.config().terminal.phosphor.empty());
     CHECK(app.emulator().with_machine([](Machine& m) { return m.tube().colour; }));
@@ -200,6 +201,7 @@ TEST_CASE("application: connect after a power cycle resets the terminal, then co
     CHECK(app.emulator().with_machine([](Machine& m) { return m.reset_count(); }) == resets + 1);
     CHECK(message.find("previous session closed") == std::string::npos);   // closed before the reset
     CHECK(app.host_link().controller_kind() == "tn5250");
+    CHECK(app.host_link().bridging());
     CHECK(app.host_link().status().find("127.0.0.1:2") != std::string::npos);
     CHECK(app.powered());
 }

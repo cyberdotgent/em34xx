@@ -127,7 +127,7 @@ bool HostLink::disconnect(std::string& error) {
 }
 
 bool HostLink::reconnect(std::string& message, std::string& error) {
-    if (emu_.with_machine([](Machine& m) { return m.line_host() && m.line_host()->bridges_sessions(); })) return true;
+    if (bridging()) return true;
     if (!has_last_) return false;
     return connect(last_, message, error);
 }
@@ -137,6 +137,10 @@ bool HostLink::disconnect_station(unsigned address, std::string& error) {
         [&](Machine& m) { return m.line_host() && m.line_host()->disconnect_station(address); });
     if (!ok) error = format("disconnect: no TN5250 session on station %u", address);
     return ok;
+}
+
+bool HostLink::bridging() const {
+    return emu_.with_machine([](Machine& m) { return m.line_host() && m.line_host()->bridges_sessions(); });
 }
 
 std::string HostLink::controller_kind() const {

@@ -90,7 +90,11 @@ public:
     // restores the configured behaviour. Any thread.
     void set_tls_trust_handler(tn5250::TlsTrustHandler fn) { trust_->set_handler(std::move(fn)); }
 
-    // The controller on the line: "none", "script", "tn5250", "wsc"...
+    // True while a controller that carries host sessions is on the line,
+    // whatever its kind: what a front end's Disconnect / Reconnect follows.
+    bool bridging() const;
+    // The controller on the line: "none", "script", "tn5250", "wsc"... For
+    // display only; ask bridging() rather than comparing names.
     std::string controller_kind() const;
     // Multi-line description of the controller and its sessions.
     std::string status() const;

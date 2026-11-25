@@ -784,7 +784,7 @@ void Win32Frontend::update_title() {
     SetWindowTextW(hwnd_.load(), widen(t).c_str());
 }
 
-bool Win32Frontend::connected() const { return app_->host_link().controller_kind() == "tn5250"; }
+bool Win32Frontend::connected() const { return app_->host_link().bridging(); }
 
 std::string Win32Frontend::tls_state_text(const TwinaxSessionStatus* s) const {
     if (cur_.p.tls_mode == ProfileTlsMode::AcceptAll) return "TLS, certificate not verified";
