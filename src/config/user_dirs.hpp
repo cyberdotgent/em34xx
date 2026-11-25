@@ -33,6 +33,8 @@ public:
     std::string profiles() const;
     std::string settings_file() const;
     std::string keymap_file() const;
+    // <root>/tube.burn: the wear of the one tube (present/burn_in.hpp).
+    std::string tube_file() const;
     std::string nvram_file(const std::string& model) const;
     // <root>/<model>.eeprom: the model's setup EEPROM (monitor alignment).
     std::string eeprom_file(const std::string& model) const;

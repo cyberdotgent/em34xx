@@ -306,6 +306,7 @@ em34xx_library(em34xx_bridge src/host/twinax/wsc/tn5250_bridge.cpp)
 target_link_libraries(em34xx_bridge PUBLIC em34xx_tn5250 em34xx_host)
 
 em34xx_library(em34xx_present
+  src/present/burn_in.cpp
   src/present/crt_render.cpp
   src/present/display_profile.cpp
 )

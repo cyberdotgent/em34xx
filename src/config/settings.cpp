@@ -88,6 +88,8 @@ bool parse_settings(const std::string& text, const std::string& origin, AppSetti
         TlsVersion t;
         if (parse_tls_version(*v, t) && t != TlsVersion::Any) s.tls_min_version = t;
     }
+    // [display] held the tube of em34xx 0.1; only burn_in is read from it.
+    if (auto v = root["display"]["burn_in"].value<std::string>()) parse_burn_speed(*v, s.burn_in);
     if (auto v = root["window"]["zoom"].value<double>()) s.zoom = snap_zoom(*v);
     const toml::table* w = root["window"].as_table();
     if (w) {
@@ -119,6 +121,7 @@ std::string settings_to_toml(const AppSettings& s) {
         {"startup", toml::table{{"open_profile", s.startup_open}, {"profile", s.startup_profile}}},
         {"emulator", toml::table{{"speed", int64_t(s.speed_percent)}}},
         {"tls", toml::table{{"min_version", tls_version_name(s.tls_min_version)}}},
+        {"display", toml::table{{"burn_in", burn_speed_name(s.burn_in)}}},
         {"window", window},
     };
     std::ostringstream os;
@@ -135,6 +138,20 @@ bool load_settings(const std::string& path, AppSettings& out, std::string& error
     std::string text;
     if (!read_text_file(path, text, error)) return false;
     return parse_settings(text, path, out, error);
+}
+
+bool load_tube(const std::string& path, TubeWear& tube, std::string& error) {
+    std::error_code ec;
+    if (!fs::exists(fs::u8path(path), ec)) return true;
+    std::string data;
+    return read_text_file(path, data, error) && tube.deserialize(data, error);
+}
+
+bool save_tube(const std::string& path, TubeWear& tube, std::string& error) {
+    if (!tube.unsaved()) return true;
+    if (!write_text_file(path, tube.serialize(), error)) return false;
+    tube.mark_saved();
+    return true;
 }
 
 bool save_settings(const std::string& path, const AppSettings& s, std::string& error) {

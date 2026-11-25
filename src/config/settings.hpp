@@ -13,6 +13,10 @@
 //   [tls]
 //   min_version = "1.2"       default oldest TLS version for profiles that
 //                             do not set their own
+//   [display]
+//   burn_in = "slow"          screen burn-in: "off", "slow", "fast" or
+//                             "hyper" (present/burn_in.hpp); one tube for
+//                             the whole application, kept in tube.burn
 //   [window]
 //   zoom = 1.0                1.0, 1.5 or 2.0: picture size relative to the
 //                             presented frame, times the DPI scale
@@ -25,6 +29,7 @@
 
 #include "host/host_config.hpp"
 #include "machine/display_subtype.hpp"
+#include "present/burn_in.hpp"
 
 #include <string>
 
@@ -40,6 +45,7 @@ struct AppSettings {
     unsigned speed_percent = 100;
     TlsVersion tls_min_version = TlsVersion::Tls1_2;
     double zoom = 1.0;
+    BurnSpeed burn_in = BurnSpeed::Slow;
     WindowPlacement window;
     bool startup_open = false;
     std::string startup_profile;   // profile name (file stem in profiles\)
@@ -54,6 +60,12 @@ std::string settings_to_toml(const AppSettings& s);
 // A missing file is not an error (defaults).
 bool load_settings(const std::string& path, AppSettings& out, std::string& error);
 bool save_settings(const std::string& path, const AppSettings& s, std::string& error);
+
+// The tube's wear (UserDirs::tube_file). A missing file is a new tube, not
+// an error; an unreadable one leaves the tube as it was. Saving writes only
+// when the tube has changed.
+bool load_tube(const std::string& path, TubeWear& tube, std::string& error);
+bool save_tube(const std::string& path, TubeWear& tube, std::string& error);
 
 // Read / write a whole file with a UTF-8 path (wide on Windows). Writes go
 // to a temporary file first and replace the target.

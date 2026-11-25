@@ -38,6 +38,7 @@ std::string UserDirs::roms() const { return join(root_, "roms"); }
 std::string UserDirs::profiles() const { return join(root_, "profiles"); }
 std::string UserDirs::settings_file() const { return join(root_, "settings.toml"); }
 std::string UserDirs::keymap_file() const { return join(root_, "keymap.toml"); }
+std::string UserDirs::tube_file() const { return join(root_, "tube.burn"); }
 std::string UserDirs::nvram_file(const std::string& model) const { return join(root_, model + ".nvram"); }
 std::string UserDirs::eeprom_file(const std::string& model) const { return join(root_, model + ".eeprom"); }
 

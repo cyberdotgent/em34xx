@@ -31,6 +31,7 @@ add_executable(em34xx_app_tests
   test_monitor_expr.cpp
   test_twinax.cpp
   test_util.cpp
+  test_burn_in.cpp
   test_display.cpp
   test_connect.cpp
   test_probe.cpp

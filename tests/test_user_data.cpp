@@ -286,15 +286,18 @@ TEST_CASE("settings: defaults, round trip, tolerance") {
     CHECK(s.zoom == 1.0);
     CHECK(s.speed_percent == 100);
     CHECK_FALSE(s.window.valid);
+    CHECK(s.burn_in == BurnSpeed::Slow);   // on unless turned off
 
     s.speed_percent = 0;
     s.startup_open = true;
     s.startup_profile = "PUB400";
     s.tls_min_version = TlsVersion::Tls1_0;
     s.zoom = 1.5;
+    s.burn_in = BurnSpeed::Off;
     s.window = {true, -20, 30, 1024, 800, true};
     AppSettings back;
     REQUIRE(parse_settings(settings_to_toml(s), "rt", back, err));
+    CHECK(back.burn_in == BurnSpeed::Off);
     CHECK(back.speed_percent == 0);
     CHECK(back.startup_open);
     CHECK(back.startup_profile == "PUB400");

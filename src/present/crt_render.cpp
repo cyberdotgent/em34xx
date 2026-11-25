@@ -29,9 +29,10 @@ bool same_params(const CrtParams& a, const CrtParams& b) {
 }
 } // namespace
 
-void crt_render(const Framebuffer& fb, int out_w, int out_h, const CrtParams& p, std::vector<uint32_t>& out) {
+void crt_render(const Framebuffer& fb, int out_w, int out_h, const CrtParams& p, std::vector<uint32_t>& out,
+                const TubeWear* wear) {
     CrtRenderer r;
-    r.render(fb, out_w, out_h, p, out);
+    r.render(fb, out_w, out_h, p, out, wear);
 }
 
 void CrtRenderer::setup(const Framebuffer& fb, int out_w, int out_h, const CrtParams& p) {
@@ -161,15 +162,19 @@ void CrtRenderer::spread_line(const Framebuffer& fb, int line) {
 }
 
 CrtRenderer::Rows CrtRenderer::render(const Framebuffer& fb, int out_w, int out_h, const CrtParams& p,
-                                      std::vector<uint32_t>& out) {
+                                      std::vector<uint32_t>& out, const TubeWear* wear) {
     Rows rows;
     const size_t out_size = size_t(std::max(out_w, 0)) * size_t(std::max(out_h, 0));
     const bool full = !valid_ || fb.width != fb_w_ || fb.height != fb_h_ || out_w != out_w_ || out_h != out_h_ ||
                       fb.border_x != border_x_ || fb.border_y != border_y_ || fb.dot_pitch != dot_pitch_ || !same_params(p, params_) ||
-                      out.size() != out_size || last_.size() != fb.pixels.size();
+                      out.size() != out_size || last_.size() != fb.pixels.size() || wear != wear_ ||
+                      (wear && wear->version() != wear_version_);
     if (full) {
         setup(fb, out_w, out_h, p);
-        out.assign(out_size, 0xFF000000u);
+        wear_ = wear;
+        wear_version_ = wear ? wear->version() : 0;
+        // The border is never lit, so it is fresh glass.
+        out.assign(out_size, wear ? tube_face_colour(0.0f) : 0xFF000000u);
         last_.clear();
         valid_ = true;
         rows.row0 = 0;
@@ -216,11 +221,21 @@ CrtRenderer::Rows CrtRenderer::render(const Framebuffer& fb, int out_w, int out_
             for (size_t k = 0; k < cols * 3; ++k) acc[k] += w * sp[k];
         }
         uint32_t* dst = out.data() + size_t(y) * size_t(out_w) + size_t(ox0_);
+        const double v = (y + 0.5) / out_h;
         for (size_t k = 0; k < cols; ++k) {
-            const uint32_t cr = uint32_t(std::min(255.0f, acc[3 * k]));
-            const uint32_t cg = uint32_t(std::min(255.0f, acc[3 * k + 1]));
-            const uint32_t cb = uint32_t(std::min(255.0f, acc[3 * k + 2]));
-            dst[k] = 0xFF000000u | (cr << 16) | (cg << 8) | cb;
+            float cr = std::min(255.0f, acc[3 * k]);
+            float cg = std::min(255.0f, acc[3 * k + 1]);
+            float cb = std::min(255.0f, acc[3 * k + 2]);
+            if (wear) {
+                // The light of worn phosphor, on top of the unlit glass.
+                const float depth = wear->depth((double(ox0_) + double(k) + 0.5) / out_w, v);
+                const float eff = 1.0f - float(kMaxLoss) * depth;
+                const uint32_t face = tube_face_colour(depth);
+                cr = std::min(255.0f, cr * eff + float((face >> 16) & 0xFF));
+                cg = std::min(255.0f, cg * eff + float((face >> 8) & 0xFF));
+                cb = std::min(255.0f, cb * eff + float(face & 0xFF));
+            }
+            dst[k] = 0xFF000000u | (uint32_t(cr) << 16) | (uint32_t(cg) << 8) | uint32_t(cb);
         }
     }
     if (!full && first >= 0) {

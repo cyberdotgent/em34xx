@@ -16,6 +16,7 @@
 #pragma once
 
 #include "machine/peripherals.hpp"
+#include "present/burn_in.hpp"
 
 #include <cstdint>
 #include <vector>
@@ -42,7 +43,11 @@ struct CrtParams {
 void crt_fit(const Framebuffer& fb, int max_w, int max_h, int& out_w, int& out_h);
 
 // Render fb into an out_w x out_h ARGB image of the whole tube.
-void crt_render(const Framebuffer& fb, int out_w, int out_h, const CrtParams& p, std::vector<uint32_t>& out);
+// With `wear`, the tube is a used one (present/burn_in.hpp): worn phosphor
+// gives less light, and the unlit glass is dark grey, not black, darker and
+// browner where it is worn.
+void crt_render(const Framebuffer& fb, int out_w, int out_h, const CrtParams& p, std::vector<uint32_t>& out,
+                const TubeWear* wear = nullptr);
 
 // Incremental form for front ends that redraw the same tube many times: the
 // beam spread along each raster line is computed once per changed raster line
@@ -57,7 +62,8 @@ public:
         int row0 = 0, row1 = 0;
         bool empty() const { return row0 >= row1; }
     };
-    Rows render(const Framebuffer& fb, int out_w, int out_h, const CrtParams& p, std::vector<uint32_t>& out);
+    Rows render(const Framebuffer& fb, int out_w, int out_h, const CrtParams& p, std::vector<uint32_t>& out,
+                const TubeWear* wear = nullptr);
     // Forget the cache (the next render recomputes everything).
     void invalidate() { valid_ = false; }
 
@@ -70,6 +76,8 @@ private:
     int fb_w_ = 0, fb_h_ = 0, out_w_ = 0, out_h_ = 0;
     double border_x_ = 0, border_y_ = 0, dot_pitch_ = 1.0;
     CrtParams params_;
+    const TubeWear* wear_ = nullptr;   // the wear the image was drawn with
+    uint64_t wear_version_ = 0;
     std::vector<uint32_t> last_;   // raster of the previous call
 
     int ox0_ = 0, ox1_ = 0, oy0_ = 0, oy1_ = 0;
