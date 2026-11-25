@@ -1,5 +1,7 @@
 # em34xx — notes for Claude
 
+- Pull requests, opened or reviewed, follow `CONTRIBUTING.md` (scope, front-end
+  validation, AI disclosure with model and provider).
 - C++17 only (Windows 7 x86 must stay a viable target). vcpkg manifest
   dependencies; replxx, not GNU readline; MinGW-w64 later for Windows.
 - Clean room: no code or data from ROM images in `src/`, and no ROM or

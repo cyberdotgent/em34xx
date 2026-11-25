@@ -92,6 +92,12 @@ memory, scripts) and a GDB stub. See [docs/monitor.md](docs/monitor.md),
 [docs/twinax-bridge.md](docs/twinax-bridge.md) and
 [docs/tn5250.md](docs/tn5250.md).
 
+## Contributing
+
+Pull requests are welcome. Read [CONTRIBUTING.md](CONTRIBUTING.md) first: it
+sets what a pull request must contain, how front-end changes are validated,
+and the rules for code written with AI tools.
+
 ## Licence
 
 GPL-3.0-or-later; see [LICENSE](LICENSE). Third-party notices are shown in
