@@ -40,6 +40,12 @@ bool roms_present() {
     return std::filesystem::exists(dir + "95f4171.bin") && std::filesystem::exists(dir + "95f4172.bin");
 }
 
+// The colour variant's own pair (3477-FC, docs/models.md).
+bool colour_roms_present() {
+    const std::string dir = std::string(EM34XX_SOURCE_DIR) + "/roms/";
+    return std::filesystem::exists(dir + "65f2995.bin") && std::filesystem::exists(dir + "65f2996.bin");
+}
+
 uint64_t instructions(Application& app) {
     return app.emulator().with_machine([](Machine& m) { return m.cpu().instructions(); });
 }
@@ -150,7 +156,7 @@ TEST_CASE("application: the phosphor changes the picture only, without a reset")
 }
 
 TEST_CASE("application: another variant rebuilds and power-cycles; new sessions announce it") {
-    if (!roms_present()) return;
+    if (!roms_present() || !colour_roms_present()) return;   // it switches to 3477-FC
     RunningApp r("amber");
     REQUIRE(r.ok);
     Application& app = r.app;
