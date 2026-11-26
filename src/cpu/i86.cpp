@@ -121,10 +121,15 @@ uint8_t I86::rd8(uint16_t seg, uint16_t off) {
 }
 
 uint16_t I86::rd16(uint16_t seg, uint16_t off) {
-    // A word access at offset FFFF wraps to offset 0000 of the same segment.
+    // On a 16-bit bus an even-aligned word is one bus cycle; an odd one is
+    // two byte cycles. A word access at offset FFFF wraps to offset 0000 of
+    // the same segment (two byte cycles, since FFFF is odd).
+    if (!bus8_ && !(off & 1)) {
+        step_cycles_ += kBusCycles;
+        return bus_.mem_read16(linear(seg, off));
+    }
     uint16_t lo = rd8(seg, off);
     uint16_t hi = rd8(seg, uint16_t(off + 1));
-    if (!bus8_) step_cycles_ -= kBusCycles / 2;
     return uint16_t(lo | (hi << 8));
 }
 
@@ -134,9 +139,13 @@ void I86::wr8(uint16_t seg, uint16_t off, uint8_t v) {
 }
 
 void I86::wr16(uint16_t seg, uint16_t off, uint16_t v) {
+    if (!bus8_ && !(off & 1)) {
+        step_cycles_ += kBusCycles;
+        bus_.mem_write16(linear(seg, off), v);
+        return;
+    }
     wr8(seg, off, uint8_t(v));
     wr8(seg, uint16_t(off + 1), uint8_t(v >> 8));
-    if (!bus8_) step_cycles_ -= kBusCycles / 2;
 }
 
 uint8_t I86::fetch8() {
@@ -169,6 +178,10 @@ uint8_t I86::in8(uint16_t port) {
 }
 
 uint16_t I86::in16(uint16_t port) {
+    if (!bus8_ && !(port & 1)) {
+        step_cycles_ += kBusCycles;
+        return bus_.io_read16(port);
+    }
     uint16_t lo = in8(port);
     uint16_t hi = in8(uint16_t(port + 1));
     return uint16_t(lo | (hi << 8));
@@ -180,6 +193,11 @@ void I86::out8(uint16_t port, uint8_t v) {
 }
 
 void I86::out16(uint16_t port, uint16_t v) {
+    if (!bus8_ && !(port & 1)) {
+        step_cycles_ += kBusCycles;
+        bus_.io_write16(port, v);
+        return;
+    }
     out8(port, uint8_t(v));
     out8(uint16_t(port + 1), uint8_t(v >> 8));
 }

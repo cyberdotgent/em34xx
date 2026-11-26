@@ -22,6 +22,26 @@ public:
     virtual uint8_t io_read8(uint16_t port) { (void)port; return 0xFF; }
     virtual void io_write8(uint16_t port, uint8_t value) { (void)port; (void)value; }
 
+    // One aligned word cycle from a CPU with a 16-bit bus (offset and port
+    // even, both bytes in this device). A device with word-wide registers
+    // overrides these; the defaults are two byte accesses, low byte first.
+    virtual uint16_t mmio_read16(uint32_t offset) {
+        const uint16_t lo = mmio_read8(offset);
+        return uint16_t(lo | (mmio_read8(offset + 1) << 8));
+    }
+    virtual void mmio_write16(uint32_t offset, uint16_t value) {
+        mmio_write8(offset, uint8_t(value));
+        mmio_write8(offset + 1, uint8_t(value >> 8));
+    }
+    virtual uint16_t io_read16(uint16_t port) {
+        const uint16_t lo = io_read8(port);
+        return uint16_t(lo | (io_read8(uint16_t(port + 1)) << 8));
+    }
+    virtual void io_write16(uint16_t port, uint16_t value) {
+        io_write8(port, uint8_t(value));
+        io_write8(uint16_t(port + 1), uint8_t(value >> 8));
+    }
+
     // Side-effect-free read used by the debugger. Devices whose reads have
     // side effects should override this to return their latched state.
     virtual uint8_t peek8(uint32_t offset) { (void)offset; return 0xFF; }

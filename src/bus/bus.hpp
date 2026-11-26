@@ -91,6 +91,13 @@ public:
     void mem_write8(uint32_t phys, uint8_t value) override;
     uint8_t io_read8(uint16_t port) override;
     void io_write8(uint16_t port, uint8_t value) override;
+    // Word cycles: a device that holds both bytes gets one word access;
+    // anything else (RAM, ROM, a word across two regions) is two byte
+    // accesses, with the same policy, watchpoints and write observation.
+    uint16_t mem_read16(uint32_t phys) override;
+    void mem_write16(uint32_t phys, uint16_t value) override;
+    uint16_t io_read16(uint16_t port) override;
+    void io_write16(uint16_t port, uint16_t value) override;
     uint8_t interrupt_ack() override;
 
     void set_interrupt_controller(InterruptController* ic) { ic_ = ic; }

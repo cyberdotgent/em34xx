@@ -234,3 +234,45 @@ TEST_CASE("disassembler") {
     CHECK(d.text == "call 0x30");
     CHECK(d.is_call);
 }
+
+namespace {
+
+// Counts byte and word cycles to check how each bus width splits words.
+struct WidthBus : RamBus {
+    unsigned bytes = 0, words = 0, io_words = 0;
+    uint8_t mem_read8(uint32_t a) override { ++bytes; return RamBus::mem_read8(a); }
+    void mem_write8(uint32_t a, uint8_t v) override { ++bytes; RamBus::mem_write8(a, v); }
+    uint16_t mem_read16(uint32_t a) override { ++words; return CpuBus::mem_read16(a); }
+    void mem_write16(uint32_t a, uint16_t v) override { ++words; CpuBus::mem_write16(a, v); }
+    void io_write16(uint16_t p, uint16_t v) override { ++io_words; CpuBus::io_write16(p, v); }
+};
+
+unsigned data_cycles(CpuLevel level, uint16_t offset, bool& one_word) {
+    WidthBus bus;
+    // FFFF:0000  mov ax,1234 ; mov [offset],ax ; mov dx,fffe ; out dx,ax
+    bus.load(0xFFFF0, {0xB8, 0x34, 0x12, 0xA3, uint8_t(offset), uint8_t(offset >> 8), 0xBA, 0xFE, 0xFF, 0xEF});
+    I86 cpu(bus, level);
+    cpu.step();
+    bus.bytes = bus.words = 0;
+    const unsigned fetch_bytes = 3;   // the MOV's own opcode and address
+    cpu.step();
+    one_word = bus.words == 1 && bus.bytes == fetch_bytes + 2;   // the word's two bytes, via the default split
+    const unsigned w = bus.words;
+    cpu.step();
+    cpu.step();
+    CHECK(bus.mem[offset] == 0x34);
+    CHECK(bus.mem[uint16_t(offset + 1)] == 0x12);
+    CHECK(bus.io_words == (level == CpuLevel::I8088 ? 0u : 1u));
+    return w;
+}
+
+} // namespace
+
+TEST_CASE("a 16-bit bus issues aligned words as one cycle, an 8-bit bus never") {
+    bool one = false;
+    CHECK(data_cycles(CpuLevel::I8086, 0x0100, one) == 1);
+    CHECK(one);
+    CHECK(data_cycles(CpuLevel::I80186, 0x0100, one) == 1);
+    CHECK(data_cycles(CpuLevel::I8086, 0x0101, one) == 0);   // odd: two byte cycles
+    CHECK(data_cycles(CpuLevel::I8088, 0x0100, one) == 0);
+}

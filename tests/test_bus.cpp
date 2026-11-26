@@ -58,3 +58,53 @@ TEST_CASE("watchpoints") {
     CHECK(bus.stop_info().address == 0x101);
     CHECK(bus.remove_watchpoint(id));
 }
+
+namespace {
+
+// Records each access with its width: the word path must reach a device
+// as one word, everything else as bytes.
+struct WidthDevice : Device {
+    WidthDevice() : Device("width") {}
+    std::vector<std::string> log;
+    uint8_t mmio_read8(uint32_t off) override { log.push_back("r8 " + std::to_string(off)); return uint8_t(0x10 + off); }
+    void mmio_write8(uint32_t off, uint8_t v) override { log.push_back("w8 " + std::to_string(off) + "=" + std::to_string(v)); }
+    uint16_t mmio_read16(uint32_t off) override { log.push_back("r16 " + std::to_string(off)); return 0xBEEF; }
+    void mmio_write16(uint32_t off, uint16_t v) override { log.push_back("w16 " + std::to_string(off) + "=" + std::to_string(v)); }
+    uint16_t io_read16(uint16_t port) override { log.push_back("in16 " + std::to_string(port)); return 0x1234; }
+    void io_write16(uint16_t port, uint16_t v) override { log.push_back("out16 " + std::to_string(port) + "=" + std::to_string(v)); }
+};
+
+} // namespace
+
+TEST_CASE("word cycles reach a device as one word access") {
+    Bus bus(20);
+    WidthDevice dev;
+    bus.map_ram("ram", 0, 0x1000);
+    bus.map_mmio("dev", 0x58000, 0x100, &dev);
+    bus.map_io("dev", 0xFF00, 0x100, &dev);
+
+    CHECK(bus.mem_read16(0x58004) == 0xBEEF);
+    bus.mem_write16(0x5800A, 0x6001);
+    CHECK(bus.io_read16(0xFF22) == 0x1234);
+    bus.io_write16(0xFFFE, 0x18FF);
+    CHECK(dev.log == std::vector<std::string>{"r16 4", "w16 10=24577", "in16 65314", "out16 65534=6399"});
+
+    // RAM words are two bytes and keep byte watchpoints working.
+    const int id = bus.add_watchpoint(0x101, 1, AccessKind::Write);
+    bus.mem_write16(0x100, 0xA55A);
+    CHECK(bus.mem_read16(0x100) == 0xA55A);
+    REQUIRE(bus.stop_pending());
+    CHECK(bus.stop_info().watch_id == id);
+    CHECK(bus.stop_info().address == 0x101);
+}
+
+TEST_CASE("a word across a region boundary is two byte accesses") {
+    Bus bus(20);
+    WidthDevice dev;
+    bus.set_policy(UnmappedPolicy::Ignore);
+    bus.map_mmio("dev", 0x58000, 0x100, &dev);
+    CHECK(bus.mem_read16(0x580FE) == 0xBEEF);   // both bytes inside: one word
+    dev.log.clear();
+    CHECK(bus.mem_read16(0x57FFE) == 0xFFFF);   // open bus below
+    CHECK(dev.log.empty());
+}

@@ -218,6 +218,57 @@ void Bus::io_write8(uint16_t port, uint8_t value) {
     unexpected(true, true, port, value, BusStop::Cause::Unmapped);
 }
 
+uint16_t Bus::mem_read16(uint32_t phys) {
+    phys &= address_mask_;
+    const uint32_t hi_addr = (phys + 1) & address_mask_;
+    Region* r = lookup(phys);
+    if (!r || r->kind != Region::Kind::Mmio || lookup(hi_addr) != r || hi_addr != phys + 1)
+        return CpuBus::mem_read16(phys);
+    const uint16_t v = r->device->mmio_read16(phys - r->base);
+    LOG_TRACE("mmio", "pc %06x: rd %s+%x -> %04x", pc_, r->name.c_str(), phys - r->base, v);
+    if (!watches_.empty()) {
+        check_watch(phys, false, uint8_t(v));
+        check_watch(hi_addr, false, uint8_t(v >> 8));
+    }
+    return v;
+}
+
+void Bus::mem_write16(uint32_t phys, uint16_t value) {
+    phys &= address_mask_;
+    const uint32_t hi_addr = (phys + 1) & address_mask_;
+    Region* r = lookup(phys);
+    if (!r || r->kind != Region::Kind::Mmio || lookup(hi_addr) != r || hi_addr != phys + 1) {
+        CpuBus::mem_write16(phys, value);
+        return;
+    }
+    LOG_TRACE("mmio", "pc %06x: wr %s+%x <- %04x", pc_, r->name.c_str(), phys - r->base, value);
+    r->device->mmio_write16(phys - r->base, value);
+    note_write(phys);
+    note_write(hi_addr);
+    if (!watches_.empty()) {
+        check_watch(phys, true, uint8_t(value));
+        check_watch(hi_addr, true, uint8_t(value >> 8));
+    }
+}
+
+uint16_t Bus::io_read16(uint16_t port) {
+    Device* d = io_ports_[port];
+    if (!d || port == 0xFFFF || io_ports_[port + 1] != d) return CpuBus::io_read16(port);
+    const uint16_t v = d->io_read16(port);
+    LOG_TRACE("io", "pc %06x: in %04x -> %04x (%s)", pc_, port, v, d->name().c_str());
+    return v;
+}
+
+void Bus::io_write16(uint16_t port, uint16_t value) {
+    Device* d = io_ports_[port];
+    if (!d || port == 0xFFFF || io_ports_[port + 1] != d) {
+        CpuBus::io_write16(port, value);
+        return;
+    }
+    LOG_TRACE("io", "pc %06x: out %04x <- %04x (%s)", pc_, port, value, d->name().c_str());
+    d->io_write16(port, value);
+}
+
 uint8_t Bus::interrupt_ack() {
     return ic_ ? ic_->acknowledge() : 0xFF;
 }
