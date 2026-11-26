@@ -119,6 +119,13 @@ constexpr uint8_t kBlackLevel = 0x18;
 // [hypothesis, see row_address()].
 constexpr uint32_t kRegenOrigin = 0x1000;
 
+// The status row (3270 operator information area): 80 cells at 0:0800,
+// shown below the screen's rows with a rule along its top edge [observed:
+// the runtime keeps "SETUP" in reverse white there, and photos of a real
+// 3483 show that bar under a thin blue line on every setup screen;
+// hypothesis: that the address is fixed, no register seen points to it].
+constexpr uint32_t kStatusRow = 0x0800;
+
 } // namespace
 
 Board3483::Display::Display(Board3483& board) : Device("display-3483"), board_(board) { board_.display_ = this; }
@@ -239,7 +246,11 @@ uint16_t Board3483::Display::cell_dots(uint8_t ch, uint8_t eab, FieldState& fiel
     index = colour;
     const unsigned set = (eab & 7) == 1 ? 1 : 0;
     const uint32_t at = kCgSets[set] + uint32_t(ch) * 32 + y;
-    uint16_t bits = uint16_t(board_.bus_.peek8(at) << 8 | board_.bus_.peek8(at - kCgCompanion));
+    // The 9 dots of a cell are bits 6-0 of the main byte and bits 7-6 of
+    // the companion [observed: the GE line glyph B9 lights exactly those,
+    // and a rule of them is solid on a real 3483; text glyphs keep main bit
+    // 7 clear].
+    uint16_t bits = uint16_t((board_.bus_.peek8(at) << 8 | board_.bus_.peek8(at - kCgCompanion)) << 1);
     const uint8_t hl = (eab & 0xC0) ? (eab >> 6) : (field.eab >> 6);
     if (hl == 3 && y + 1 == cell_h) bits = 0xFF80;             // underscore on the last line
     if (hl == 2) bits = uint16_t(~bits & 0xFF80);              // reverse, over the 9-dot cell
@@ -320,7 +331,7 @@ void Board3483::Display::render(Framebuffer& fb) {
     const unsigned cols = columns(), nrows = rows(), cell_h = cell_height();
     const unsigned cell_w = 9;
     fb.width = int(cols * cell_w);
-    fb.height = int(nrows * cell_h);
+    fb.height = int((nrows + 1) * cell_h);   // + the status row
     fb.display_aspect = 4.0 / 3.0;
     fb.pixels.assign(size_t(fb.width) * size_t(fb.height), 0xFF000000u);
     const bool video_on = board_.coax_ && (board_.coax_->reg(0x10) & 1);
@@ -333,12 +344,17 @@ void Board3483::Display::render(Framebuffer& fb) {
     uint32_t colour_of[16];
     for (unsigned i = 0; i < 16; ++i) colour_of[i] = kColour[i & 7];
     FieldState f = initial_field();
-    for (unsigned r = 0; r < nrows; ++r) {
-        const uint32_t start = row_address(r);
+    for (unsigned r = 0; r <= nrows; ++r) {
+        const bool status = r == nrows;
+        const uint32_t start = status ? kStatusRow : row_address(r);
+        if (status) {
+            f = FieldState();   // the status row has no fields of the screen's
+            std::fill_n(&fb.pixels[size_t(r * cell_h) * size_t(fb.width)], size_t(fb.width), colour_of[1]);
+        }
         for (unsigned c = 0; c < cols; ++c) {
             const uint8_t ch = board_.bus_.peek8(start + 2 * c), eab = board_.bus_.peek8(start + 2 * c + 1);
             const FieldState before = f;
-            for (unsigned y = 0; y < cell_h; ++y) {
+            for (unsigned y = status ? 1 : 0; y < cell_h; ++y) {
                 f = before;
                 unsigned idx;
                 const uint16_t bits = cell_dots(ch, eab, f, y, cell_h, idx);
