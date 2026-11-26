@@ -148,3 +148,16 @@ TEST_CASE("Erase All Unprotected clears input and unlocks") {
     CHECK(e.cell(1).ch == 0xC1);
     CHECK(e.cursor() == 3);
 }
+
+#include "tn3270/display_code.hpp"
+
+TEST_CASE("EBCDIC to the 3483's display code") {
+    CHECK(ebcdic_to_display(0xC1) == 0xA0);   // A
+    CHECK(ebcdic_to_display(0x81) == 0x80);   // a
+    CHECK(ebcdic_to_display(0xF0) == 0x20);   // 0
+    CHECK(ebcdic_to_display(0x40) == 0x10);   // space
+    CHECK(ebcdic_to_display(0x7E) == 0x11);   // =
+    CHECK(ebcdic_to_display(0x5E) == 0xBE);   // ;
+    CHECK(ebcdic_to_display(0x00) == 0x00);
+    CHECK(display_field_attribute(0x20) == 0xE0);
+}
