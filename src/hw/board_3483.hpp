@@ -22,6 +22,7 @@
 #include "machine/peripherals.hpp"
 
 #include <array>
+#include <memory>
 #include <cstdint>
 #include <functional>
 #include <string>
@@ -30,6 +31,7 @@ namespace em34xx {
 
 class Bus;
 class I80186Peripherals;
+class Set3Keyboard;
 
 class Board3483 : public InterruptController {
 public:
@@ -175,6 +177,10 @@ public:
     // B: latched with odd parity in bit 8, and the channel's interrupt
     // raised when it is armed.
     bool receive(unsigned channel, uint8_t byte);
+    // The keyboard on channel A (the 122-key terminal keyboard: POST
+    // expects ID BF BF) [hypothesis for the channel].
+    void attach_keyboard(Set3Keyboard* kbd, uint64_t clock_hz);
+    void tick(uint64_t cycles) override;
 
 private:
     uint16_t read_word(unsigned offset) const;
@@ -192,6 +198,16 @@ private:
         unsigned bits = 0;
     };
     void control_write(unsigned channel, uint16_t value);
+    void data_write(unsigned channel, uint16_t value);
+    Set3Keyboard* kbd_ = nullptr;
+    uint64_t clock_hz_ = 1;
+    uint64_t byte_cycles_ = 0;
+    uint64_t us_acc_ = 0;
+    uint64_t tx_left_ = 0;    // cycles until the byte being sent reaches the keyboard
+    uint8_t tx_byte_ = 0;
+    uint64_t rx_left_ = 0;    // cycles until the keyboard's next byte arrives
+    bool rx_active_ = false;
+    uint64_t hold_left_ = 0;  // the keyboard is still busy with a command
     void frame_received(unsigned channel, uint16_t frame);
     std::array<Channel, 2> channels_{};
 };

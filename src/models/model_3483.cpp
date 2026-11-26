@@ -11,8 +11,8 @@
 //  - devices at 58000 (display), 58100 (coax adapter, memory engine and
 //    interrupt status), 58400 (system control), with display row lists in
 //    block RAM at 50108/50508 [observed code; roles are hypotheses]; see
-//    hw/board_3483.hpp. POST passes its RAM, window, coax wrap and display
-//    tests and stops at the serial channel A test (12);
+//    hw/board_3483.hpp. POST runs to its setup check (test 10) and
+//    shows its NVR line readably;
 //  - RAM: two 256Kx4 DRAMs and two 32Kx8 SRAMs next to the battery
 //    [observed, board photo]. Placing the DRAM at 00000-3FFFF and the
 //    battery-backed SRAM at 40000-4FFFF is a hypothesis (the firmware's
@@ -24,6 +24,12 @@
 #include "hw/i80186_peripherals.hpp"
 #include "machine/machine.hpp"
 #include "models/parts.hpp"
+#include "input/host_keymap.hpp"
+#include "input/keyboard_ids.hpp"
+#include "input/set3_keyboard.hpp"
+
+#include <memory>
+#include <stdexcept>
 
 namespace em34xx {
 
@@ -35,12 +41,13 @@ constexpr uint32_t kSramBase = 0x40000, kSramSize = 0x10000;   // battery-backed
 // which code the 3483's own tube gives is a hypothesis].
 constexpr uint8_t kMonitorSense = 0x51;
 
-// Owns the board state the three register devices share; a device only so
-// the machine keeps it alive.
+// Owns the board state the three register devices share and the keyboard;
+// a device only so the machine keeps them alive.
 struct BoardHolder : Device {
     BoardHolder(Bus& bus, I80186Peripherals& cpu_io, uint64_t clock_hz, uint8_t sense)
         : Device("board-3483"), board(bus, cpu_io, clock_hz, sense) {}
     Board3483 board;
+    std::unique_ptr<Set3Keyboard> keyboard;
 };
 
 class Model3483 : public Model {
@@ -68,11 +75,15 @@ public:
         };
         info_.notes = {
             "bring-up: POST passes tests 3 (RAM), 4 (40000 window), 5 (coax internal wrap), 7 (display timing, "
-            "video sense, memory engine) and 11, and stops at test 12 (serial channel A interrupt path) (observed)",
+            "video sense, memory engine), 11-17 (serial channels, keyboard handshake) and 9, and shows its NVR line "
+            "(no saved setup) in test 10, waiting for a key (observed)",
             "board devices (hw/board_3483.hpp) follow the firmware's use of them; display row lists, video sense, "
             "the coax reply words and the memory engine are fitted to POST's checks (hypothesis)",
-            "font: compressed records in the 3477 format (bias 0, 8 KiB each, two per font) (observed); how the "
-            "character generator holds them is not known, so the picture shows no readable text yet",
+            "character generator: the firmware decompresses its character sets into SRAM, 32 bytes per character: "
+            "base set 48000, APL/GE set 4A000, companion planes 40000/42000 (observed); the companion byte as dots 9+ "
+            "and which set a cell uses are hypotheses; the picture shows POST's text readably",
+            "keyboard: the 122-key keyboard on serial channel A (POST resets it, reads ID BF BF, selects set 3) "
+            "(observed dialogue; the channel is a hypothesis)",
             "ROM 06G5525 (U24, AM27C400), linear at 80000-FFFFF; per-segment checksums 1234/5678/9ABC/DEF0 "
             "(observed)",
             "CPU: IBM 39G8873, an 80186-core ASIC (observed: marking, PCB relocation by the firmware); "
@@ -98,6 +109,22 @@ public:
         Board3483::Coax& coax = m.add_device<Board3483::Coax>(board.board);
         Board3483::System& sys = m.add_device<Board3483::System>(board.board);
         m.add_device<Board3483::Window>(board.board);
+
+        // The 122-key keyboard on serial channel A [hypothesis: POST
+        // expects ID BF BF and talks to channel A in its keyboard test].
+        const TerminalOptions& opt = m.options();
+        uint8_t id1 = 0xBF, id2 = 0xBF;
+        std::string error;
+        if (!resolve_keyboard_id(opt, id1, id2, error)) throw std::runtime_error(error);
+        KeyboardType type = KeyboardType::Terminal122;
+        parse_keyboard_type(opt.keyboard_type, type);
+        board.keyboard = std::make_unique<Set3Keyboard>(type, id1, id2);
+        board.keyboard->set_shift_fkeys(opt.shift_fkeys);
+        auto keymap = std::make_shared<Keymap>();
+        if (!load_keymap(opt.keymap, opt.shift_fkeys, *keymap, error)) throw std::runtime_error(error);
+        board.keyboard->set_keymap(std::move(keymap));
+        sys.attach_keyboard(board.keyboard.get(), info_.clock_hz);
+        m.set_keyboard(board.keyboard.get());
         bus.map_mmio("display", 0x58000, 0x100, &disp);
         bus.map_mmio("coax", 0x58100, 0x100, &coax);
         bus.map_mmio("system", 0x58400, 0x100, &sys);

@@ -5,6 +5,7 @@
 
 #include "bus/bus.hpp"
 #include "hw/i80186_peripherals.hpp"
+#include "input/set3_keyboard.hpp"
 #include "util/log.hpp"
 #include "util/strings.hpp"
 
@@ -99,7 +100,8 @@ void Board3483::Window::mmio_write8(uint32_t offset, uint8_t value) {
 
 namespace {
 
-constexpr uint32_t kCgBase = 0x40000;        // character generator in the 40000 window [hypothesis]
+constexpr uint32_t kCgBase = 0x48000;        // base character set [observed: decompressed there]
+constexpr uint32_t kCgExtension = 0x40000;   // its companion plane [observed]; dots 9+ [hypothesis]
 
 } // namespace
 
@@ -224,8 +226,14 @@ void Board3483::Display::render(Framebuffer& fb) {
             const uint8_t ch = board_.bus_.peek8(start + 2 * c);
             if (board_.bus_.peek8(start + 2 * c + 1) & 0x20) continue;   // field attribute: blank [hypothesis]
             for (unsigned y = 0; y < cell_h; ++y) {
-                const uint32_t g = kCgBase + uint32_t(ch) * 64 + y * 2;
-                const uint16_t bits = uint16_t(board_.bus_.peek8(g) | board_.bus_.peek8(g + 1) << 8);
+                // Glyph row [observed: the firmware decompresses its
+                // character sets to 48000 (base set) and 4A000 (APL/GE set),
+                // 32 bytes per character, with sparse companion planes at
+                // 40000 and 42000; hypothesis: the companion byte holds the
+                // dots right of the first 8, as the window's word layout
+                // (low byte to 40000, high byte to 48000) suggests].
+                const uint32_t at = uint32_t(ch) * 32 + y;
+                const uint16_t bits = uint16_t(board_.bus_.peek8(kCgBase + at) << 8 | board_.bus_.peek8(kCgExtension + at));
                 uint32_t* row = &fb.pixels[size_t(r * cell_h + y) * size_t(fb.width) + c * cell_w];
                 for (unsigned x = 0; x < cell_w; ++x)
                     if (bits & (0x8000u >> x)) row[x] = 0xFF33FF66u;
@@ -443,6 +451,77 @@ Board3483::System::System(Board3483& board) : Device("system-3483"), board_(boar
 void Board3483::System::reset() {
     regs_.fill(0);
     channels_ = {};
+    tx_left_ = rx_left_ = hold_left_ = 0;
+    rx_active_ = false;
+    us_acc_ = 0;
+    if (kbd_) kbd_->power_on();
+}
+
+void Board3483::System::attach_keyboard(Set3Keyboard* kbd, uint64_t clock_hz) {
+    kbd_ = kbd;
+    clock_hz_ = clock_hz ? clock_hz : 1;
+    byte_cycles_ = clock_hz_ / 1000;   // about 1 ms per 11-bit frame [hypothesis, keyboard clock ~11 kHz]
+}
+
+// Sending to the keyboard [observed: svc_113, D000:3116]: the firmware
+// writes byte | odd parity (bit 8) | stop (bit 9) with bit 10 low, which
+// pulls the data line (request to send), clears the control register and
+// polls control bit 2 until the frame is out; data then reads 0 when the
+// keyboard acknowledged it.
+void Board3483::System::data_write(unsigned channel, uint16_t value) {
+    Channel& ch = channels_[channel & 1];
+    ch.data = ch.drive = value;
+    if ((channel & 1) == 0 && kbd_ && !(value & 0x0400) && !(ch.control & 0x0080)) {
+        tx_byte_ = uint8_t(value);
+        tx_left_ = byte_cycles_ ? byte_cycles_ : 1;
+    }
+}
+
+void Board3483::System::tick(uint64_t cycles) {
+    if (!kbd_) return;
+    us_acc_ += cycles * 1000000;
+    const uint64_t us = us_acc_ / clock_hz_;
+    us_acc_ %= clock_hz_;
+    if (us) kbd_->advance_us(us);
+    Channel& a = channels_[0];
+    if (tx_left_) {
+        if (cycles < tx_left_) {
+            tx_left_ -= cycles;
+            return;
+        }
+        tx_left_ = 0;
+        LOG_DEBUG("kbd", "host -> keyboard %02X", tx_byte_);
+        kbd_->host_write(tx_byte_);
+        a.data = 0;              // acknowledged
+        a.control |= 0x0004;     // frame out [observed: polled bit]
+        // The keyboard answers a few milliseconds later; the firmware sets
+        // up its receive wait (clearing the status) in between [observed:
+        // an immediate answer is lost].
+        hold_left_ = 3 * byte_cycles_;
+        return;
+    }
+    if (hold_left_) {
+        hold_left_ = cycles < hold_left_ ? hold_left_ - cycles : 0;
+        return;
+    }
+    // The keyboard sends while the channel is armed and the CPU is not
+    // driving the lines.
+    if (!a.armed || (a.control & 0x0080) || !kbd_->has_output()) {
+        rx_active_ = false;
+        return;
+    }
+    if (!rx_active_) {
+        rx_active_ = true;
+        rx_left_ = byte_cycles_;
+    }
+    if (cycles < rx_left_) {
+        rx_left_ -= cycles;
+        return;
+    }
+    rx_active_ = false;
+    const uint8_t b = kbd_->read_output();
+    LOG_DEBUG("kbd", "keyboard -> host %02X", b);
+    receive(0, b);
 }
 
 uint16_t Board3483::System::sense() const {
@@ -490,8 +569,8 @@ void Board3483::System::write_word(unsigned off, uint16_t value) {
     switch (off) {
     case 0x06:
     case 0x10: control_write(off == 0x06 ? 0 : 1, value); break;
-    case 0x08: channels_[0].data = channels_[0].drive = value; break;
-    case 0x12: channels_[1].data = channels_[1].drive = value; break;
+    case 0x08: data_write(0, value); break;
+    case 0x12: data_write(1, value); break;
     default: break;
     }
 }
@@ -512,6 +591,14 @@ void Board3483::System::control_write(unsigned channel, uint16_t value) {
     // the clock line dropping between its two test frames].
     const bool arming = (value & 0x0004) && !ch.armed;
     if (value & 0x0004) ch.armed = true;
+    if (arming) {
+        // Re-arming drops the channel's previous "received" status
+        // [hypothesis: the firmware enables the interrupt right after
+        // re-arming without clearing it, and a stale one would read FFFF].
+        if ((channel & 1) == 0) board_.status1_ = uint16_t(board_.status1_ & ~0x0010);
+        else board_.status2_ = uint16_t(board_.status2_ & ~0x8000);
+        board_.update_irq();
+    }
     if (!(value & 0x0080)) return;
     if (arming || !(old & 0x0080)) {
         ch.shift = 0;
