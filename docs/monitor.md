@@ -3,6 +3,26 @@
 Commands come from the interactive prompt, from `--rc FILE` scripts, from
 stdin (when it is not a terminal), and from GDB's `monitor` command.
 
+## Scripted runs
+
+A script or a pipe drives the machine deterministically: `run n` executes
+`n` instructions (there is no wall-clock wait), `key` presses host keys,
+`screenshot` saves the picture. With `--rc FILE` the machine stays stopped
+until the script runs it; commands piped on stdin need `-S` (`--stopped`),
+otherwise the machine is already running and `run` fails. On the 3477,
+`run #40000000` reaches the setup screen; Right Ctrl (`key rctrl`) is the
+terminal's Enter on the default keymap.
+
+```sh
+printf 'speed max\nrun #40000000\nkey rctrl\nrun #6000000\nscreenshot s.bmp\nquit\n' |
+  em34xx-headless -S --model 3477 --rom-dir roms
+em34xx-headless --model 3477 --rom-dir roms --rc boot.rc --batch
+```
+
+`em34xx` (the SDL window) reads its console only from a terminal; give it
+`--rc FILE` or use GDB's `monitor` when stdin is not one. A `quit` in the
+rc file exits before the window opens.
+
 ## Syntax
 
 - Numbers are hexadecimal: `1f00`, `0x1f00`, `1f00h`. Use `#123` for decimal.

@@ -4,6 +4,12 @@
 #   gdb-multiarch -x tools/em34xx.gdb -ex 'target remote :1234'
 #   gdb-multiarch -x tools/em34xx.gdb        # then: tnc [port]
 #
+# Any GDB built with i386 support works: gdb-multiarch on Debian/Ubuntu,
+# plain "gdb" from Homebrew on macOS (also on Apple silicon). Non-interactive:
+#
+#   gdb -batch -nx -x tools/em34xx.gdb -ex 'target remote :1234' \
+#       -ex 'bseg f000 818b' -ex continue -ex 'monitor info' -ex detach
+#
 # Can be sourced before connecting; nothing here talks to the target until a
 # command is used or the target stops.
 #
