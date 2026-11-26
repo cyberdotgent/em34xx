@@ -12,6 +12,7 @@
 
 #include "config/config.hpp"
 #include "host/twinax/twinax_link.hpp"
+#include "machine/coax_port.hpp"
 #include "tn5250/tls_trust.hpp"
 
 #include <memory>
@@ -43,6 +44,11 @@ private:
     tn5250::TlsTrustHandler handler_;
 };
 
+// Builds the controller for a coax terminal with a TN3270 session behind it
+// (the CUT controller, in the em34xx_coax layer). The session endpoint is
+// the same host/port/TLS configuration a TN5250 session uses.
+using CoaxHostFactory = std::function<std::unique_ptr<CoaxHost>(const Tn5250Config&, std::string& error)>;
+
 class HostLink {
 public:
     // `base` is the start-up configuration (defaults for every setting a
@@ -54,6 +60,8 @@ public:
              std::shared_ptr<TlsTrustBroker> trust = nullptr);
 
     bool bridge_available() const { return static_cast<bool>(bridge_); }
+    // The controller for coax terminals; connect() picks it by the line.
+    void set_coax_factory(CoaxHostFactory f) { coax_ = std::move(f); }
     const AppConfig& base() const { return base_; }
     // The terminal became another model (Application::set_model): its name
     // in the base configuration and its session limits, for the next
@@ -102,11 +110,14 @@ public:
     std::vector<TwinaxSessionStatus> sessions() const;
 
 private:
+    bool connect_coax(const AppConfig& cfg, std::string& message, std::string& error);
+
     Emulator& emu_;
     AppConfig base_;
     unsigned max_sessions_;
     int max_printers_;
     Tn5250HostFactory bridge_;
+    CoaxHostFactory coax_;
     std::shared_ptr<TlsTrustBroker> trust_;
     // What the terminal was last connected with (reconnect()).
     AppConfig last_;

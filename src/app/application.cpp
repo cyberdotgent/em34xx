@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "app/application.hpp"
+
+#include "host/coax/cut_controller.hpp"
 #include "em34xx_version.h"
 
 #include "app/host_link.hpp"
@@ -263,10 +265,20 @@ bool Application::build_machine() {
         bo.tls_trust = trust->for_new_bridge();
         return wsc::make_tn5250_bridge(tw, tn, std::move(bo), err);
     };
-    // The controller for the model's line. Only Twinax has one.
+    CoaxHostFactory coax = [trust](const Tn5250Config& tn, std::string& err) -> std::unique_ptr<CoaxHost> {
+        auto session = std::make_unique<tn3270::Client>(tn);
+        if (auto fn = trust->for_new_bridge()) session->set_tls_trust_handler(std::move(fn));
+        if (!session->start(err)) return nullptr;
+        return std::make_unique<CutController>(std::move(session));
+    };
+    // The controller for the model's line.
     std::unique_ptr<LineHost> host;
     if (info.line == LineKind::Twinax) {
         host = make_twinax_host(cfg_.twinax, cfg_.tn5250, error, bridge);
+        if (!host) return fail(error);
+    } else if (info.line == LineKind::Coax && cfg_.twinax.host == TwinaxHostKind::Tn5250) {
+        // A host given at start-up: the CUT controller with a TN3270 session.
+        host = coax(cfg_.tn5250, error);
         if (!host) return fail(error);
     } else if (cfg_.twinax.host != TwinaxHostKind::None) {
         return fail(std::string("there is no controller for ") + line_kind_name(info.line) + " terminals in this build");
@@ -293,6 +305,7 @@ bool Application::build_machine() {
     emu_->set_speed_percent(cfg_.speed_percent);
     host_link_ = std::make_unique<HostLink>(*emu_, cfg_, info.max_sessions, int(info.max_printer_sessions),
                                             std::move(bridge), trust);
+    host_link_->set_coax_factory(std::move(coax));
     AppTooling* tooling = tooling_.get();
     if (tooling) emu_->set_stop_callback([tooling](const StopEvent& ev) { tooling->on_stop(ev); });
     emu_->start();

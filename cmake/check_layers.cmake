@@ -20,9 +20,10 @@ set(allowed_tn5250 ${emu} net host tn5250)
 # TN3270 reuses the TN5250 telnet codec and transport.
 set(allowed_tn3270 ${emu} net host tn5250 tn3270)
 set(allowed_bridge ${emu} host tn5250)
+set(allowed_coax ${emu} host tn5250 tn3270)
 set(allowed_present ${emu} present)
 # The runtime: everything an end-user GUI build links. No monitor, no GDB.
-set(app_layer ${emu} input hw models host tn5250 tn3270 present config app)
+set(app_layer ${emu} input hw models host tn5250 tn3270 coax present config app)
 set(allowed_config ${app_layer})
 set(allowed_app ${app_layer} frontend/frontend.hpp)
 # Front ends see the runtime (Application, HostLink, everything it links:
@@ -45,6 +46,9 @@ foreach(f IN LISTS sources)
   string(REGEX MATCH "^[^/]+" dir "${f}")
   if(f MATCHES "^host/twinax/wsc/tn5250_bridge\\.")
     set(dir bridge)   # em34xx_bridge: the controller plus the TN5250 client
+  endif()
+  if(f MATCHES "^host/coax/")
+    set(dir coax)     # em34xx_coax: the CUT controller plus the TN3270 client
   endif()
   if(NOT DEFINED allowed_${dir})
     string(APPEND violations "  ${f}: directory '${dir}' has no layer in cmake/check_layers.cmake\n")

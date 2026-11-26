@@ -63,7 +63,8 @@ HostLink::HostLink(Emulator& emu, AppConfig base, unsigned max_sessions, int max
 }
 
 bool HostLink::connect(const AppConfig& cfg, std::string& message, std::string& error) {
-    if (!bridge_) {
+    const bool coax = emu_.with_machine([](Machine& m) { return m.line() == LineKind::Coax; });
+    if (!coax && !bridge_) {
         error = "connect: the TN5250 bridge is not available in this build";
         return false;
     }
@@ -71,6 +72,7 @@ bool HostLink::connect(const AppConfig& cfg, std::string& message, std::string& 
     // workstation controller with TN5250 sessions; a terminal on another
     // line needs its own (src/host has none yet).
     const LineKind line = emu_.with_machine([](Machine& m) { return m.line(); });
+    if (line == LineKind::Coax) return connect_coax(cfg, message, error);
     if (line != LineKind::Twinax) {
         error = std::string("connect: there is no controller for ") + line_kind_name(line) + " terminals in this build";
         return false;
@@ -103,11 +105,35 @@ bool HostLink::connect(const AppConfig& cfg, std::string& message, std::string& 
     return true;
 }
 
-bool HostLink::connect(const std::vector<std::string>& args, std::string& message, std::string& error) {
-    if (!bridge_) {
-        error = "connect: the TN5250 bridge is not available in this build";
+// A coax terminal: the CUT controller with a TN3270 session to the same
+// kind of endpoint (host, port, TLS).
+bool HostLink::connect_coax(const AppConfig& cfg, std::string& message, std::string& error) {
+    if (!coax_) {
+        error = "connect: the TN3270 controller is not available in this build";
         return false;
     }
+    error = cfg.tn5250.validate();
+    if (!error.empty()) {
+        error = "connect: " + error;
+        return false;
+    }
+    std::unique_ptr<CoaxHost> host = coax_(cfg.tn5250, error);
+    if (!host) {
+        error = "connect: " + error;
+        return false;
+    }
+    std::unique_ptr<LineHost> old = emu_.with_machine([&](Machine& m) { return m.swap_line_host(std::move(host)); });
+    const bool replaced = old && old->bridges_sessions();
+    old.reset();
+    last_ = cfg;
+    has_last_ = true;
+    message = format("%sconnecting to %s:%u%s (TN3270); the controller drives the terminal over coax\n",
+                     replaced ? "previous session closed; " : "", cfg.tn5250.host.c_str(), cfg.tn5250.port,
+                     cfg.tn5250.tls ? " (TLS)" : "");
+    return true;
+}
+
+bool HostLink::connect(const std::vector<std::string>& args, std::string& message, std::string& error) {
     AppConfig cfg;
     if (!parse_connect_args(args, base_, cfg, error)) return false;
     return connect(cfg, message, error);

@@ -319,6 +319,10 @@ endif()
 em34xx_library(em34xx_bridge src/host/twinax/wsc/tn5250_bridge.cpp)
 target_link_libraries(em34xx_bridge PUBLIC em34xx_tn5250 em34xx_host)
 
+# The coax CUT controller with its TN3270 session (src/host/coax).
+em34xx_library(em34xx_coax src/host/coax/cut_controller.cpp)
+target_link_libraries(em34xx_coax PUBLIC em34xx_tn3270 em34xx_host)
+
 em34xx_library(em34xx_present
   src/present/burn_in.cpp
   src/present/crt_render.cpp
@@ -362,7 +366,7 @@ em34xx_library(em34xx_runtime
 )
 target_link_libraries(em34xx_runtime PRIVATE em34xx_version_header)
 target_link_libraries(em34xx_runtime
-  PUBLIC em34xx_machines em34xx_host em34xx_bridge em34xx_present em34xx_tomlplusplus)
+  PUBLIC em34xx_machines em34xx_host em34xx_bridge em34xx_coax em34xx_present em34xx_tomlplusplus)
 
 # --- Developer tooling: SDL and headless executables only ------------------
 em34xx_library(em34xx_devtools
