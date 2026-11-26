@@ -126,6 +126,10 @@ constexpr uint32_t kRegenOrigin = 0x1000;
 // hypothesis: that the address is fixed, no register seen points to it].
 constexpr uint32_t kStatusRow = 0x0800;
 
+// Frames per blink phase (cursor and blinking characters): about 1 Hz at
+// 60 Hz [hypothesis].
+constexpr uint64_t kBlinkFrames = 32;
+
 } // namespace
 
 Board3483::Display::Display(Board3483& board) : Device("display-3483"), board_(board) { board_.display_ = this; }
@@ -166,29 +170,51 @@ void Board3483::Display::write_word(unsigned off, uint16_t value) {
     if (off == 0x20) board_.set_window((value & 0x8000) != 0);   // 58021 bit 7
 }
 
+// The display geometry comes from the mode record the firmware loads at
+// D000:564C (12 records; 24x80, 32x80, 43x80 and 27x132 among them)
+// [observed: record contents and the registers they go to]:
+//  - 58000 low byte = columns - 1 (4F, or 83 for 132 columns);
+//  - 58006 low byte = rows - 1 (17, 1F, 2A, 1A);
+//  - 5800A low byte = scan lines per cell (12, 0D, 09, 10) [observed: POST's
+//    blank test screen holds glyph 02, whose only dots are in its bytes
+//    18-19, and expects no light with 12h here, so a cell shows bytes
+//    0-17 of its glyph].
+// Scan lines are numbered from 1 in the cursor register 58016, so the
+// records' 1211, 0D0C, 0908 are the last two lines of 18-, 13- and 9-line
+// cells (and 0909 the last line) [hypothesis, the only reading under which
+// every record puts the cursor inside the cell].
 unsigned Board3483::Display::rows() const {
-    const unsigned n = (regs_[0x06 >> 1] & 0xFF) + 1;   // +06 low byte = rows - 1 [hypothesis]
+    const unsigned n = (regs_[0x06 >> 1] & 0xFF) + 1;
     return n >= 2 && n <= 62 ? n : 24;
 }
 
-unsigned Board3483::Display::columns() const { return (regs_[0] & 0xFF) + 1 >= 132 ? 132 : 80; }
+unsigned Board3483::Display::columns() const {
+    const unsigned n = (regs_[0] & 0xFF) + 1;
+    return n >= 40 && n <= 160 ? n : 80;
+}
+
+unsigned Board3483::Display::cell_height() const {
+    const unsigned h = regs_[0x0A >> 1] & 0xFF;
+    return h >= 8 && h <= 32 ? h : 18;
+}
 
 uint32_t Board3483::Display::row_address(unsigned row) const {
-    // 5801A bit 6 set: linear, rows follow each other from the start address
-    // +1C [observed: POST's own screens set it with +1C=1000]. Clear: the
+    // 5801A bit 6 set: linear, rows follow each other from the regen origin
+    // 0:1000 [observed: POST's own screens set it and write their text from
+    // 0:1000]. 5801C is not a start address: the runtime keeps control bits
+    // in it (cursor on/shape/blink, see cursor()) [observed]. Clear: the
     // row list in block RAM [observed: svc_244 copies it there], entry r at
     // 50108+4r and 50508+4r; the row starts at cell
     // ((A[0] & 7F) << 8 | B[0]), stored with a bias of 800h cells, so the
     // byte address is twice that [hypothesis, fits the display test: cell
     // 1F5 is cleared regen at 13EA].
-    if (regs_[0x1A >> 1] & 0x0040) return regs_[0x1C >> 1] + 2u * row * columns();
+    if (regs_[0x1A >> 1] & 0x0040) return kRegenOrigin + 2u * row * columns();
     const uint32_t a = 0x50108 + 4 * row, b = 0x50508 + 4 * row;
     const uint8_t first = board_.bus_.peek8(a);
     // Bit 7 set: the row continues where the previous one ended, the first
     // at the start of the regen buffer (cell 800h = 0:1000, the origin the
     // row addresses are biased by) [hypothesis: the runtime sets it on every
-    // row of its screens, which are linear at 0:1000; 5801C differs between
-    // units (1004, 3004) with the same screen, so it is not the origin].
+    // row of its screens, which are linear at 0:1000].
     if (first & 0x80) return row ? row_address(row - 1) + 2u * columns() : kRegenOrigin;
     const uint32_t cell = uint32_t(first & 0x7F) << 8 | board_.bus_.peek8(b);
     return 2 * cell;
@@ -208,9 +234,12 @@ uint32_t Board3483::Display::row_address(unsigned row) const {
 //    B9/09 is Offline Setup's rule, B9 a line in the GE set; C9/B8 marks the
 //    selected item; the colour table the firmware loads has those colours
 //    at those indices].
-//  - A cell without a colour takes its field's; a field without one takes
-//    the 3279 base colours: blue (protected), red (high), green, white
-//    (protected and high).
+//  - A cell without a colour, highlight or character set takes its field's
+//    [observed: Customization's underscore-style samples are B9 cells with
+//    no EAB of their own in a field whose EAB selects the GE set; they are
+//    lines, not the base set's "Z", on a real 3483]. A field without a
+//    colour takes the 3279 base colours: blue (protected), red (high),
+//    green, white (protected and high).
 //  - The colour index selects a level per gun from the table at 58040-6F
 //    [observed: table contents], which POST's video sense measures; the
 //    picture draws the index with the shared terminal colours. Index 0 is
@@ -227,10 +256,21 @@ uint8_t Board3483::Display::level(unsigned gun, unsigned index) const {
     return uint8_t(regs_[off >> 1] >> ((off & 1) * 8));
 }
 
+// The cell's colour (1-7) and intensity, without drawing it; 0 for a field
+// attribute or a non-display field.
+unsigned Board3483::Display::cell_colour(uint8_t ch, uint8_t eab, const FieldState& field) const {
+    if ((ch & 0xC0) == 0xC0 || field.nondisplay) return 0;
+    unsigned colour = (eab >> 3) & 7;
+    if (!colour) colour = (field.eab >> 3) & 7;
+    if (!colour) colour = field.protect ? (field.high ? 7 : 1) : (field.high ? 2 : 4);
+    return colour;
+}
+
 // Dots of scan line y of a cell (bit 15 = leftmost) and the colour index of
-// its lit dots; unlit dots are index 0.
+// its lit dots; unlit dots are index 0. `blink_off`: the blink phase in
+// which blinking characters are dark.
 uint16_t Board3483::Display::cell_dots(uint8_t ch, uint8_t eab, FieldState& field, unsigned y, unsigned cell_h,
-                                       unsigned& index) const {
+                                       unsigned& index, bool blink_off) const {
     index = 0;
     if ((ch & 0xC0) == 0xC0) {
         field.nondisplay = (ch & 0x0C) == 0x0C;
@@ -240,11 +280,9 @@ uint16_t Board3483::Display::cell_dots(uint8_t ch, uint8_t eab, FieldState& fiel
         return 0;
     }
     if (field.nondisplay) return 0;
-    unsigned colour = (eab >> 3) & 7;
-    if (!colour) colour = (field.eab >> 3) & 7;
-    if (!colour) colour = field.protect ? (field.high ? 7 : 1) : (field.high ? 2 : 4);
-    index = colour;
-    const unsigned set = (eab & 7) == 1 ? 1 : 0;
+    index = cell_colour(ch, eab, field);
+    const unsigned cs = (eab & 7) ? (eab & 7) : (field.eab & 7);
+    const unsigned set = cs == 1 ? 1 : 0;
     const uint32_t at = kCgSets[set] + uint32_t(ch) * 32 + y;
     // The 9 dots of a cell are bits 6-0 of the main byte and bits 7-6 of
     // the companion [observed: the GE line glyph B9 lights exactly those,
@@ -252,9 +290,29 @@ uint16_t Board3483::Display::cell_dots(uint8_t ch, uint8_t eab, FieldState& fiel
     // 7 clear].
     uint16_t bits = uint16_t((board_.bus_.peek8(at) << 8 | board_.bus_.peek8(at - kCgCompanion)) << 1);
     const uint8_t hl = (eab & 0xC0) ? (eab >> 6) : (field.eab >> 6);
-    if (hl == 3 && y + 1 == cell_h) bits = 0xFF80;             // underscore on the last line
+    // Blink: the character goes dark in one phase [hypothesis for the rate:
+    // the same phase as the cursor's blink].
+    if (hl == 1 && blink_off) bits = 0;
+    // Underscore on the underline cursor's lines [hypothesis: a photo of a
+    // real 3483 puts the underline at 0.875-0.97 of the cell, lines 16-17 of
+    // 18]; 58016 bit 7 clear makes it dashed [observed: Customization's
+    // "Underscore style" toggles that bit alone; the dash pattern is a
+    // hypothesis].
+    if (hl == 3 && on_underline(y, cell_h)) bits |= underscore_dots();
     if (hl == 2) bits = uint16_t(~bits & 0xFF80);              // reverse, over the 9-dot cell
     return bits;
+}
+
+bool Board3483::Display::on_underline(unsigned y, unsigned cell_h) const {
+    const Cursor c = cursor();
+    const unsigned first = std::min(c.first_line, cell_h - 1), last = std::min(c.last_line, cell_h - 1);
+    return y >= first && y <= last;
+}
+
+uint16_t Board3483::Display::underscore_dots() const {
+    // Solid across the cell, or dashed: a short gap at each end so that
+    // neighbouring cells give "- - -".
+    return (regs_[0x16 >> 1] & 0x0080) ? uint16_t(0xFF80) : uint16_t(0x3E00);
 }
 
 // The field attribute in force at the start of the screen: the last one on
@@ -266,7 +324,7 @@ Board3483::Display::FieldState Board3483::Display::initial_field() const {
         const uint32_t start = row_address(r);
         for (unsigned c = 0; c < columns(); ++c) {
             const uint8_t ch = board_.bus_.peek8(start + 2 * c);
-            if ((ch & 0xC0) == 0xC0) cell_dots(ch, board_.bus_.peek8(start + 2 * c + 1), f, 0, 1, idx);
+            if ((ch & 0xC0) == 0xC0) cell_dots(ch, board_.bus_.peek8(start + 2 * c + 1), f, 0, 1, idx, false);
         }
     }
     return f;
@@ -285,7 +343,7 @@ unsigned Board3483::Display::lit_guns() const {
             for (unsigned y = 0; y < cell_h; ++y) {
                 f = before;
                 unsigned idx;
-                if (!(cell_dots(ch, eab, f, y, cell_h, idx) & 0xFF80)) continue;
+                if (!(cell_dots(ch, eab, f, y, cell_h, idx, false) & 0xFF80)) continue;
                 for (unsigned g = 0; g < 3; ++g)
                     if (level(g, idx) > kBlackLevel) guns |= 1u << g;
             }
@@ -295,13 +353,34 @@ unsigned Board3483::Display::lit_guns() const {
     return guns;
 }
 
-unsigned Board3483::Display::cell_height() const {
-    // +0A low byte = scan lines per row [observed: POST's blank test screen
-    // holds glyph 02, whose only dots are on lines 18-19, and expects no
-    // light with 12h here, under both drive tables].
-    const unsigned h = regs_[0x0A >> 1] & 0xFF;
-    return h >= 8 && h <= 32 ? h : 20;
+Board3483::Display::Cursor Board3483::Display::cursor() const {
+    // 58010: cursor row (high byte) and column (low byte) on the screen
+    // [observed: the cursor routine D000:2F40 divides the buffer offset by
+    // the line length and writes row:column; the display test puts it at
+    // 0D:09]. 5801C bit 7 shows it [observed: set whenever the cursor is
+    // placed, cleared to hide it]. 5801C bit 6 = block, bit 5 = blink
+    // [observed: setup items 23h and 24h, Display Setup's cursor style and
+    // blink, set those bits, and the keyboard's cursor-select and
+    // cursor-blink toggles flip them; so does the coax control register's
+    // handler F000:9D67, bit 0 (blink) -> bit 5, bit 1 (reverse cursor) ->
+    // bit 6]. 58016: the underline cursor's first (low
+    // byte, bits 0-4) and last (high byte) scan line, counted from 1
+    // [observed: the cell's last lines in every mode record; the numbering
+    // is a hypothesis, see rows()].
+    Cursor c;
+    const uint16_t ctl = regs_[0x1C >> 1];
+    c.visible = (ctl & 0x0080) != 0;
+    c.block = (ctl & 0x0040) != 0;
+    c.blink = (ctl & 0x0020) != 0;
+    c.row = regs_[0x10 >> 1] >> 8;
+    c.column = regs_[0x10 >> 1] & 0xFF;
+    const unsigned first = regs_[0x16 >> 1] & 0x1F, last = (regs_[0x16 >> 1] >> 8) & 0x1F;
+    c.first_line = first ? first - 1 : 0;
+    c.last_line = last ? last - 1 : 0;
+    return c;
 }
+
+bool Board3483::Display::blink_off() const { return (board_.frame_count_ / kBlinkFrames) & 1; }
 
 uint16_t Board3483::Display::mmio_read16(uint32_t off) { return read_word(off); }
 void Board3483::Display::mmio_write16(uint32_t off, uint16_t value) { write_word(off, value); }
@@ -322,48 +401,87 @@ uint8_t Board3483::Display::peek8(uint32_t off) { return mmio_read8(off); }
 std::string Board3483::Display::describe() const {
     std::string s = "display controller 58000:\n";
     for (unsigned i = 0; i < 0x30; i += 2) s += format("  +%02x %04x%s", i, regs_[i >> 1], (i & 0xE) == 0xE ? "\n" : "");
+    const Cursor c = cursor();
+    s += format("%ux%u, %u-line cells; cursor %u,%u %s%s%s\n", rows(), columns(), cell_height(), c.row, c.column,
+                c.visible ? "shown" : "hidden", c.block ? " block" : " underline", c.blink ? " blinking" : "");
     s += format("frame %llu, %s\n", (unsigned long long)board_.frame_count_, board_.in_vsync() ? "vsync" : "active");
     return s;
 }
 
 void Board3483::Display::render(Framebuffer& fb) {
-    // 9 dots per cell [hypothesis], cell height from +0A; see cell_dots().
+    // 9 dots per cell [hypothesis], geometry from the mode registers; see
+    // cell_dots().
     const unsigned cols = columns(), nrows = rows(), cell_h = cell_height();
     const unsigned cell_w = 9;
     fb.width = int(cols * cell_w);
     fb.height = int((nrows + 1) * cell_h);   // + the status row
     fb.display_aspect = 4.0 / 3.0;
-    fb.pixels.assign(size_t(fb.width) * size_t(fb.height), 0xFF000000u);
+    fb.pixels.assign(size_t(fb.width) * size_t(fb.height), colours::kBlack);
     const bool video_on = board_.coax_ && (board_.coax_->reg(0x10) & 1);
     if (!video_on) return;
     // The shades are the shared terminal colours (the owner compared photos
     // of a 3483 with the colour 5250 units); the colour number is 3270's.
+    // 5801C bit 13 is cleared for the monochrome monitor class and for
+    // Black-On-White emulation [observed], but also during the display test
+    // [observed: 1080], so what it does is open; it is not modelled.
     static constexpr uint32_t kColour[8] = {colours::kGreen, colours::kBlue,      colours::kRed,
                                             colours::kPink,  colours::kGreen,     colours::kTurquoise,
                                             colours::kYellow, colours::kWhite};
-    uint32_t colour_of[16];
-    for (unsigned i = 0; i < 16; ++i) colour_of[i] = kColour[i & 7];
+    auto shade = [&](unsigned idx, bool) { return kColour[idx & 7]; };
+    const bool blink = blink_off();
+    const Cursor cur = cursor();
+    // Rule line [observed: the rule-line routine D000:3632 writes 58012 =
+    // row:column (FF = none) and 5801E bit 6 for Display Setup's
+    // "Horizontal", bit 5 for "Vertical", both for "Cross"]. Drawn dotted on
+    // the underline scan line and as the first dot column of the column
+    // [hypothesis: photos show a dotted horizontal rule].
+    const uint16_t rule = regs_[0x12 >> 1], rule_ctl = regs_[0x1E >> 1];
+    const unsigned rule_row = (rule_ctl & 0x0040) ? (rule >> 8) : 0x100;
+    const unsigned rule_col = (rule_ctl & 0x0020) ? (rule & 0xFF) : 0x100;
+    const unsigned uline = cur.last_line < cell_h ? cur.last_line : cell_h - 1;
     FieldState f = initial_field();
     for (unsigned r = 0; r <= nrows; ++r) {
         const bool status = r == nrows;
         const uint32_t start = status ? kStatusRow : row_address(r);
         if (status) {
             f = FieldState();   // the status row has no fields of the screen's
-            std::fill_n(&fb.pixels[size_t(r * cell_h) * size_t(fb.width)], size_t(fb.width), colour_of[1]);
+            std::fill_n(&fb.pixels[size_t(r * cell_h) * size_t(fb.width)], size_t(fb.width), shade(1, false));
         }
         for (unsigned c = 0; c < cols; ++c) {
             const uint8_t ch = board_.bus_.peek8(start + 2 * c), eab = board_.bus_.peek8(start + 2 * c + 1);
             const FieldState before = f;
+            const bool at_cursor = cur.visible && cur.row == r && cur.column == c && !(cur.blink && blink);
+            unsigned cursor_idx = cell_colour(ch, eab, before);
+            if (!cursor_idx) cursor_idx = 4;   // over a field attribute: the base colour [hypothesis]
             for (unsigned y = status ? 1 : 0; y < cell_h; ++y) {
                 f = before;
                 unsigned idx;
-                const uint16_t bits = cell_dots(ch, eab, f, y, cell_h, idx);
+                uint16_t bits = cell_dots(ch, eab, f, y, cell_h, idx, blink);
+                if (!idx) idx = cursor_idx;
+                if (at_cursor) {
+                    // A block cursor reverses the whole cell; the underline
+                    // cursor lights its lines in the cell's colour.
+                    if (cur.block) bits = uint16_t(~bits & 0xFF80);
+                    else if (y >= cur.first_line && y <= cur.last_line) bits = 0xFF80;
+                }
                 uint32_t* row = &fb.pixels[size_t(r * cell_h + y) * size_t(fb.width) + c * cell_w];
+                const uint32_t ink = shade(idx, f.high);
                 for (unsigned x = 0; x < cell_w; ++x)
-                    if (bits & (0x8000u >> x)) row[x] = colour_of[idx];
+                    if (bits & (0x8000u >> x)) row[x] = ink;
+                if (!status && ((r == rule_row && y == uline) || c == rule_col)) {
+                    const uint16_t rd = r == rule_row && y == uline ? uint16_t(0xAA80) : uint16_t(0x8000);
+                    for (unsigned x = 0; x < cell_w; ++x)
+                        if (rd & (0x8000u >> x)) row[x] = shade(7, false);
+                }
             }
         }
     }
+    // 5801A bit 15: the whole picture reversed, dark on light [observed: the
+    // firmware sets it, with bit 1, for Black-On-White emulation (setup
+    // byte 3CD = 0); hypothesis for its effect and for drawing it as black
+    // on white].
+    if (regs_[0x1A >> 1] & 0x8000)
+        for (uint32_t& p : fb.pixels) p = p == colours::kBlack ? colours::kGreyBright : colours::kBlack;
 }
 
 // The coax adapter (58100) is in board_3483_coax.cpp.
@@ -373,6 +491,7 @@ void Board3483::Display::render(Framebuffer& fb) {
 Board3483::System::System(Board3483& board) : Device("system-3483"), board_(board) { board_.system_ = this; }
 
 void Board3483::System::reset() {
+    if (audio_ && (regs_[0x02 >> 1] & 0x0080)) audio_->tone(false, 0.0);
     regs_.fill(0);
     channels_ = {};
     tx_left_ = rx_left_ = hold_left_ = 0;
@@ -492,10 +611,32 @@ uint16_t Board3483::System::read_word(unsigned off) const {
     }
 }
 
+// 58402, the alarm [observed: svc_177 D000:3478 sounds the alarm with bit
+// 7 set and bits 6-0 = setup byte 3C7 (Display Setup's alarm volume, item
+// 28h) for 8 ticks, then clears bit 7; a keystroke click is bit 10 set and
+// cleared with bits 6-0 = setup byte 3C8 (the clicker volume, item 29h);
+// POST's beeps (C000:83CD) set bit 7 with a pattern byte; reset writes
+// 809B and the end of the early RAM and ROM checks 8000, so the alarm
+// sounds until they pass]. Bits 6-0 as volume is a hypothesis (the pitch
+// is not set anywhere: the sink's default); bit 15 is always set after the
+// checks (hypothesis: speaker enable).
+void Board3483::System::alarm_write(uint16_t value, uint16_t old) {
+    if ((value ^ old) & 0x0080) {
+        LOG_DEBUG("sound", "alarm %s (level %02X)", (value & 0x80) ? "on" : "off", value & 0x7F);
+        if (audio_) audio_->tone((value & 0x0080) != 0, 0.0);
+    }
+    if ((value & ~old) & 0x0400) {
+        LOG_TRACE("sound", "click (level %02X)", value & 0x7F);
+        if (audio_) audio_->click();
+    }
+}
+
 void Board3483::System::write_word(unsigned off, uint16_t value) {
     off &= 0xFE;
+    const uint16_t old = regs_[off >> 1];
     regs_[off >> 1] = value;
     switch (off) {
+    case 0x02: alarm_write(value, old); break;
     case 0x06:
     case 0x10: control_write(off == 0x06 ? 0 : 1, value); break;
     case 0x08: data_write(0, value); break;

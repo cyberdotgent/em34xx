@@ -17,6 +17,7 @@ add_executable(em34xx_unit_tests
   test_display3477.cpp
   test_3477.cpp
   test_3486.cpp
+  test_3483.cpp
   test_twinax_engine.cpp
   test_wsc.cpp
   test_session_cycle.cpp
@@ -73,6 +74,13 @@ if(EXISTS "${PROJECT_SOURCE_DIR}/roms/65f2995.bin" AND EXISTS "${PROJECT_SOURCE_
            COMMAND em34xx-headless --model 3477-FC --rom-dir "${PROJECT_SOURCE_DIR}/roms" --batch
                    --rc "${CMAKE_CURRENT_SOURCE_DIR}/rc/3477-fc-smoke.rc")
   set_tests_properties(rom_3477_fc_smoke PROPERTIES LABELS "rom")
+endif()
+if(EXISTS "${PROJECT_SOURCE_DIR}/roms/06g5525.bin")
+  # 700M instructions: about 20 s in a release build, minutes in debug.
+  add_test(NAME rom_3483_smoke
+           COMMAND em34xx-headless --model 3483 --rom-dir "${PROJECT_SOURCE_DIR}/roms" --batch
+                   --rc "${CMAKE_CURRENT_SOURCE_DIR}/rc/3483-smoke.rc")
+  set_tests_properties(rom_3483_smoke PROPERTIES LABELS "rom;slow" TIMEOUT 900)
 endif()
 
 # TN3270 (src/tn3270): the 3270 data stream.

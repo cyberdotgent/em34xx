@@ -92,13 +92,27 @@ public:
             "base set 48000, APL/GE set 4A000, companion planes 40000/42000 (observed); the companion byte as dots 9+ "
             "is a hypothesis",
             "display: cells are a 3270 buffer-code character and a 3270 extended attribute; C0-FF are field "
-            "attributes; colours go through the firmware's own drive table at 58040-6F (one block per gun); 18-line "
-            "cells (POST's blank test screen requires it); rows continue from the regen origin 0:1000 when their "
-            "row-list entry has bit 7 set (hypotheses fitted to POST's video sense and the setup screens)",
+            "attributes; a cell without colour, highlight or character set takes its field's (observed: "
+            "Customization's underscore samples); rows continue from the regen origin 0:1000 when their row-list "
+            "entry has bit 7 set (hypothesis); the status row is 0:0800 (hypothesis: fixed address)",
+            "display modes: columns, rows and cell lines from 58000/58006/5800A as the mode records at ROM 81A0C set "
+            "them (observed: 24x80, 32x80, 43x80, 27x132 records; Customization switches 24/32/43 rows); 5800A is the "
+            "line count (observed: POST's blank-screen check)",
+            "cursor: 58010 row:column, 5801C bit 7 shown, bit 6 block, bit 5 blink (observed, also set through the "
+            "coax control register), 58016 its lines counted from 1 (numbering a hypothesis); rule line 58012 with "
+            "5801E bits 6/5 (observed), drawn dotted (hypothesis)",
+            "highlighting: blink, reverse (glyph dark on the cell's colour, as in photos), underscore solid or "
+            "dashed by 58016 bit 7 (observed: Customization's underscore style); Black-On-White sets 5801A bit 15, "
+            "drawn black on white (hypothesis for the drawing); colours are the shared terminal set (owner's decision), "
+            "the drive table 58040-6F only feeds POST's video sense",
             "monitor sense 44 (display type 2, colour class, the firmware's default for an unknown monitor) by default; "
-            "--straps 51 gives type 1 (the monochrome class, drawn in colour); the sense lines are pulled low by 5840E "
-            "bits 12-15; colours are the shared terminal set (hw/terminal_colours.hpp), the drive table only feeds POST's "
-            "video sense",
+            "--straps 51 gives type 1 (the monochrome class); the sense lines are pulled low by 5840E bits 12-15",
+            "alarm: 58402 bit 7 with a level in bits 6-0, a click is a pulse of bit 10 (observed: svc_177, POST's beep; "
+            "reset's 809B sounds it until the early checks pass); level as volume is a hypothesis",
+            "serial channel B: the same PS/2-style port as A, for a mouse (observed: the firmware sends a type-2 "
+            "device F3 28 E8 03 F4; the mouse reading is a hypothesis); nothing attached",
+            "setup: two copies at 47400/47500 in battery-backed RAM; a change in Customization saved with F3 survives a "
+            "reboot (observed), but the next boot still opens Offline Setup (open); printer port registers not found",
             "keyboard: the 122-key keyboard on serial channel A (POST resets it, reads ID BF BF, selects set 3) "
             "(observed dialogue; the channel is a hypothesis)",
             "ROM 06G5525 (U24, AM27C400), linear at 80000-FFFFF; per-segment checksums 1234/5678/9ABC/DEF0 "
@@ -145,6 +159,7 @@ public:
         if (!load_keymap(opt.keymap, opt.shift_fkeys, *keymap, error)) throw std::runtime_error(error);
         board.keyboard->set_keymap(std::move(keymap));
         sys.attach_keyboard(board.keyboard.get(), info_.clock_hz);
+        sys.set_audio(&m.audio());
         m.set_keyboard(board.keyboard.get());
         bus.map_mmio("display", 0x58000, 0x100, &disp);
         bus.map_mmio("coax", 0x58100, 0x100, &coax);

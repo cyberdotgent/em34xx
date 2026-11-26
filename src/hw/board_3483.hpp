@@ -4,9 +4,11 @@
 // the registers (observed in code, analysis notes) unless marked
 // hypothesis; no board documentation is available.
 //
-//  58000  display controller: 6845-like timing pairs +00..+0E, cursor and
-//         control registers, start address +1C (the regen buffer, 0:1000
-//         after POST), status/control +26, palette +40..+6F.
+//  58000  display controller: 6845-like timing pairs +00..+0E (columns,
+//         rows, cell lines), cursor position +10, rule line +12, cursor
+//         lines and underscore style +16, control +1A/+1C/+1E (linear or
+//         row-list screen, cursor on/block/blink, rule style), status and
+//         control +26, palette +40..+6F.
 //  58100  coax adapter and the board's two interrupt status registers
 //         (+0C and +20, write 1 to clear).
 //  58400  system control: indicators, two serial receive channels
@@ -100,18 +102,34 @@ public:
 
     uint16_t reg(unsigned offset) const { return regs_[(offset & 0xFF) >> 1]; }
 
+    // The geometry the mode registers give (see board_3483.cpp).
+    unsigned rows() const;
+    unsigned columns() const;
+    unsigned cell_height() const;
+
+    // The hardware cursor as 58010, 5801C and 58016 describe it.
+    struct Cursor {
+        bool visible = false;
+        bool block = false;
+        bool blink = false;
+        unsigned row = 0, column = 0;
+        unsigned first_line = 0, last_line = 0;   // underline cursor, from 0
+    };
+    Cursor cursor() const;
+
 private:
     uint16_t read_word(unsigned offset) const;
     void write_word(unsigned offset, uint16_t value);
     struct FieldState;
     uint16_t cell_dots(uint8_t ch, uint8_t eab, FieldState& field, unsigned y, unsigned cell_h,
-                       unsigned& index) const;
+                       unsigned& index, bool blink_off) const;
+    unsigned cell_colour(uint8_t ch, uint8_t eab, const FieldState& field) const;
+    bool on_underline(unsigned y, unsigned cell_h) const;
+    uint16_t underscore_dots() const;
+    bool blink_off() const;
     FieldState initial_field() const;
-    unsigned cell_height() const;
     unsigned lit_guns() const;
     uint8_t level(unsigned gun, unsigned index) const;
-    unsigned rows() const;
-    unsigned columns() const;
     uint32_t row_address(unsigned row) const;
 
     Board3483& board_;
@@ -222,6 +240,8 @@ public:
     // expects ID BF BF) [hypothesis for the channel].
     void attach_keyboard(Set3Keyboard* kbd, uint64_t clock_hz);
     void tick(uint64_t cycles) override;
+    // Where the alarm and the clicker go (58402).
+    void set_audio(AudioSink* audio) { audio_ = audio; }
 
 private:
     uint16_t read_word(unsigned offset) const;
@@ -240,6 +260,8 @@ private:
     };
     void control_write(unsigned channel, uint16_t value);
     void data_write(unsigned channel, uint16_t value);
+    void alarm_write(uint16_t value, uint16_t old);
+    AudioSink* audio_ = nullptr;
     Set3Keyboard* kbd_ = nullptr;
     uint64_t clock_hz_ = 1;
     uint64_t byte_cycles_ = 0;
