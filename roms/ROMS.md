@@ -11,6 +11,9 @@ them by SHA-256 and contains no code or data taken from them.
 | 3477 | `95f4172.bin` | 131072 | `290a58cd5db6543957bdcb2c9e92efefd62a54e37bcd239d41d9bd9cdd6be1d0` | **Good.** Maps at physical `0xC0000..0xDFFFF`. No invariant address bit. |
 | 3477-FC | `65f2995.bin` | 131072 | `d5dc45f8e3c632449f17ad1e4dfd37b562aafb1464715bc4ac12df407da381e9` | **Good.** The colour 3477's firmware (variant `3477-FC`). Maps at physical `0xE0000..0xFFFFF`; holds the reset vector. |
 | 3477-FC | `65f2996.bin` | 131072 | `92f1c1becaf9e3a14606b8988f835f0a2ddb2ab46f44670586f65ab1b736a940` | **Good.** Maps at physical `0xC0000..0xDFFFF`. |
+| 3472 | `09f4604.bin` | 65536 | `fc15f246113153226e3ba105433dd0fb75454e138dd1d1151ae0f91ab0d2d707` | **Incomplete, not runnable.** Even bytes of a 16-bit interleaved pair; with `09f4605` it forms the data half (`C0000..DFFFF`) only. See below. |
+| 3472 | `09f4605.bin` | 65536 | `26fa773d3fbaf1b58ac69a07bd159315cf76d3266fee768ef6401232386c8b19` | **Incomplete, not runnable.** Odd bytes of the same pair. |
+| 3483 | `u24.bin` | 524288 | `da14974c16cb370ff6f505d69d4c2e5f84770bcaeae2ca5d6fda4e69413d23db` | **Good, not yet modelled.** The complete 512 KiB image from board position U24. Maps at physical `0x80000..0xFFFFF`; holds the reset vector. See below. |
 
 ## Known-bad dumps
 
@@ -130,3 +133,40 @@ hypothesis is a second 256 KiB ROM on a card in J5 (a 50-position
 expansion connector), decoded for CPU A17 = 0. That conflicts with the
 owner's understanding that J5 was never used and still needs confirming
 (see `docs/bringup-3486.md`, "Where the missing half comes from").
+
+## 3472 `09f4604.bin`, `09f4605.bin`
+
+- The two chips are one 16-bit interleaved pair, not byte-wide linear
+  images like the 3477's: `09f4604` holds the even bytes, `09f4605` the odd
+  bytes (observed: interleaved, the header at offset 0 reads `3472`,
+  `09F4604`, `09F4605` in EBCDIC). A 16-bit CPU bus is therefore likely
+  (hypothesis; the 3477 is byte-wide).
+- Interleaved, the image is the **data half** at `C0000..DFFFF` (observed:
+  self-referencing far-pointer tables into `C000` and `D000`). Its two
+  segments sum to `1234` and `5678`, the 3477's per-segment POST targets
+  for `C000`/`D000` (observed).
+- It holds fonts, setup panels in five languages and character tables, and
+  no reset vector, POST or drivers (observed). The code half
+  (`E0000..FFFFF`, expected to sum to `9ABC`/`DEF0`) is not in these dumps;
+  it is probably a second interleaved pair on the board (hypothesis).
+- Same family and tooling as the 3477 (same checksum scheme, same font
+  compression, same setup wording), but a separate build: no long byte runs
+  are shared with either 3477 pair, and its text is in 3270 buffer code,
+  not EBCDIC (observed).
+
+## 3483 `u24.bin`
+
+- 512 KiB, linear at `80000..FFFFF` (observed). The reset vector jumps to
+  `C000:8DFC`, not `F000:0000` (observed).
+- No single whole-image sum: each 64 KiB segment sums to its own target,
+  `1234/5678/9ABC/DEF0` for `8000..B000` and again for `C000..F000`
+  (observed).
+- The header at offset 0 names `3483` and `06G5525`, very likely the IBM
+  part number (hypothesis); the file keeps its board-position name until
+  that is confirmed.
+- Not a 3486/3487 variant: it relocates an 80186 peripheral control block
+  (`OUT FFFE`), uses devices at `58000`/`58100`/`58400` instead of the
+  gate array at `20000`, and shares no code with `54g0010` beyond short
+  fragments (observed). The coax adapter at `58100` executes 3270 coax
+  commands with hardware address counters, which fits a CUT terminal
+  (hypothesis).
