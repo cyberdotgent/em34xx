@@ -284,8 +284,10 @@ target_link_libraries(em34xx_host PUBLIC em34xx_emu)
 
 # --- TN3270: the 3270 data stream and its session (src/tn3270) ------------
 em34xx_library(em34xx_tn3270
+  src/tn3270/client.cpp
   src/tn3270/engine.cpp
 )
+target_link_libraries(em34xx_tn3270 PUBLIC em34xx_tn5250)
 
 # --- TN5250 client: the host side of the Twinax bridge (src/tn5250) --------
 em34xx_library(em34xx_tn5250

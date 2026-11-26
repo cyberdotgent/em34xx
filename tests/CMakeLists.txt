@@ -79,8 +79,9 @@ endif()
 add_executable(em34xx_tn3270_tests
   unit_main.cpp
   test_tn3270_datastream.cpp
+  test_tn3270_client.cpp
 )
-target_link_libraries(em34xx_tn3270_tests PRIVATE em34xx_tn3270 em34xx_warnings doctest::doctest)
+target_link_libraries(em34xx_tn3270_tests PRIVATE em34xx_tn3270 em34xx_tn5250 em34xx_host em34xx_warnings doctest::doctest)
 add_test(NAME tn3270 COMMAND em34xx_tn3270_tests)
 
 # TN5250 client (src/tn5250): negotiation, data stream, field editing.
