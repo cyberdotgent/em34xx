@@ -136,12 +136,18 @@ runtime keeps control bits in it (observed, shadow `[026E]`):
 | Bit | Meaning | Basis |
 | --- | --- | --- |
 | 7 | cursor shown | observed: set whenever the cursor is placed (`D000:2F40`), cleared to hide it |
-| 6 | block cursor | observed: setup item 23h and the keyboard's cursor toggle flip it; which of 6/5 is block is a hypothesis |
-| 5 | blinking cursor | observed: setup item 24h and the keyboard's blink toggle |
+| 6 | block (reverse) cursor | observed: setup item 23h, the keyboard's cursor toggle and the controller's control-register bit 1 flip it |
+| 5 | blinking cursor | observed: setup item 24h, the keyboard's blink toggle and control-register bit 0 |
 | 3 | with `58014` (see below) | observed |
 | 2 | set by the setup's display init | observed, meaning open |
 | 12 | from the mode record (`1000`); cleared with linear mode by the display test | observed, meaning open |
 | 13 | cleared for the monochrome monitor class and for Black-On-White emulation, also clear in the display test (`1080`) | observed, meaning open |
+
+The coax adapter's control register (`5030A`, loaded by the controller's
+LOAD CONTROL REGISTER) reaches bits 5 and 6 through the firmware: its bit 0
+(cursor blink) toggles `[026E]` bit 5 and its bit 1 (reverse/block cursor)
+bit 6 (observed, handler `F000:9D67`, per the coax adapter analysis), which
+supports the block/blink assignment above.
 
 This explains the values seen: `1000` is the mode record's default during
 POST, `0` the display test's reset, `3004` and `1004` the runtime with and
@@ -268,8 +274,11 @@ FX1050, LQ1050) (observed). No printer register has been found: the
 firmware's far pointers name only the devices above, it uses no I/O ports
 outside the tester mode, and a run through POST, setup and the online
 state makes no unmapped access besides the optional-code probe at `60000`
-(observed). How the printer port is driven is open; nothing needs to be
-modelled for the firmware to run.
+(observed). On the coax side the printer is a second device address
+(command bytes C0-DF, the adapter's second address counter; see the coax
+adapter specification in the analysis notes), so print data arrives
+through the coax adapter. How the firmware then drives the physical port
+is open; nothing needs to be modelled for the firmware to run.
 
 ## Battery-backed RAM and setup
 

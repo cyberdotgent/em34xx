@@ -361,8 +361,9 @@ Board3483::Display::Cursor Board3483::Display::cursor() const {
     // placed, cleared to hide it]. 5801C bit 6 = block, bit 5 = blink
     // [observed: setup items 23h and 24h, Display Setup's cursor style and
     // blink, set those bits, and the keyboard's cursor-select and
-    // cursor-blink toggles flip them; which is which follows the order on
-    // the screen, a hypothesis]. 58016: the underline cursor's first (low
+    // cursor-blink toggles flip them; so does the coax control register's
+    // handler F000:9D67, bit 0 (blink) -> bit 5, bit 1 (reverse cursor) ->
+    // bit 6]. 58016: the underline cursor's first (low
     // byte, bits 0-4) and last (high byte) scan line, counted from 1
     // [observed: the cell's last lines in every mode record; the numbering
     // is a hypothesis, see rows()].

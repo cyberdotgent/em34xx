@@ -98,8 +98,8 @@ public:
             "display modes: columns, rows and cell lines from 58000/58006/5800A as the mode records at ROM 81A0C set "
             "them (observed: 24x80, 32x80, 43x80, 27x132 records; Customization switches 24/32/43 rows); 5800A is the "
             "line count (observed: POST's blank-screen check)",
-            "cursor: 58010 row:column, 5801C bit 7 shown, bit 6 block, bit 5 blink, 58016 its lines counted from 1 "
-            "(observed register use; which bit is block and the line numbering are hypotheses); rule line 58012 with "
+            "cursor: 58010 row:column, 5801C bit 7 shown, bit 6 block, bit 5 blink (observed, also set through the "
+            "coax control register), 58016 its lines counted from 1 (numbering a hypothesis); rule line 58012 with "
             "5801E bits 6/5 (observed), drawn dotted (hypothesis)",
             "highlighting: blink, reverse (glyph dark on the cell's colour, as in photos), underscore solid or "
             "dashed by 58016 bit 7 (observed: Customization's underscore style); Black-On-White sets 5801A bit 15, "

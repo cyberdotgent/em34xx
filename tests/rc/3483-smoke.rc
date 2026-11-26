@@ -1,0 +1,16 @@
+# Smoke test for the 3483 ROM (06g5525.bin) with the modelled hardware.
+# A first boot with an empty battery-backed RAM: POST passes up to its
+# setup check (test 10, "M12 ... NVR"), Reset continues and the runtime
+# opens Offline Setup with "SETUP" in the status row (docs/bringup-3483.md).
+assert pc==ffff0 "reset vector"
+policy log
+speed max
+run #300000000
+assert byte[5840a]==0a "POST stopped at test 10, the setup check"
+key lctrl
+run #400000000
+assert word[58006]==1c17&&word[5800a]==0812 "24x80 with 18-line cells"
+assert byte[800]==b2&&byte[802]==a4&&byte[804]==b3 "status row starts 'SET'"
+assert byte[58403]&0x80 "alarm off, speaker bit on"
+unmapped
+quit

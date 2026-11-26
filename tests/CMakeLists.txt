@@ -75,6 +75,13 @@ if(EXISTS "${PROJECT_SOURCE_DIR}/roms/65f2995.bin" AND EXISTS "${PROJECT_SOURCE_
                    --rc "${CMAKE_CURRENT_SOURCE_DIR}/rc/3477-fc-smoke.rc")
   set_tests_properties(rom_3477_fc_smoke PROPERTIES LABELS "rom")
 endif()
+if(EXISTS "${PROJECT_SOURCE_DIR}/roms/06g5525.bin")
+  # 700M instructions: about 20 s in a release build, minutes in debug.
+  add_test(NAME rom_3483_smoke
+           COMMAND em34xx-headless --model 3483 --rom-dir "${PROJECT_SOURCE_DIR}/roms" --batch
+                   --rc "${CMAKE_CURRENT_SOURCE_DIR}/rc/3483-smoke.rc")
+  set_tests_properties(rom_3483_smoke PROPERTIES LABELS "rom;slow" TIMEOUT 900)
+endif()
 
 # TN5250 client (src/tn5250): negotiation, data stream, field editing.
 add_executable(em34xx_tn5250_tests
