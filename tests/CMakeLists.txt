@@ -17,6 +17,7 @@ add_executable(em34xx_unit_tests
   test_display3477.cpp
   test_3477.cpp
   test_3486.cpp
+  test_3483.cpp
   test_twinax_engine.cpp
   test_wsc.cpp
   test_session_cycle.cpp
