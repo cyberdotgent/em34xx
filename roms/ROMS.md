@@ -13,7 +13,7 @@ them by SHA-256 and contains no code or data taken from them.
 | 3477-FC | `65f2996.bin` | 131072 | `92f1c1becaf9e3a14606b8988f835f0a2ddb2ab46f44670586f65ab1b736a940` | **Good.** Maps at physical `0xC0000..0xDFFFF`. |
 | 3472 | `09f4604.bin` | 65536 | `fc15f246113153226e3ba105433dd0fb75454e138dd1d1151ae0f91ab0d2d707` | **Incomplete, not runnable.** Even bytes of a 16-bit interleaved pair; with `09f4605` it forms the data half (`C0000..DFFFF`) only. See below. |
 | 3472 | `09f4605.bin` | 65536 | `26fa773d3fbaf1b58ac69a07bd159315cf76d3266fee768ef6401232386c8b19` | **Incomplete, not runnable.** Odd bytes of the same pair. |
-| 3483 | `u24.bin` | 524288 | `da14974c16cb370ff6f505d69d4c2e5f84770bcaeae2ca5d6fda4e69413d23db` | **Good, not yet modelled.** The complete 512 KiB image from board position U24. Maps at physical `0x80000..0xFFFFF`; holds the reset vector. See below. |
+| 3483 | `06g5525.bin` | 524288 | `da14974c16cb370ff6f505d69d4c2e5f84770bcaeae2ca5d6fda4e69413d23db` | **Good, not yet modelled.** The complete 512 KiB image from board position U24 (label `06G5525`; the dump was shared as `U24.bin`). Maps at physical `0x80000..0xFFFFF`; holds the reset vector. See below. |
 
 ## Known-bad dumps
 
@@ -147,23 +147,39 @@ owner's understanding that J5 was never used and still needs confirming
   for `C000`/`D000` (observed).
 - It holds fonts, setup panels in five languages and character tables, and
   no reset vector, POST or drivers (observed). The code half
-  (`E0000..FFFFF`, expected to sum to `9ABC`/`DEF0`) is not in these dumps;
-  it is probably a second interleaved pair on the board (hypothesis).
+  (`E0000..FFFFF`, expected to sum to `9ABC`/`DEF0`) is not in these dumps.
+- The board photo (owner, 2026-11-26) shows only these two ROMs (NEC mask
+  ROMs labelled "3472 PROGRAM 09F4604/09F4605", positions ZM3/ZM4), an
+  AMD N8086-2 CPU (ZM1), one Toshiba gate array (IBM 09F4534), two NEC
+  32 Kx8 SRAMs, two 64 Kx4 DRAMs, and 56.6092 MHz and 45.9600 MHz
+  oscillators (observed). The 8086 explains the 16-bit interleave; the
+  3477 has the 8-bit N8088-2 (documented, docs/bringup-3477.md).
+- With no other ROM on the board, the code half must be in the same chips:
+  they are most likely 1 Mbit (128 KiB) mask ROMs read as 64 KiB parts,
+  with chip A16 (CPU A17) held low during the read, giving only
+  `C0000..DFFFF` (hypothesis; needs a re-read with that line high).
 - Same family and tooling as the 3477 (same checksum scheme, same font
   compression, same setup wording), but a separate build: no long byte runs
   are shared with either 3477 pair, and its text is in 3270 buffer code,
   not EBCDIC (observed).
 
-## 3483 `u24.bin`
+## 3483 `06g5525.bin`
 
 - 512 KiB, linear at `80000..FFFFF` (observed). The reset vector jumps to
   `C000:8DFC`, not `F000:0000` (observed).
 - No single whole-image sum: each 64 KiB segment sums to its own target,
   `1234/5678/9ABC/DEF0` for `8000..B000` and again for `C000..F000`
   (observed).
-- The header at offset 0 names `3483` and `06G5525`, very likely the IBM
-  part number (hypothesis); the file keeps its board-position name until
-  that is confirmed.
+- The header at offset 0 names `3483` and `06G5525` (observed); the chip
+  label confirms `06G5525` as the part number (see below).
+- Board (photo, owner, 2026-11-26; observed): FRU 06G5534, planar
+  06G5500. U24 is an AMD AM27C400 (4 Mbit, 16-bit-capable EPROM) labelled
+  `06G5525`, which confirms the part number. The CPU is U37, an IBM
+  39G8873 208-pin ASIC marked "(C) Intel '78 '82" (an 80186-core
+  integration, consistent with the code). Memory: two OKI 256 Kx4 DRAMs
+  (U20/U21) and two 32 Kx8 SRAMs (U14/U15). It also has a 50-pin
+  connector J10 like the 3486's J5, and an empty PLCC socket U16 marked
+  "8086SOP-1".
 - Not a 3486/3487 variant: it relocates an 80186 peripheral control block
   (`OUT FFFE`), uses devices at `58000`/`58100`/`58400` instead of the
   gate array at `20000`, and shares no code with `54g0010` beyond short
