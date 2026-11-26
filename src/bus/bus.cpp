@@ -350,8 +350,13 @@ void Bus::reset_devices() {
             d->reset();
         }
     };
-    for (auto& r : regions_) reset_once(r->device);
-    for (auto& m : io_) reset_once(m.device);
+    // Collect first: a device may remap itself when it resets (the 80186's
+    // peripheral control block returns to I/O FF00), which changes the
+    // lists being walked.
+    std::vector<Device*> devices;
+    for (auto& r : regions_) devices.push_back(r->device);
+    for (auto& m : io_) devices.push_back(m.device);
+    for (Device* d : devices) reset_once(d);
 }
 
 } // namespace em34xx
