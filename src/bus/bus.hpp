@@ -82,6 +82,11 @@ public:
     void map_io(const std::string& name, uint16_t base, uint32_t count, Device* device);
     // Remove every region overlapping [base, base+size).
     void unmap(uint32_t base, uint32_t size);
+    // Remove a device's memory-mapped regions, or its I/O ports, and
+    // nothing else (a device that relocates itself, as the 80186's
+    // peripheral control block).
+    void unmap_device_mmio(const Device* device);
+    void unmap_device_io(const Device* device);
     const std::vector<std::unique_ptr<Region>>& regions() const { return regions_; }
     const std::vector<IoMapping>& io_mappings() const { return io_; }
     const Region* region_at(uint32_t addr) const;

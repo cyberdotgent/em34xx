@@ -109,6 +109,26 @@ void Bus::unmap(uint32_t base, uint32_t size) {
     rebuild_pages();
 }
 
+void Bus::unmap_device_mmio(const Device* device) {
+    regions_.erase(std::remove_if(regions_.begin(), regions_.end(),
+                                  [&](const std::unique_ptr<Region>& r) {
+                                      return r->kind == Region::Kind::Mmio && r->device == device;
+                                  }),
+                   regions_.end());
+    rebuild_pages();
+}
+
+void Bus::unmap_device_io(const Device* device) {
+    io_.erase(std::remove_if(io_.begin(), io_.end(), [&](const IoMapping& m) { return m.device == device; }),
+              io_.end());
+    for (auto& p : io_ports_)
+        if (p == device) p = nullptr;
+    // A port another mapping also claimed goes back to it.
+    for (const IoMapping& m : io_)
+        for (uint32_t p = m.base; p < uint32_t(m.base) + m.count && p < 0x10000; ++p)
+            if (!io_ports_[p]) io_ports_[p] = m.device;
+}
+
 void Bus::rebuild_pages() {
     std::fill(pages_.begin(), pages_.end(), nullptr);
     // Later mappings take precedence over earlier ones.
