@@ -227,6 +227,7 @@ em34xx_library(em34xx_emu
   src/machine/display_subtype.cpp
   src/machine/model_info.cpp
   src/machine/twinax_port.cpp
+  src/machine/coax_port.cpp
   src/machine/machine.cpp
   src/machine/emulator.cpp
 )

@@ -10,6 +10,7 @@
 // src/host (em34xx_host, em34xx_bridge).
 #pragma once
 
+#include "machine/coax_port.hpp"
 #include "machine/line_port.hpp"
 
 #include <cstdint>
@@ -101,6 +102,7 @@ public:
 // attached, and what is left when one is taken off.
 inline std::unique_ptr<LineHost> make_null_line_host(LineKind line) {
     if (line == LineKind::Twinax) return std::make_unique<NullTwinaxHost>();
+    if (line == LineKind::Coax) return std::make_unique<NullCoaxHost>();
     return std::make_unique<NullLineHost>(line);
 }
 

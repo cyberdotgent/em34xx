@@ -28,8 +28,7 @@ Machine::Machine(const ModelInfo& model)
       cpu_(make_cpu(bus_, model.cpu)),
       bp_bitmap_((size_t(bus_.address_mask()) + 1) / 8, 0),
       line_(model.line),
-      line_host_(model.line == LineKind::Twinax ? std::unique_ptr<LineHost>(std::make_unique<NullTwinaxHost>())
-                                                : std::make_unique<NullLineHost>(model.line)) {}
+      line_host_(make_null_line_host(model.line)) {}
 
 Machine::~Machine() = default;
 
