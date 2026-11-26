@@ -76,12 +76,14 @@ public:
         info_.notes = {
             "bring-up: POST passes tests 3 (RAM), 4 (40000 window), 5 (coax internal wrap), 7 (display timing, "
             "video sense, memory engine), 11-17 (serial channels, keyboard handshake) and 9, and shows its NVR line "
-            "(no saved setup) in test 10, waiting for a key (observed)",
+            "(no saved setup) in test 10; Reset continues, the firmware rewrites its setup blocks in SRAM, and the "
+            "runtime shows Offline Setup (observed); with --nvram the repaired setup survives the next boot",
             "board devices (hw/board_3483.hpp) follow the firmware's use of them; display row lists, video sense, "
             "the coax reply words and the memory engine are fitted to POST's checks (hypothesis)",
             "character generator: the firmware decompresses its character sets into SRAM, 32 bytes per character: "
             "base set 48000, APL/GE set 4A000, companion planes 40000/42000 (observed); the companion byte as dots 9+ "
-            "and which set a cell uses are hypotheses; the picture shows POST's text readably",
+            "and which set a cell uses are hypotheses; text is readable, attributes (field attributes, GE set, "
+            "line drawing) are not decoded yet",
             "keyboard: the 122-key keyboard on serial channel A (POST resets it, reads ID BF BF, selects set 3) "
             "(observed dialogue; the channel is a hypothesis)",
             "ROM 06G5525 (U24, AM27C400), linear at 80000-FFFFF; per-segment checksums 1234/5678/9ABC/DEF0 "

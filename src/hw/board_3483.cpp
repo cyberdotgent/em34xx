@@ -163,7 +163,12 @@ uint32_t Board3483::Display::row_address(unsigned row) const {
     // 1F5 is cleared regen at 13EA].
     if (regs_[0x1A >> 1] & 0x0040) return regs_[0x1C >> 1] + 2u * row * columns();
     const uint32_t a = 0x50108 + 4 * row, b = 0x50508 + 4 * row;
-    const uint32_t cell = uint32_t(board_.bus_.peek8(a) & 0x7F) << 8 | board_.bus_.peek8(b);
+    const uint8_t first = board_.bus_.peek8(a);
+    // Bit 7 set: the row follows on linearly from the start address +1C
+    // (low 4 bits ignored) [hypothesis: the runtime's own screens set it on
+    // every row, with the text linear at 0:1000 and +1C = 1004].
+    if (first & 0x80) return (regs_[0x1C >> 1] & 0xFFF0u) + 2u * row * columns();
+    const uint32_t cell = uint32_t(first & 0x7F) << 8 | board_.bus_.peek8(b);
     return 2 * cell;
 }
 
@@ -351,6 +356,7 @@ void Board3483::Coax::run_engine(uint16_t command) {
     // C000:C5D8 and C000:C699]: 58118 = source/pointer, 5811A =
     // destination, 5811C = word count, started by 58110 bit 7, which reads
     // back as busy. Done at once here.
+    //  - 00: copy words unchanged;
     //  - 08: copy, keeping the character byte and clearing the attribute
     //    byte (38A0 -> 00A0);
     //  - 30: search backward from 58118 for a cell whose attribute byte has
@@ -359,7 +365,12 @@ void Board3483::Coax::run_engine(uint16_t command) {
     const uint16_t op = command & 0x78;
     uint16_t src = regs_[0x18 >> 1], dst = regs_[0x1A >> 1];
     const uint16_t count = regs_[0x1C >> 1];
-    if (op == 0x08) {
+    if (op == 0x00) {   // 81: copy words as they are [observed: runtime copies its screen 7000 -> 1000]
+        for (uint16_t i = 0; i < count; ++i, src += 2, dst += 2) {
+            bus.poke8(dst, bus.peek8(src));
+            bus.poke8(uint32_t(dst) + 1, bus.peek8(uint32_t(src) + 1));
+        }
+    } else if (op == 0x08) {
         for (uint16_t i = 0; i < count; ++i, src += 2, dst += 2) {
             bus.poke8(dst, bus.peek8(src));
             bus.poke8(uint32_t(dst) + 1, 0);
