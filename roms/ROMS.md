@@ -11,8 +11,8 @@ them by SHA-256 and contains no code or data taken from them.
 | 3477 | `95f4172.bin` | 131072 | `290a58cd5db6543957bdcb2c9e92efefd62a54e37bcd239d41d9bd9cdd6be1d0` | **Good.** Maps at physical `0xC0000..0xDFFFF`. No invariant address bit. |
 | 3477-FC | `65f2995.bin` | 131072 | `d5dc45f8e3c632449f17ad1e4dfd37b562aafb1464715bc4ac12df407da381e9` | **Good.** The colour 3477's firmware (variant `3477-FC`). Maps at physical `0xE0000..0xFFFFF`; holds the reset vector. |
 | 3477-FC | `65f2996.bin` | 131072 | `92f1c1becaf9e3a14606b8988f835f0a2ddb2ab46f44670586f65ab1b736a940` | **Good.** Maps at physical `0xC0000..0xDFFFF`. |
-| 3472 | `09f4604.bin` | 65536 | `fc15f246113153226e3ba105433dd0fb75454e138dd1d1151ae0f91ab0d2d707` | **Incomplete, not runnable.** Even bytes of a 16-bit interleaved pair; with `09f4605` it forms the data half (`C0000..DFFFF`) only. See below. |
-| 3472 | `09f4605.bin` | 65536 | `26fa773d3fbaf1b58ac69a07bd159315cf76d3266fee768ef6401232386c8b19` | **Incomplete, not runnable.** Odd bytes of the same pair. |
+| 3472 | `09f4604.bin` | 131072 | `05547ffd2d69e0779c7d696fd425c4c60cf7716cd2e8e303dea5628b13d52ac5` | **Good, not yet modelled.** Even bytes of a 16-bit interleaved pair; with `09f4605` it maps at physical `0xC0000..0xFFFFF` and holds the reset vector. See below. |
+| 3472 | `09f4605.bin` | 131072 | `8bea2740d1931e5879e13b48370640a5bb0076c43c26e435b324a6a6dc7b4bb5` | **Good, not yet modelled.** Odd bytes of the same pair. |
 | 3483 | `06g5525.bin` | 524288 | `da14974c16cb370ff6f505d69d4c2e5f84770bcaeae2ca5d6fda4e69413d23db` | **Good, not yet modelled.** The complete 512 KiB image from board position U24 (label `06G5525`; the dump was shared as `U24.bin`). Maps at physical `0x80000..0xFFFFF`; holds the reset vector. See below. |
 
 ## Known-bad dumps
@@ -141,23 +141,28 @@ owner's understanding that J5 was never used and still needs confirming
   bytes (observed: interleaved, the header at offset 0 reads `3472`,
   `09F4604`, `09F4605` in EBCDIC). A 16-bit CPU bus is therefore likely
   (hypothesis; the 3477 is byte-wide).
-- Interleaved, the image is the **data half** at `C0000..DFFFF` (observed:
-  self-referencing far-pointer tables into `C000` and `D000`). Its two
-  segments sum to `1234` and `5678`, the 3477's per-segment POST targets
-  for `C000`/`D000` (observed).
-- It holds fonts, setup panels in five languages and character tables, and
-  no reset vector, POST or drivers (observed). The code half
-  (`E0000..FFFFF`, expected to sum to `9ABC`/`DEF0`) is not in these dumps.
+- Interleaved, the pair is one 256 KiB image at `C0000..FFFFF` (observed):
+  data (fonts, setup panels in five languages, character tables) in
+  `C000`/`D000`, code in `E000`/`F000`. The four segments sum to
+  `1234/5678/9ABC/DEF0` (observed). The reset vector at `FFFF0` is
+  `CLI; JMP E000:0FBE` (observed). The trailer near `FF658` reads
+  "IBM 3472-FXX (C) COPYRIGHT IBM CORP. 1989 ..." in EBCDIC (observed).
+- The first read (64 KiB per chip, SHA-256 `fc15f246...` and `26fa773d...`,
+  kept as `*-lowhalf-first-read.bin`) held chip A16 (CPU A17) low and so
+  gave only `C0000..DFFFF` (observed: the chips are 128 KiB and those reads
+  equal the new A16-low halves byte for byte, so reads are stable). The
+  owner re-read each chip in two halves (`04_LOW`/`04_HI`, `05_LOW`/`05_HI`,
+  2026-11-26); each file here is the A16-low half followed by the A16-high
+  half. Only that order and `09f4604` on the even lane give the four
+  segment sums and the reset vector (observed). The owner's own
+  interleaved `3472_09f4604_09f4605.bin` is identical to this
+  reconstruction (observed).
 - The board photo (owner, 2026-11-26) shows only these two ROMs (NEC mask
   ROMs labelled "3472 PROGRAM 09F4604/09F4605", positions ZM3/ZM4), an
   AMD N8086-2 CPU (ZM1), one Toshiba gate array (IBM 09F4534), two NEC
   32 Kx8 SRAMs, two 64 Kx4 DRAMs, and 56.6092 MHz and 45.9600 MHz
   oscillators (observed). The 8086 explains the 16-bit interleave; the
   3477 has the 8-bit N8088-2 (documented, docs/bringup-3477.md).
-- With no other ROM on the board, the code half must be in the same chips:
-  they are most likely 1 Mbit (128 KiB) mask ROMs read as 64 KiB parts,
-  with chip A16 (CPU A17) held low during the read, giving only
-  `C0000..DFFFF` (hypothesis; needs a re-read with that line high).
 - Same family and tooling as the 3477 (same checksum scheme, same font
   compression, same setup wording), but a separate build: no long byte runs
   are shared with either 3477 pair, and its text is in 3270 buffer code,
