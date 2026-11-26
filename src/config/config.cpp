@@ -256,7 +256,7 @@ Front end and monitor:
 
 Debugging:
       --gdb[=PORT]          start a GDB remote stub (default port 1234)
-      --gdb-wait            stay stopped until a debugger attaches
+      --gdb-wait[=PORT]     the same, and stay stopped until a debugger attaches
       --log SPEC            log levels, e.g. "info" or "bus=debug,mmio=trace"
       --log-file FILE       also write log output to FILE
 
@@ -405,7 +405,11 @@ bool parse_command_line(int argc, char** argv, AppConfig& cfg, std::string& erro
         else if (a == "--gdb") {
             cfg.gdb = true;
             if (has_inline && !parse_port(value, cfg.gdb_port)) { error = "bad --gdb port"; return false; }
-        } else if (a == "--gdb-wait") { cfg.gdb = true; cfg.gdb_wait = true; }
+        } else if (a == "--gdb-wait") {
+            cfg.gdb = true;
+            cfg.gdb_wait = true;
+            if (has_inline && !parse_port(value, cfg.gdb_port)) { error = "bad --gdb-wait port"; return false; }
+        }
         else if (a == "--log") { if (!need(cfg.log_spec)) return false; }
         else if (a == "--log-file") { if (!need(cfg.log_file)) return false; }
         else if (a == "--twinax-host") {

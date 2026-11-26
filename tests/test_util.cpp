@@ -64,6 +64,21 @@ TEST_CASE("command line overrides") {
     CHECK_FALSE(parse_command_line(3, const_cast<char**>(argv2), bad, err));
 }
 
+TEST_CASE("--gdb-wait takes a port like --gdb") {
+    AppConfig cfg;
+    std::string err;
+    const char* argv[] = {"em34xx", "--gdb-wait=4322"};
+    REQUIRE(parse_command_line(2, const_cast<char**>(argv), cfg, err));
+    CHECK(cfg.gdb);
+    CHECK(cfg.gdb_wait);
+    CHECK(cfg.gdb_port == 4322);
+    AppConfig plain;
+    const char* argv2[] = {"em34xx", "--gdb=4323", "--gdb-wait"};
+    REQUIRE(parse_command_line(3, const_cast<char**>(argv2), plain, err));
+    CHECK(plain.gdb_port == 4323);
+    CHECK(plain.gdb_wait);
+}
+
 TEST_CASE("atomic file replacement") {
     const std::string path = "em34xx_test_file_io.bin";
     const auto contents = [&] {
