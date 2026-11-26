@@ -43,6 +43,7 @@ constexpr uint32_t kSramBase = 0x40000, kSramSize = 0x10000;   // battery-backed
 // class 1 (the monochrome table). Which code the 3483's own tube gives is
 // a hypothesis; --straps selects another.
 constexpr uint8_t kSenseType2 = 0x44;
+constexpr uint8_t kSenseType1 = 0x51;
 
 // Owns the board state the three register devices share and the keyboard;
 // a device only so the machine keeps them alive.
@@ -69,9 +70,14 @@ public:
         info_.max_printer_sessions = 0;
         // The ROM header names "3483 V00"; oec was tested with a 3483-V
         // (documented, oec README). Monochrome or colour is not known yet.
-        // The variant's strap byte is the monitor sense code it presents.
+        // A variant is the monitor attached to the logic unit: its strap
+        // byte is the sense code the monitor presents, as the 3487's straps
+        // are its tube. The firmware names only "3483 V00" and has no
+        // variant table, so the suffixes are the emulator's own.
         info_.variants = {
-            {"3483-V", "colour (display type 2)", true, kSenseType2, "", {}, {}},
+            {"3483-V", "colour monitor (display type 2)", true, kSenseType2, "", {}, {}},
+            {"3483-VM", "monochrome monitor (display type 1)", false, kSenseType1, "",
+             {phosphor_green(), phosphor_amber(), phosphor_paper_white()}, {}},
         };
         info_.roms = {
             {"system ROM (80000-FFFFF, reset vector)", "06g5525.bin", 0x80000,

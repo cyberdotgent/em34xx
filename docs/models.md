@@ -11,7 +11,8 @@ firmware reads, the ROM set, and what the unit announces to its host.
 | 3486 | `3486-BA` (default) | monochrome | `42` | `IBM-5251-11` | green, amber, paper-white |
 | 3487 | `3487-HG` (default) | monochrome | `4A` | `IBM-5251-11` | green, amber, paper-white |
 | 3487 | `3487-HC` | colour | `4C` | `IBM-3179-2` | - |
-| 3483 | `3483-V` | 3270 display on coax (bring-up skeleton) | - | - (TN3270) | green |
+| 3483 | `3483-V` (default) | 3270 display on coax, colour monitor (bring-up) | sense `44` | - (TN3270) | - |
+| 3483 | `3483-VM` | monochrome monitor (bring-up) | sense `51` | - (TN3270) | green, amber, paper-white |
 
 `em34xx --list-models` prints the same from the code (`ModelInfo::variants`
 in `src/machine/model_info.hpp`, filled in by each model).

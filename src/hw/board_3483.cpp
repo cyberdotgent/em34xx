@@ -9,6 +9,8 @@
 #include "util/log.hpp"
 #include "util/strings.hpp"
 
+#include <algorithm>
+
 namespace em34xx {
 
 // --- board -------------------------------------------------------------------
@@ -328,8 +330,10 @@ void Board3483::Display::render(Framebuffer& fb) {
     for (unsigned i = 0; i < 16; ++i) {
         auto lift = [](uint8_t v) { return uint32_t(v <= kBlackLevel ? 0 : v); };
         const uint32_t b = lift(level(0, i)), rr = lift(level(1, i)), g = lift(level(2, i));
-        colour_of[i] = colour_ ? (0xFF000000u | rr << 16 | g << 8 | b)
-                               : (0xFF000000u | g << 16 | g << 8 | g);
+        // A monochrome monitor gets one signal; the class-1 table drives all
+        // three alike [observed], and the presentation applies the phosphor.
+        const uint32_t y = std::max(rr, std::max(g, b));
+        colour_of[i] = colour_ ? (0xFF000000u | rr << 16 | g << 8 | b) : (0xFF000000u | y << 16 | y << 8 | y);
     }
     FieldState f = initial_field();
     for (unsigned r = 0; r < nrows; ++r) {
