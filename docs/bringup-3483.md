@@ -339,6 +339,38 @@ Other accesses seen during the test, not modelled (open): writes of
 `5A`/`A5` and `55`/`AA` to `9A000-9A001` (ROM space, a RAM probe), and
 zeros to `62000-620FF` (unmapped).
 
+## Where bring-up stands (2026-11-26)
+
+1. **Test display station shows A-L wrongly (open bug).** The test's character row
+   should read `0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ` (owner). In emulation, glyphs
+   A0-AB of the base set (main plane `48000`, companion `40000`) are overwritten
+   while the test runs. So the character row, the prompt on row 23 and the E of the
+   status row's SETUP are garbled (observed). The writer is the font decompressor
+   (svc_049, `D000:7A3E`). On entry the test unpacks all four sets again, with the
+   same sources and destinations as at boot. It then unpacks small patches from
+   `8000:71xx` to destinations such as `4000:0020`, `4000:8020`, `4000:0060` and
+   `4000:8060` (observed).
+
+   Next step: log each call's destination and length, find the one that writes
+   `49400-4957F`, and check how its copy references resolve. They count from the
+   call's destination base. Suspects: a patch that assumes a different base, or a
+   mapping (window, memory engine) modelled wrongly (hypothesis).
+
+   Monitor tip: on a breakpoint, use `run #N` rather than `go`; `go` never returns
+   once the hits stop.
+2. **Memory engine:** operation = `58110` bits 5-3; the search stops at a character
+   C0-FF (see Display test). Fixed.
+3. **CUT controller** (`src/host/coax/cut_controller.cpp`): written and wired into
+   HostLink and Application (a coax model connects with the same host, port and TLS
+   settings). It has not yet run against the emulated 3483. Next: run it there,
+   then against a TN3270 host.
+4. **Then the 3472:** refactor the board into a coax-terminal device shared with the
+   3483.
+
+To reach the test from a first boot (keys as `tests/rc/3483-smoke.rc` uses them):
+Reset (`lctrl`) at the NVR line, then Down four times and Enter (`rctrl`) in
+Offline Setup. Reset leaves the test.
+
 ## Open questions
 
 - Why the next boot opens Offline Setup although a valid setup is saved
