@@ -2,6 +2,7 @@
 #include "frontend/qt/qt_util.hpp"
 
 #include <QDesktopServices>
+#include <QLabel>
 #include <QStandardPaths>
 #include <QUrl>
 #include <QWidget>
@@ -23,6 +24,19 @@ int show_box(QWidget* owner, QMessageBox::Icon icon, const std::string& text, QM
 }
 
 } // namespace
+
+QLabel* plain_label(const QString& text, QWidget* parent) {
+    auto* l = new QLabel(parent);
+    l->setTextFormat(Qt::PlainText);
+    l->setText(text);
+    return l;
+}
+
+QLabel* plain_label(QWidget* parent) { return plain_label(QString(), parent); }
+
+QString plain_tip(const QString& text) {
+    return QStringLiteral("<p style='white-space:pre'>") + text.toHtmlEscaped() + QStringLiteral("</p>");
+}
 
 void error_box(QWidget* owner, const std::string& text) {
     show_box(owner, QMessageBox::Critical, text, QMessageBox::Ok, QMessageBox::Ok);

@@ -440,6 +440,9 @@ if(EM34XX_HAVE_QT)
   target_link_libraries(em34xx_frontend_qt PUBLIC em34xx_runtime
     PRIVATE em34xx_version_header Qt6::Widgets)
   target_compile_definitions(em34xx_frontend_qt PRIVATE QT_NO_KEYWORDS QT_NO_CAST_FROM_ASCII)
+  # Debug builds check the standard library's preconditions (std::clamp's
+  # range, indices...), as distributions' package builds do.
+  target_compile_definitions(em34xx_frontend_qt PRIVATE $<$<CONFIG:Debug>:_GLIBCXX_ASSERTIONS>)
   add_executable(${EM34XX_EXE_QT} src/main_qt.cpp)
   target_link_libraries(${EM34XX_EXE_QT} PRIVATE em34xx_frontend_qt em34xx_warnings)
 

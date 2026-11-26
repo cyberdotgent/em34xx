@@ -121,7 +121,7 @@ bool rom_manager_dialog(QWidget* owner, const UserDirs& dirs, const Model* requi
                         const ModelVariant* required_variant) {
     DialogPtr dlg(make_dialog(owner, "ROM Images"));
     auto* layout = new QVBoxLayout(dlg.get());
-    auto* intro = new QLabel(dlg.get());
+    auto* intro = plain_label(dlg.get());
     intro->setWordWrap(true);
     if (required && !model_roms_ready(*required, dirs.roms(), required_variant))
         intro->setText(QStringLiteral(
@@ -143,7 +143,7 @@ bool rom_manager_dialog(QWidget* owner, const UserDirs& dirs, const Model* requi
     list->setSelectionMode(QAbstractItemView::SingleSelection);
     list->setMinimumSize(720, 220);
     layout->addWidget(list);
-    auto* folder = new QLabel(qs("ROM folder: " + dirs.roms()), dlg.get());
+    auto* folder = plain_label(qs("ROM folder: " + dirs.roms()), dlg.get());
     folder->setTextInteractionFlags(Qt::TextSelectableByMouse);
     layout->addWidget(folder);
 
@@ -278,7 +278,7 @@ bool settings_dialog(QWidget* owner, const UserDirs& dirs, AppSettings& s) {
 
     auto* files = new QGroupBox(QStringLiteral("Files"), dlg.get());
     auto* fl = new QVBoxLayout(files);
-    auto* where = new QLabel(qs("Settings, ROMs, keymap and profiles are kept in " + dirs.root()), files);
+    auto* where = plain_label(qs("Settings, ROMs, keymap and profiles are kept in " + dirs.root()), files);
     where->setWordWrap(true);
     where->setTextInteractionFlags(Qt::TextSelectableByMouse);
     fl->addWidget(where);
@@ -334,7 +334,7 @@ bool settings_dialog(QWidget* owner, const UserDirs& dirs, AppSettings& s) {
 bool name_dialog(QWidget* owner, const std::string& title, const std::string& prompt, std::string& name) {
     DialogPtr dlg(make_dialog(owner, title));
     auto* layout = new QVBoxLayout(dlg.get());
-    auto* label = new QLabel(qs(prompt), dlg.get());
+    auto* label = plain_label(qs(prompt), dlg.get());
     auto* edit = new QLineEdit(qs(name), dlg.get());
     edit->setMinimumWidth(320);
     label->setBuddy(edit);
@@ -401,7 +401,7 @@ bool tls_settings_dialog(QWidget* owner, Profile& p, const AppSettings& s) {
     auto* fetch = new QPushButton(QStringLiteral("&Fetch"), group);
     const size_t fs = tls_fetch_session(p);
     const ProfileSession& src = p.sessions[fs];
-    auto* fetch_host = new QLabel(qs(src.used() ? format("from %s:%u (session %zu)", src.host.c_str(),
+    auto* fetch_host = plain_label(qs(src.used() ? format("from %s:%u (session %zu)", src.host.c_str(),
                                                         unsigned(src.port), fs + 1)
                                                  : std::string("enter the session 1 host first")),
                                   group);
@@ -640,16 +640,16 @@ bool profile_editor_dialog(QWidget* owner, Profile& p_in, ProfileEditMode mode, 
 
     auto* sessions = new QGroupBox(QStringLiteral("Sessions"), self);
     auto* sg = new QGridLayout(sessions);
-    sg->addWidget(new QLabel(QStringLiteral("Host"), sessions), 0, 1);
-    sg->addWidget(new QLabel(QStringLiteral("Port"), sessions), 0, 2);
-    sg->addWidget(new QLabel(QStringLiteral("Device name (optional)"), sessions), 0, 3);
+    sg->addWidget(plain_label(QStringLiteral("Host"), sessions), 0, 1);
+    sg->addWidget(plain_label(QStringLiteral("Port"), sessions), 0, 2);
+    sg->addWidget(plain_label(QStringLiteral("Device name (optional)"), sessions), 0, 3);
     QLineEdit* host[2];
     QLineEdit* port[2];
     QLineEdit* dev[2];
     QCheckBox* use_tls[2];
     for (int i = 0; i < 2; ++i) {
         const ProfileSession& ps = p.sessions[size_t(i)];
-        sg->addWidget(new QLabel(qs(format("Session &%d:", i + 1)), sessions), i + 1, 0);
+        sg->addWidget(plain_label(qs(format("Session &%d:", i + 1)), sessions), i + 1, 0);
         host[i] = new QLineEdit(qs(ps.host), sessions);
         host[i]->setMinimumWidth(220);
         port[i] = new QLineEdit(qs(ps.used() || i == 0 ? std::to_string(ps.port) : std::string()), sessions);
@@ -665,7 +665,7 @@ bool profile_editor_dialog(QWidget* owner, Profile& p_in, ProfileEditMode mode, 
         sg->addWidget(dev[i], i + 1, 3);
         sg->addWidget(use_tls[i], i + 1, 4);
     }
-    auto* note = new QLabel(QStringLiteral("Session 2 is optional: a second display station, on the same system or "
+    auto* note = plain_label(QStringLiteral("Session 2 is optional: a second display station, on the same system or "
                                            "another."),
                             sessions);
     note->setWordWrap(true);
@@ -673,7 +673,7 @@ bool profile_editor_dialog(QWidget* owner, Profile& p_in, ProfileEditMode mode, 
     layout->addWidget(sessions);
 
     auto* tls_row = new QHBoxLayout;
-    auto* tls_summary_label = new QLabel(self);
+    auto* tls_summary_label = plain_label(self);
     tls_summary_label->setWordWrap(true);
     auto* tls_button = new QPushButton(QStringLiteral("TLS &Settings..."), self);
     tls_row->addWidget(tls_summary_label, 1);
@@ -902,7 +902,7 @@ tn5250::TlsTrustDecision trust_dialog(QWidget* owner, const tn5250::TlsTrustRequ
                 ? ": it is not the certificate this profile trusts. The server may have a new certificate, or "
                   "someone may be intercepting the connection."
                 : ". Someone may be intercepting the connection; connect only if you know this certificate.";
-    auto* headline = new QLabel(qs(text), self);
+    auto* headline = plain_label(qs(text), self);
     headline->setWordWrap(true);
     top->addWidget(headline, 1);
     layout->addLayout(top);
@@ -938,7 +938,7 @@ bool certificate_invalid_dialog(QWidget* owner, const tn5250::TlsTrustRequest& r
     auto* layout = new QVBoxLayout(self);
     auto* top = new QHBoxLayout;
     top->addWidget(warning_icon(self));
-    auto* headline = new QLabel(
+    auto* headline = plain_label(
         qs(format("The server certificate of %s:%u (session %u) is not valid. The connection may not be secure: the "
                   "server may be badly maintained, this computer's clock may be wrong, or someone may be "
                   "intercepting the connection.",
@@ -947,15 +947,15 @@ bool certificate_invalid_dialog(QWidget* owner, const tn5250::TlsTrustRequest& r
     headline->setWordWrap(true);
     top->addWidget(headline, 1);
     layout->addLayout(top);
-    layout->addWidget(new QLabel(QStringLiteral("What is wrong with the certificate:"), self));
+    layout->addWidget(plain_label(QStringLiteral("What is wrong with the certificate:"), self));
     std::string errors;
     for (const std::string& e : r.errors) errors += e + "\n";
     if (errors.empty()) errors = r.reason + "\n";
     layout->addWidget(details_box(self, errors, 3));
-    layout->addWidget(new QLabel(QStringLiteral("The certificate the server sent:"), self));
+    layout->addWidget(plain_label(QStringLiteral("The certificate the server sent:"), self));
     layout->addWidget(details_box(self, certificate_text(r.peer), 8));
     layout->addWidget(
-        new QLabel(QStringLiteral("This cannot be remembered: you are asked again for every connection."), self));
+        plain_label(QStringLiteral("This cannot be remembered: you are asked again for every connection."), self));
     auto* understand =
         new QCheckBox(QStringLiteral("&I understand the risk and want to connect to this server anyway"), self);
     layout->addWidget(understand);
@@ -1006,7 +1006,7 @@ public:
         setFrameStyle(QFrame::StyledPanel | QFrame::Sunken);
         setFocusPolicy(Qt::StrongFocus);
         setMinimumHeight(fontMetrics().height() * 2);
-        label_ = new QLabel(QStringLiteral("(click here, then press a key)"), this);
+        label_ = plain_label(QStringLiteral("(click here, then press a key)"), this);
         label_->setAlignment(Qt::AlignCenter);
         auto* l = new QHBoxLayout(this);
         l->addWidget(label_);
@@ -1172,7 +1172,7 @@ bool keymap_dialog(QWidget* owner, KeymapFile& file_in) {
     column->addStretch(1);
     row->addLayout(column);
     layout->addLayout(row);
-    auto* base = new QLabel(self);
+    auto* base = plain_label(self);
     base->setWordWrap(true);
     layout->addWidget(base);
     auto* buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, self);
@@ -1273,7 +1273,7 @@ void about_dialog(QWidget* owner, const UserDirs& dirs) {
     text->setWordWrap(true);
     top->addWidget(text, 1);
     layout->addLayout(top);
-    layout->addWidget(new QLabel(QStringLiteral("Third-party notices:"), self));
+    layout->addWidget(plain_label(QStringLiteral("Third-party notices:"), self));
     QFile notices(QStringLiteral(":/notices.txt"));
     std::string body = "(notices not found)";
     if (notices.open(QIODevice::ReadOnly)) body = us(QString::fromUtf8(notices.readAll()));

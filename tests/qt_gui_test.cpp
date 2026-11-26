@@ -7,7 +7,7 @@
 //
 //   em34xx_qt_gui_test SCENARIO ROM_DIR [SHOT_DIR]
 //
-// Scenarios: first-start, profiles, foreign, trust, burn-in (trust needs
+// Scenarios: first-start, profiles, foreign, trust, placement, burn-in (trust needs
 // the openssl command; without it the test is skipped, exit code 77). ROM_DIR holds the ROM
 // images (roms/, never committed); the test makes its own user folder
 // (EM34XX_USER_DIR) in a temporary directory. SHOT_DIR, when given, gets a
@@ -30,6 +30,7 @@
 #include <QMessageBox>
 #include <QPlainTextEdit>
 #include <QPushButton>
+#include <QScreen>
 #include <QStatusBar>
 #include <QTimer>
 #include <QToolBar>
@@ -579,6 +580,10 @@ int main(int argc, char** argv) {
                  bool says = false;
                  for (QLabel* l : d->findChildren<QLabel*>()) says = says || l->text().contains(QStringLiteral("is not trusted"));
                  if (!says) fail("the trust prompt does not say the certificate is not trusted");
+                 // Host names come from profiles: never shown as markup.
+                 for (QLabel* l : d->findChildren<QLabel*>())
+                     if (l->text().contains(QStringLiteral("127.0.0.1")) && l->textFormat() != Qt::PlainText)
+                         fail("the trust prompt shows the host as rich text");
                  shot(d, "trust-prompt");
                  shot(main_window(), "main-trust-waiting");
                  return click(d, "Trust Permanently");
@@ -614,6 +619,29 @@ int main(int argc, char** argv) {
                  if (window_titled("Certificate Not Valid")) fail("the cancelled session asked again");
                  return trigger("File", "Exit");
              }},
+        };
+    } else if (scenario == "placement") {
+        // A saved window exactly as wide as the screen's available area
+        // (the offscreen screen: 800 x 800) is restored at its left edge.
+        copy_roms(roms, user / "roms", rom3477);
+        std::ofstream(user / "settings.toml")
+            << "[window]\nzoom = 1.0\nx = 0\ny = 0\nwidth = 800\nheight = 600\nmaximized = false\n";
+        steps = {
+            {"restored",
+             [] {
+                 QWidget* d = window_titled("Connect to Profile");
+                 QMainWindow* w = main_window();
+                 if (!d || !w) return false;
+                 const QRect avail = w->screen()->availableGeometry();
+                 if (avail.width() != 800)
+                     fail("the offscreen screen is " + std::to_string(avail.width()) + " wide, the test expects 800");
+                 if (w->width() != 800 || w->height() != 600)
+                     fail("restored size " + std::to_string(w->width()) + "x" + std::to_string(w->height()));
+                 if (w->x() != avail.x() || w->y() != avail.y())
+                     fail("restored at " + std::to_string(w->x()) + "," + std::to_string(w->y()));
+                 return click(d, "Close");
+             }},
+            {"exit", [] { return trigger("File", "Exit"); }},
         };
     } else if (scenario == "burn-in") {
         copy_roms(roms, user / "roms", rom3477);

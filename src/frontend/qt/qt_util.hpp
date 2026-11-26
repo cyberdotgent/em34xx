@@ -11,6 +11,7 @@
 #include <exception>
 #include <string>
 
+class QLabel;
 class QWidget;
 
 namespace em34xx::qt {
@@ -21,6 +22,14 @@ inline std::string us(const QString& s) {
     const QByteArray b = s.toUtf8();
     return std::string(b.constData(), size_t(b.size()));
 }
+
+// A label that shows its text as it is (Qt::PlainText): text that comes
+// from files (profile names, host names, paths) never renders as markup.
+QLabel* plain_label(const QString& text, QWidget* parent);
+QLabel* plain_label(QWidget* parent);
+// A tooltip that shows `text` as it is, line breaks kept (QToolTip guesses
+// rich text by itself; this is escaped rich text).
+QString plain_tip(const QString& text);
 
 // The title of every message box.
 inline QString app_title() { return QStringLiteral("em34xx"); }

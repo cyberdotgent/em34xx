@@ -59,11 +59,8 @@
 #include <set>
 #include <vector>
 
-#include <fcntl.h>
 #include <signal.h>
-#include <sys/resource.h>
 #include <sys/types.h>
-#include <sys/wait.h>
 #include <unistd.h>
 
 // No moc: nothing here declares signals or slots (no Q_OBJECT); connections
@@ -92,6 +89,9 @@ public:
     struct Pending {
         tn5250::TlsTrustRequest req;
         bool done = false;
+        // ask() has returned without this answer (it waited too long, or the
+        // queue closed): an answer given now reaches no session.
+        bool abandoned = false;
         tn5250::TlsTrustDecision decision = tn5250::TlsTrustDecision::Reject;
     };
 
@@ -115,6 +115,7 @@ public:
         // The server may drop an idle handshake; ten minutes is plenty.
         cv_.wait_for(lock, std::chrono::minutes(10), [&] { return p->done || closed_; });
         if (!p->done) {
+            p->abandoned = true;
             queue_.erase(std::remove(queue_.begin(), queue_.end(), p), queue_.end());
             return tn5250::TlsTrustDecision::Reject;
         }
@@ -134,11 +135,15 @@ public:
         return p;
     }
 
-    void answer(const std::shared_ptr<Pending>& p, tn5250::TlsTrustDecision d) {
+    // False when the session no longer waits for it (Pending::abandoned):
+    // then nothing may come of the answer.
+    bool answer(const std::shared_ptr<Pending>& p, tn5250::TlsTrustDecision d) {
         std::lock_guard<std::mutex> g(mu_);
+        if (p->abandoned) return false;
         p->decision = d;
         p->done = true;
         cv_.notify_all();
+        return true;
     }
 
     // While sessions are torn down (TrustDrain): the UI thread joins their
@@ -832,7 +837,7 @@ void MainWindow::build_toolbar() {
 // Status bar: the profile on the left; on the right, per session an orb
 // (its state) and a lock (TLS), each with the session's tooltip.
 void MainWindow::build_status_bar() {
-    profile_label_ = new QLabel(this);
+    profile_label_ = plain_label(this);
     statusBar()->addWidget(profile_label_, 1);
     auto* icons = new QWidget(this);
     auto* row = new QHBoxLayout(icons);
@@ -876,8 +881,13 @@ void MainWindow::restore_placement() {
                 resize(wp.width, wp.height);
                 // Wayland does not let a client place its window: the
                 // compositor does (the position is ignored there).
-                move(std::clamp(wp.x, avail.left(), avail.right() - wp.width),
-                     std::clamp(wp.y, avail.top(), avail.bottom() - wp.height));
+                // The last position at which the whole window is on the
+                // screen: x + width - 1 <= right, so x <= left + avail
+                // width - width (>= left, as width <= avail width). A
+                // window as wide as the screen sits at its left edge.
+                const int max_x = avail.x() + avail.width() - wp.width;
+                const int max_y = avail.y() + avail.height() - wp.height;
+                move(std::max(avail.x(), std::min(wp.x, max_x)), std::max(avail.y(), std::min(wp.y, max_y)));
                 return;
             }
         }
@@ -996,8 +1006,8 @@ void MainWindow::update_status() {
         if (!first_status_ && ind == indicators_[i]) continue;
         orb_[i]->setPixmap(glyph(ind.orb).pixmap(QSize(size, size), devicePixelRatioF()));
         lock_[i]->setPixmap(glyph(ind.lock).pixmap(QSize(size, size), devicePixelRatioF()));
-        orb_[i]->setToolTip(qs(ind.tip));
-        lock_[i]->setToolTip(qs(ind.tip));
+        orb_[i]->setToolTip(plain_tip(qs(ind.tip)));
+        lock_[i]->setToolTip(plain_tip(qs(ind.tip)));
         indicators_[i] = ind;
     }
     first_status_ = false;
@@ -1288,6 +1298,7 @@ bool MainWindow::confirm_discard() {
     QMessageBox box(QMessageBox::Question, app_title(), qs("Save the changes to the profile \"" + name + "\"?"),
                     QMessageBox::Save | QMessageBox::Discard | QMessageBox::Cancel, this);
     box.setDefaultButton(QMessageBox::Save);
+    box.setTextFormat(Qt::PlainText);
     const int r = box.exec();
     if (r == QMessageBox::Cancel) return false;
     if (r == QMessageBox::Save) return save_current(false);
@@ -1311,33 +1322,40 @@ void MainWindow::handle_trust_requests() {
         // A certificate that is not valid has its own prompt, with no way
         // to remember the answer: nothing below touches the profile for it,
         // and every connection attempt comes back here.
-        tn5250::TlsTrustDecision d;
-        if (trust_invalid_) {
-            d = certificate_invalid_dialog(this, p->req) ? tn5250::TlsTrustDecision::AcceptOnce
-                                                         : tn5250::TlsTrustDecision::Reject;
+        const tn5250::TlsTrustDecision d =
+            trust_invalid_ ? (certificate_invalid_dialog(this, p->req) ? tn5250::TlsTrustDecision::AcceptOnce
+                                                                       : tn5250::TlsTrustDecision::Reject)
+                           : trust_dialog(this, p->req, name);
+        // The answer first: a session that stopped waiting (the ten minutes
+        // ran out, or it was closed) has already been refused, and then the
+        // answer changes nothing, the profile least of all.
+        if (!trust_->answer(p, d)) {
+            if (d != tn5250::TlsTrustDecision::Reject)
+                info_box(this, format("The connection to %s:%u waited too long for an answer and was refused; "
+                                      "nothing was changed. It asks again when it reconnects.",
+                                      printable(p->req.host).c_str(), unsigned(p->req.port)));
+        } else if (trust_invalid_) {
+            // A certificate that is not valid: nothing to record, and every
+            // connection attempt asks again.
             if (p->req.station < Profile::kSessions)
                 cur_.overridden[p->req.station] = d == tn5250::TlsTrustDecision::AcceptOnce;
         } else {
-            d = trust_dialog(this, p->req, name);
             // A later connection of this session that needed no override.
             if (p->req.station < Profile::kSessions && d != tn5250::TlsTrustDecision::Reject)
                 cur_.overridden[p->req.station] = false;
-        }
-        if (trust_invalid_) {
-            // Nothing to record.
-        } else if (d == tn5250::TlsTrustDecision::AcceptPermanently && cur_.active) {
-            profile_trust_certificate(cur_.p, p->req.station, p->req.peer.sha256);
-            std::string error;
-            if (!cur_.untitled && save_profile(cur_.path, cur_.p, error)) {
-                cur_.modified = false;
-            } else {
-                cur_.modified = true;
-                if (!error.empty()) error_box(this, error);
+            if (d == tn5250::TlsTrustDecision::AcceptPermanently && cur_.active) {
+                profile_trust_certificate(cur_.p, p->req.station, p->req.peer.sha256);
+                std::string error;
+                if (!cur_.untitled && save_profile(cur_.path, cur_.p, error)) {
+                    cur_.modified = false;
+                } else {
+                    cur_.modified = true;
+                    if (!error.empty()) error_box(this, error);
+                }
+            } else if (d == tn5250::TlsTrustDecision::AcceptOnce) {
+                cur_.accepted_once = true;
             }
-        } else if (d == tn5250::TlsTrustDecision::AcceptOnce) {
-            cur_.accepted_once = true;
         }
-        trust_->answer(p, d);
         // Rejected: keep the session closed instead of reconnecting into the
         // same question (after the I/O thread has had its answer).
         if (d == tn5250::TlsTrustDecision::Reject) {
@@ -1596,84 +1614,19 @@ int g_qt_argc = 1;
 
 // --- Can Qt start? ---------------------------------------------------------
 //
-// Without a usable platform plugin (no DISPLAY or WAYLAND_DISPLAY, a
-// display that cannot be reached, a bad QT_QPA_PLATFORM) the QGuiApplication
+// Without a usable platform plugin (a display that cannot be reached, a bad
+// QT_QPA_PLATFORM, no X11 display and no Wayland socket) the QApplication
 // constructor does not fail: it calls qFatal, which ends the process with
-// abort() (documented: QGuiApplication, "-platform"; qFatal). Qt offers no
-// way to ask first, so a child process tries it and reports back.
+// abort() (documented: QGuiApplication, "-platform"; qFatal). An unset
+// WAYLAND_DISPLAY is not enough for that: Qt's wayland plugin then connects
+// to the default socket, wayland-0 in XDG_RUNTIME_DIR (observed). Qt offers
+// no way to ask first, so while the constructor runs a message handler
+// collects Qt's messages and, on the fatal one, reports them and leaves
+// with _exit(2): no abort(), no core dump. Nothing needs cleaning up at that
+// point (no emulator, no files open for writing).
 
-int g_probe_fd = -1;
-
-void probe_write(const char* p, size_t n) {
-    while (n > 0) {
-        const ssize_t w = ::write(g_probe_fd, p, n);
-        if (w < 0 && errno == EINTR) continue;
-        if (w <= 0) return;
-        p += w;
-        n -= size_t(w);
-    }
-}
-
-// The child's Qt messages go to the parent, one per NUL-terminated string;
-// the fatal one ends the child without abort() (no core dump).
-void probe_message(QtMsgType type, const QMessageLogContext&, const QString& text) {
-    const QByteArray utf8 = text.toUtf8();
-    probe_write(utf8.constData(), size_t(utf8.size()) + 1);
-    if (type == QtFatalMsg) ::_exit(1);
-}
-
-// False, with Qt's own messages in `detail`, when a QGuiApplication cannot
-// be constructed in this environment.
-bool qt_platform_starts(std::string& detail) {
-    int fds[2];
-    if (::pipe(fds) != 0) return true;   // cannot tell: let Qt try
-    const pid_t pid = ::fork();
-    if (pid < 0) {
-        ::close(fds[0]);
-        ::close(fds[1]);
-        return true;
-    }
-    if (pid == 0) {
-        // The child has this thread only; it touches nothing of the
-        // emulator and leaves with _exit.
-        ::close(fds[0]);
-        ::fcntl(fds[1], F_SETFD, FD_CLOEXEC);
-        g_probe_fd = fds[1];
-        struct rlimit no_core = {0, 0};
-        ::setrlimit(RLIMIT_CORE, &no_core);
-        qInstallMessageHandler(probe_message);
-        new QGuiApplication(g_qt_argc, g_qt_argv);
-        ::_exit(0);
-    }
-    ::close(fds[1]);
-    std::string messages;
-    char buf[512];
-    for (;;) {
-        const ssize_t n = ::read(fds[0], buf, sizeof buf);
-        if (n < 0 && errno == EINTR) continue;
-        if (n <= 0) break;
-        messages.append(buf, size_t(n));
-    }
-    ::close(fds[0]);
-    int status = 0;
-    while (::waitpid(pid, &status, 0) < 0 && errno == EINTR) {
-    }
-    if (WIFEXITED(status) && WEXITSTATUS(status) == 0) return true;
-    // One line: the messages, blank-separated.
-    detail.clear();
-    bool gap = false;
-    for (char c : messages) {
-        if (c == '\0' || c == '\n' || c == '\r' || c == ' ' || c == '\t') {
-            gap = !detail.empty();
-        } else {
-            if (gap) detail += ' ';
-            gap = false;
-            detail += c;
-        }
-    }
-    if (detail.empty()) detail = "the platform plugin ended the process";
-    return false;
-}
+std::string g_startup_messages;   // Qt's messages while the platform starts
+QtMessageHandler g_previous_handler = nullptr;
 
 std::string no_display_error(const std::string& detail) {
     auto env = [](const char* name) {
@@ -1682,6 +1635,24 @@ std::string no_display_error(const std::string& detail) {
     };
     return "Qt cannot open a display (" + env("WAYLAND_DISPLAY") + ", " + env("DISPLAY") + ", " +
            env("QT_QPA_PLATFORM") + "): " + detail;
+}
+
+void startup_message(QtMsgType type, const QMessageLogContext& context, const QString& text) {
+    if (type != QtFatalMsg) {
+        // Shown as usual (a theme warning, say), and kept for the error.
+        if (!g_startup_messages.empty()) g_startup_messages += ' ';
+        g_startup_messages += text.simplified().toStdString();
+        if (g_previous_handler) g_previous_handler(type, context, text);
+        else std::fprintf(stderr, "%s\n", text.toLocal8Bit().constData());
+        return;
+    }
+    // One line: the messages before it and the fatal one.
+    std::string detail = g_startup_messages;
+    if (!detail.empty()) detail += ' ';
+    detail += text.simplified().toStdString();
+    std::fprintf(stderr, "em34xx-qt: %s\n", no_display_error(detail).c_str());
+    std::fflush(stderr);
+    ::_exit(2);
 }
 
 // The log levels: "info", or EM34XX_LOG (the same spec as --log, e.g.
@@ -1736,16 +1707,15 @@ bool qt_prepare(int argc, char** argv, QtLaunch& launch) {
         return false;
     }
 
-    std::string detail;
-    if (!qt_platform_starts(detail)) {
-        std::fprintf(stderr, "em34xx-qt: %s\n", no_display_error(detail).c_str());
-        launch.exit_code = 2;
-        return false;
-    }
     QApplication::setApplicationName(QStringLiteral("em34xx"));
     QApplication::setApplicationVersion(QStringLiteral(EM34XX_VERSION_STRING));
     QApplication::setDesktopFileName(QStringLiteral("em34xx"));
+    // A platform that cannot start ends the program here, with exit code 2
+    // (startup_message).
+    g_startup_messages.clear();
+    g_previous_handler = qInstallMessageHandler(startup_message);
     launch.qapp = std::make_unique<QApplication>(g_qt_argc, g_qt_argv);
+    qInstallMessageHandler(g_previous_handler);
     // The window icon is built in, so it shows without an installed icon
     // theme: em34xxw's pixel art, each size its own drawing or a whole-number
     // enlargement (tools/gen_linux_assets.py).

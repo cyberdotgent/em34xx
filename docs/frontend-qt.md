@@ -54,17 +54,21 @@ As em34xxw's ("Start-up" in [frontend-win32.md](frontend-win32.md)):
    the developer build, `em34xx`). Anything else is an error, exit code 2.
    Qt gets the program name only: its own options (`-platform`, `-style`)
    are set through the environment (`QT_QPA_PLATFORM`, `QT_STYLE_OVERRIDE`).
-2. **The display.** Without a usable platform plugin (no `WAYLAND_DISPLAY`
-   or `DISPLAY`, a display that cannot be reached, a bad
-   `QT_QPA_PLATFORM`) the `QGuiApplication` constructor does not return an
-   error: it calls `qFatal`, which ends the process with `abort()`
-   (documented: QGuiApplication, qFatal). Qt has no call that asks first, so
-   a child process constructs a `QGuiApplication` and exits; its message
-   handler sends Qt's messages back through a pipe and leaves with `_exit`
-   on the fatal one, so nothing aborts and nothing dumps core. If the child
-   fails, the error (with the three environment variables) goes to standard
-   error and the program ends with exit code 2. The cost is that the
-   platform plugin is initialised twice on every start.
+2. **The display.** Without a usable platform plugin (a display that
+   cannot be reached, a bad `QT_QPA_PLATFORM`, no X11 display and no
+   Wayland socket) the `QApplication` constructor does not return an error:
+   it calls `qFatal`, which ends the process with `abort()` (documented:
+   QGuiApplication, qFatal). An unset `WAYLAND_DISPLAY` is not enough for
+   that: Qt's wayland plugin then connects to the default socket,
+   `wayland-0` in `XDG_RUNTIME_DIR` (observed). Qt has no call that asks
+   first, so while the constructor runs a message handler collects Qt's
+   messages (passing the others on, a theme warning say) and on the fatal
+   one writes them, with the three environment variables, to standard error
+   and leaves with `_exit(2)`: nothing aborts and nothing dumps core.
+   Nothing needs cleaning up at that point: no emulator runs and no file is
+   open for writing. The platform starts once per run (the first slice
+   tried it in a forked child first, which connected to the compositor
+   twice on every start).
 3. The user folder (below) is created if needed and `settings.toml` read.
 4. The terminal starts as the profile that will be opened describes it,
    else as the first model whose ROM images are there; a profile for a
@@ -129,6 +133,9 @@ key belongs to the terminal.
 - **Zoom** sizes the picture area to the presented frame times the zoom in
   logical pixels (the desktop's scale factor applies, as DPI/96 does on
   Windows), shrunk to the screen when it does not fit.
+- **Text from files** (profile names, host names, paths) is shown as
+  plain text: labels and message boxes use `Qt::PlainText`, and the session
+  tooltips are escaped, so a name containing markup shows as written.
 - **Help > Show Log File** opens the log in the desktop's text viewer
   (em34xxw selects it in Explorer); **Open User Folder** opens the file
   manager.
@@ -150,7 +157,13 @@ The trust prompts never open over another dialog
 (`QApplication::activeModalWidget()`): the request waits with the orb
 orange until it has closed. Disconnect, a new connection and Exit answer a
 waiting request with Stop; while sessions are closed a new request is
-refused (the trust queue drains, as in em34xxw).
+refused (the trust queue drains, as in em34xxw). A session waits ten
+minutes for an answer and is then refused; an answer given after that
+changes nothing (Trust Permanently does not pin the certificate, and a
+message says the connection was refused; read, not run: no test waits the
+ten minutes). em34xxw's queue has the same
+structure and still records such a late Trust Permanently in the profile
+(read, not run).
 
 **File association**: Settings > "Open .em34xx files with em34xx-qt..."
 asks first, then writes, for the user only, the file type
@@ -221,7 +234,10 @@ Qt's `offscreen` platform in a temporary user folder (and temporary
 that also runs inside modal dialogs: each step waits for a window or
 dialog, checks it, and clicks or fills it as a user would. `ctest -L qt`
 runs the scenarios; they need the 3477 ROM images in `roms/`, like the ROM
-smoke tests. `em34xx_qt_gui_test SCENARIO roms/ SHOT_DIR` also saves a
+smoke tests, so CI (which has no ROM images) builds the test but does not
+run it. Debug builds compile the front end with `_GLIBCXX_ASSERTIONS`, as
+distributions' package builds do, so a violated standard-library
+precondition aborts the test instead of passing unseen. `em34xx_qt_gui_test SCENARIO roms/ SHOT_DIR` also saves a
 screenshot of each screen.
 
 | Scenario | What |
@@ -230,18 +246,22 @@ screenshot of each screen.
 | `profiles` | Connect to Profile at start; New (name prompt, editor), Copy, Delete (asked); Connect (title, status bar, POST); Connection Settings marks the profile modified, Save clears it; Settings, Keymap and Key Mapping (Ctrl+F5 captured from a synthetic key event with its XKB keycode), About and its notices, ROM Images; the file association (desktop entry and file type written); Zoom; Disconnect turns the button into Reconnect; Exit writes the profile, NVRAM, keymap and window placement |
 | `foreign` | a profile from outside the profiles folder: the question names the host and "TLS, certificate NOT VERIFIED", No is the default and leaves the terminal idle |
 | `trust` | two local `openssl s_server`s: a self-signed certificate brings Untrusted Certificate (the orb orange meanwhile), Trust Permanently pins it in the saved profile; an expired one brings Certificate Not Valid with Connect Anyway disabled, and Cancel holds the session (no second prompt). Skipped without the `openssl` command |
+| `placement` | a saved window exactly as wide as the screen's available area is restored at its size, at the screen's edge (an inverted `std::clamp` range aborted every start under `_GLIBCXX_ASSERTIONS`) |
 | `burn-in` | hyper burn-in for some seconds, Replace CRT (asked), Burn-in Off saved; `tube.burn` written |
 
 Facts and their standing:
 
-- observed (2026-11-25, Fedora 45, Qt 6.11.2, `offscreen` platform): all
-  five scenarios above pass, and their screenshots were looked at.
+- observed (2026-11-25 and 26, Fedora 45, Qt 6.11.2, `offscreen` platform):
+  all six scenarios above pass, and their screenshots were looked at.
+- observed (2026-11-26, same system): with `QT_QPA_PLATFORM=bogus`, with
+  `xcb` and `DISPLAY=:97`, with `wayland` and no socket, and with no display
+  variables and an empty `XDG_RUNTIME_DIR`, the program writes Qt's reason
+  on one line and ends with exit code 2, without `abort()` or a core dump.
 - observed (earlier slice, Fedora 45, GNOME, Qt 6.11.2): the window, menus,
   picture and status bar on the `wayland` and `xcb` platforms; the style is
   Fusion and, on Wayland, the frame is drawn by Qt's Adwaita decoration
   plugin. SIGINT and SIGTERM end the program with exit code 0 and the
-  NVRAM written; a missing display is reported with exit code 2 without
-  `abort()`.
+  NVRAM written.
 - not tested: this version on a real display (Wayland or X11) by hand,
   among it typing into a session, the toolbar at other scale factors,
   window placement on X11, Show Log File and Open User Folder with a real
