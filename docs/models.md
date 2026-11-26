@@ -16,6 +16,10 @@ firmware reads, the ROM set, and what the unit announces to its host.
 `em34xx --list-models` prints the same from the code (`ModelInfo::variants`
 in `src/machine/model_info.hpp`, filled in by each model).
 
+The 3483's straps byte is the code its monitor's sense lines give (`44`,
+the colour class; `--straps 51` selects the monochrome class). Its
+hardware and bring-up state are in `docs/bringup-3483.md`.
+
 ## One monochrome unit, whatever the tube
 
 A monochrome variant is **one** unit. Its tube (the **phosphor**: green,
