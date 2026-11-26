@@ -17,10 +17,12 @@ set(allowed_models ${emu} input hw models)
 # interface (tn5250/session_api.hpp); em34xx_host does not link the client.
 set(allowed_host ${emu} host tn5250/session_api.hpp)
 set(allowed_tn5250 ${emu} net host tn5250)
+# TN3270 reuses the TN5250 telnet codec and transport.
+set(allowed_tn3270 ${emu} net host tn5250 tn3270)
 set(allowed_bridge ${emu} host tn5250)
 set(allowed_present ${emu} present)
 # The runtime: everything an end-user GUI build links. No monitor, no GDB.
-set(app_layer ${emu} input hw models host tn5250 present config app)
+set(app_layer ${emu} input hw models host tn5250 tn3270 present config app)
 set(allowed_config ${app_layer})
 set(allowed_app ${app_layer} frontend/frontend.hpp)
 # Front ends see the runtime (Application, HostLink, everything it links:

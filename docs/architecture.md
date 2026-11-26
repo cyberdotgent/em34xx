@@ -33,6 +33,7 @@ em34xx_emu        util, cpu, bus, rom, machine   (Machine, Emulator, Cpu, interf
   ^-- em34xx_host       host (minus the bridge)  Twinax hosts, workstation controller
   |     ^-- em34xx_tn5250   tn5250 (+ net)       TN5250 client, TLS
   |     ^-- em34xx_bridge   host/twinax/wsc/tn5250_bridge  controller + TN5250 sessions
+  |     ^-- em34xx_tn3270   tn3270 (+ tn5250 telnet/transport)  3270 data stream, TN3270 client
   ^-- em34xx_present    present                  CRT rendering, display profiles
 em34xx_runtime    config, app                    Application, HostLink  (-> machines, bridge, present)
   ^-- em34xx_devtools   monitor, gdb, devtools   monitor, replxx console, GDB stub, probes
