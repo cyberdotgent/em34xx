@@ -43,7 +43,6 @@ constexpr uint32_t kSramBase = 0x40000, kSramSize = 0x10000;   // battery-backed
 // class 1 (the monochrome table). Which code the 3483's own tube gives is
 // a hypothesis; --straps selects another.
 constexpr uint8_t kSenseType2 = 0x44;
-constexpr uint8_t kSenseType1 = 0x51;
 
 // Owns the board state the three register devices share and the keyboard;
 // a device only so the machine keeps them alive.
@@ -70,14 +69,13 @@ public:
         info_.max_printer_sessions = 0;
         // The ROM header names "3483 V00"; oec was tested with a 3483-V
         // (documented, oec README). Monochrome or colour is not known yet.
-        // A variant is the monitor attached to the logic unit: its strap
-        // byte is the sense code the monitor presents, as the 3487's straps
-        // are its tube. The firmware names only "3483 V00" and has no
-        // variant table, so the suffixes are the emulator's own.
+        // A logic unit with a VGA monitor (project owner), so colour only:
+        // the monochrome coax terminal is the 3472, with its own tube. The
+        // strap byte is the sense code the monitor presents. The firmware
+        // also knows a monochrome monitor class (types 1/3, sense 51), which
+        // stays reachable with --straps 51 but is drawn in colour.
         info_.variants = {
-            {"3483-V", "colour monitor (display type 2)", true, kSenseType2, "", {}, {}},
-            {"3483-VM", "monochrome monitor (display type 1)", false, kSenseType1, "",
-             {phosphor_green(), phosphor_amber(), phosphor_paper_white()}, {}},
+            {"3483-V", "colour (VGA monitor, display type 2)", true, kSenseType2, "", {}, {}},
         };
         info_.roms = {
             {"system ROM (80000-FFFFF, reset vector)", "06g5525.bin", 0x80000,
@@ -98,7 +96,9 @@ public:
             "cells (POST's blank test screen requires it); rows continue from the regen origin 0:1000 when their "
             "row-list entry has bit 7 set (hypotheses fitted to POST's video sense and the setup screens)",
             "monitor sense 44 (display type 2, colour class, the firmware's default for an unknown monitor) by default; "
-            "--straps 51 gives type 1 (monochrome class); the sense lines are pulled low by 5840E bits 12-15",
+            "--straps 51 gives type 1 (the monochrome class, drawn in colour); the sense lines are pulled low by 5840E "
+            "bits 12-15; colours are the shared terminal set (hw/terminal_colours.hpp), the drive table only feeds POST's "
+            "video sense",
             "keyboard: the 122-key keyboard on serial channel A (POST resets it, reads ID BF BF, selects set 3) "
             "(observed dialogue; the channel is a hypothesis)",
             "ROM 06G5525 (U24, AM27C400), linear at 80000-FFFFF; per-segment checksums 1234/5678/9ABC/DEF0 "
@@ -126,7 +126,6 @@ public:
         const uint8_t sense = opt.straps >= 0 ? uint8_t(opt.straps) : variant.straps;
         auto& board = m.add_device<BoardHolder>(bus, cpu_io, info_.clock_hz, sense);
         Board3483::Display& disp = m.add_device<Board3483::Display>(board.board);
-        disp.set_colour(variant.colour);
         Board3483::Coax& coax = m.add_device<Board3483::Coax>(board.board);
         Board3483::System& sys = m.add_device<Board3483::System>(board.board);
         m.add_device<Board3483::Window>(board.board);

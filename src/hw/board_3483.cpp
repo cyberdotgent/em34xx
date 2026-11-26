@@ -5,6 +5,7 @@
 
 #include "bus/bus.hpp"
 #include "hw/i80186_peripherals.hpp"
+#include "hw/terminal_colours.hpp"
 #include "input/set3_keyboard.hpp"
 #include "util/log.hpp"
 #include "util/strings.hpp"
@@ -204,8 +205,9 @@ uint32_t Board3483::Display::row_address(unsigned row) const {
 //    the 3279 base colours: blue (protected), red (high), green, white
 //    (protected and high).
 //  - The colour index selects a level per gun from the table at 58040-6F
-//    (gun 0 at 58040: blue; 58050: red; 58060: green) [observed: table
-//    contents]. Index 0 is the background.
+//    [observed: table contents], which POST's video sense measures; the
+//    picture draws the index with the shared terminal colours. Index 0 is
+//    the background.
 struct Board3483::Display::FieldState {
     bool nondisplay = false;
     bool high = false;
@@ -315,9 +317,6 @@ std::string Board3483::Display::describe() const {
 
 void Board3483::Display::render(Framebuffer& fb) {
     // 9 dots per cell [hypothesis], cell height from +0A; see cell_dots().
-    // Each dot is the level of its colour index for each gun; a monochrome
-    // tube shows the levels as brightness, the presentation adds the
-    // phosphor.
     const unsigned cols = columns(), nrows = rows(), cell_h = cell_height();
     const unsigned cell_w = 9;
     fb.width = int(cols * cell_w);
@@ -326,15 +325,13 @@ void Board3483::Display::render(Framebuffer& fb) {
     fb.pixels.assign(size_t(fb.width) * size_t(fb.height), 0xFF000000u);
     const bool video_on = board_.coax_ && (board_.coax_->reg(0x10) & 1);
     if (!video_on) return;
+    // The shades are the shared terminal colours (the owner compared photos
+    // of a 3483 with the colour 5250 units); the colour number is 3270's.
+    static constexpr uint32_t kColour[8] = {colours::kGreen, colours::kBlue,      colours::kRed,
+                                            colours::kPink,  colours::kGreen,     colours::kTurquoise,
+                                            colours::kYellow, colours::kWhite};
     uint32_t colour_of[16];
-    for (unsigned i = 0; i < 16; ++i) {
-        auto lift = [](uint8_t v) { return uint32_t(v <= kBlackLevel ? 0 : v); };
-        const uint32_t b = lift(level(0, i)), rr = lift(level(1, i)), g = lift(level(2, i));
-        // A monochrome monitor gets one signal; the class-1 table drives all
-        // three alike [observed], and the presentation applies the phosphor.
-        const uint32_t y = std::max(rr, std::max(g, b));
-        colour_of[i] = colour_ ? (0xFF000000u | rr << 16 | g << 8 | b) : (0xFF000000u | y << 16 | y << 8 | y);
-    }
+    for (unsigned i = 0; i < 16; ++i) colour_of[i] = kColour[i & 7];
     FieldState f = initial_field();
     for (unsigned r = 0; r < nrows; ++r) {
         const uint32_t start = row_address(r);

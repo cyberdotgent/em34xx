@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "hw/display_controller.hpp"
 
+#include "hw/terminal_colours.hpp"
+
 #include "hw/aux_port.hpp"
 
 #include "hw/i2c.hpp"
@@ -50,19 +52,8 @@ constexpr uint8_t kDimData = 0x80;
 constexpr uint64_t kRefreshHz = 60;
 constexpr uint32_t kBlinkFrames = 32;      // half period of character blink
 
-constexpr uint32_t kBlack = 0xFF000000u;
-// 5250 colour set.
-constexpr uint32_t kGreen = 0xFF20E040u;
-constexpr uint32_t kWhite = 0xFFF0F0F0u;
-constexpr uint32_t kRed = 0xFFF03030u;
-constexpr uint32_t kTurquoise = 0xFF30E0E0u;
-constexpr uint32_t kYellow = 0xFFF0F040u;
-constexpr uint32_t kPink = 0xFFF070D0u;
-constexpr uint32_t kBlue = 0xFF5878FFu;
-// Monochrome intensities as grey levels; the display profile tints them.
-// Normal intensity is close to full brightness on a real tube (photos).
-constexpr uint32_t kGreyNormal = 0xFFD0D0D0u;
-constexpr uint32_t kGreyBright = 0xFFFFFFFFu;
+// The shared colour set (hw/terminal_colours.hpp).
+using namespace colours;
 
 struct CellLook {
     uint32_t fg = kGreyNormal;
