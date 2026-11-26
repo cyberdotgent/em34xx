@@ -55,7 +55,7 @@ struct Rig {
     }
     Framebuffer shot() {
         Framebuffer fb;
-        display.render(fb);
+        display.draw(fb);
         return fb;
     }
     static uint32_t px(const Framebuffer& fb, unsigned x, unsigned y) { return fb.pixels[size_t(y) * fb.width + x]; }
@@ -71,6 +71,14 @@ TEST_CASE("3483 display geometry follows the mode registers") {
     CHECK(r.display.cell_height() == 18);
     Framebuffer fb = r.shot();
     CHECK(fb.width == 720);
+    {
+        // Presented as the 5250 colour units: two pixels per dot, 4:3, bordered.
+        Framebuffer shown;
+        r.display.render(shown);
+        CHECK(shown.width == 1440);
+        CHECK(shown.pixels_per_dot == 2);
+        CHECK(shown.border_x > 0.0);
+    }
     CHECK(fb.height == 25 * 18);   // with the status row
 
     // 32x80 (record 1) and 27x132 (record 6).
