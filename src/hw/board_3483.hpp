@@ -186,7 +186,13 @@ private:
     struct Channel {
         bool armed = false;
         uint16_t data = 0xFFFF;
+        uint16_t control = 0;
+        uint16_t drive = 0xFFFF;  // last word written to the data register
+        uint16_t shift = 0;      // frame bits received from the lines so far
+        unsigned bits = 0;
     };
+    void control_write(unsigned channel, uint16_t value);
+    void frame_received(unsigned channel, uint16_t frame);
     std::array<Channel, 2> channels_{};
 };
 

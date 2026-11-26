@@ -471,6 +471,14 @@ uint16_t Board3483::System::read_word(unsigned off) const {
     switch (off) {
     case 0x08: return channels_[0].data;
     case 0x12: return channels_[1].data;
+    case 0x06:
+    case 0x10: {
+        // Control read: bit 6 is the data line, driven from data register
+        // bit 10; the clock line (bit 5) is not driven and reads low
+        // [observed: POST tests 14/15, C000:B537-B59C].
+        const Channel& ch = channels_[off == 0x06 ? 0 : 1];
+        return uint16_t((ch.control & ~0x0060) | (ch.drive & 0x0400 ? 0x0040 : 0));
+    }
     case 0x0E: return sense();
     default: return regs_[off >> 1];
     }
@@ -481,14 +489,52 @@ void Board3483::System::write_word(unsigned off, uint16_t value) {
     regs_[off >> 1] = value;
     switch (off) {
     case 0x06:
-    case 0x10:
-        // Write 4: arm the channel's receiver [observed].
-        if (value & 0x0004) channels_[off == 0x06 ? 0 : 1].armed = true;
-        break;
-    case 0x08: channels_[0].data = value; break;
-    case 0x12: channels_[1].data = value; break;
+    case 0x10: control_write(off == 0x06 ? 0 : 1, value); break;
+    case 0x08: channels_[0].data = channels_[0].drive = value; break;
+    case 0x12: channels_[1].data = channels_[1].drive = value; break;
     default: break;
     }
+}
+
+// Serial channel control (58406 for A, 58410 for B) [observed: POST tests
+// 12/13, C000:B3AB-B46F]: bit 2 arms the receiver; with bit 7 set the CPU
+// drives the lines itself, bit 6 = data, bit 5 = clock, and the receiver
+// takes the data line on each falling clock edge, least significant bit
+// first. After 11 bits (start, 8 data, parity, stop) the frame shifted
+// right by one (data in bits 0-7, parity bit 8, stop bit 9) is latched in
+// the data register and the channel interrupts [observed: 074A -> 03A5].
+void Board3483::System::control_write(unsigned channel, uint16_t value) {
+    Channel& ch = channels_[channel & 1];
+    const uint16_t old = ch.control;
+    ch.control = value;
+    // Arming starts a new frame, and so does the CPU taking the lines; the
+    // write that does so is not a clock edge [observed: POST re-arms with
+    // the clock line dropping between its two test frames].
+    const bool arming = (value & 0x0004) && !ch.armed;
+    if (value & 0x0004) ch.armed = true;
+    if (!(value & 0x0080)) return;
+    if (arming || !(old & 0x0080)) {
+        ch.shift = 0;
+        ch.bits = 0;
+        return;
+    }
+    const bool falling = (old & 0x0020) && !(value & 0x0020);
+    if (!falling) return;
+    if (value & 0x0040) ch.shift |= uint16_t(1u << ch.bits);
+    if (++ch.bits == 11) {
+        frame_received(channel, ch.shift);
+        ch.shift = 0;
+        ch.bits = 0;
+    }
+}
+
+void Board3483::System::frame_received(unsigned channel, uint16_t frame) {
+    Channel& ch = channels_[channel & 1];
+    ch.data = uint16_t(frame >> 1);
+    if (!ch.armed) return;
+    ch.armed = false;
+    if ((channel & 1) == 0) board_.raise1(0x0010);
+    else board_.raise2(0x8000);
 }
 
 bool Board3483::System::receive(unsigned channel, uint8_t byte) {
@@ -496,10 +542,9 @@ bool Board3483::System::receive(unsigned channel, uint8_t byte) {
     if (!ch.armed) return false;
     bool odd = false;
     for (uint8_t b = byte; b; b &= uint8_t(b - 1)) odd = !odd;
-    ch.data = uint16_t(byte | (odd ? 0 : 0x100));   // odd parity over data + bit 8
-    ch.armed = false;
-    if (channel == 0) board_.raise1(0x0010);
-    else board_.raise2(0x8000);
+    // start 0, data, odd parity over data + parity, stop 1
+    const uint16_t frame = uint16_t((byte << 1) | (odd ? 0 : 0x200) | 0x400);
+    frame_received(channel, frame);
     return true;
 }
 
