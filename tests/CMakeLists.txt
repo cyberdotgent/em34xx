@@ -75,6 +75,14 @@ if(EXISTS "${PROJECT_SOURCE_DIR}/roms/65f2995.bin" AND EXISTS "${PROJECT_SOURCE_
   set_tests_properties(rom_3477_fc_smoke PROPERTIES LABELS "rom")
 endif()
 
+# TN3270 (src/tn3270): the 3270 data stream.
+add_executable(em34xx_tn3270_tests
+  unit_main.cpp
+  test_tn3270_datastream.cpp
+)
+target_link_libraries(em34xx_tn3270_tests PRIVATE em34xx_tn3270 em34xx_warnings doctest::doctest)
+add_test(NAME tn3270 COMMAND em34xx_tn3270_tests)
+
 # TN5250 client (src/tn5250): negotiation, data stream, field editing.
 add_executable(em34xx_tn5250_tests
   unit_main.cpp
