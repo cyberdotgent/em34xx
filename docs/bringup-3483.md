@@ -307,9 +307,37 @@ and is written to both copies (observed). After a reboot with the same
 
 ## Display test
 
-"Test display station" in Offline Setup starts with a page that shows only
-the hardware cursor at row 13, column 9 (`58010` = `0D09`, `5801C` =
-`1080`) (observed in emulation). Later pages were not reached.
+"Test display station" in Offline Setup (state `[06FC]` = 92h) builds its
+pattern in the coax buffer (`0:C000`) and has the memory engine copy it to
+the regen buffer: engine commands `C1` (copy) and `F1` (search) (observed).
+`58110` bits 5-3 are the operation and bit 6 is a flag. The runtime sets
+bit 6 in state 92h and on request (F000:BBA3), and reads the results the
+same either way. So it is modelled as leaving the data unchanged
+(hypothesis: timing). Until this was fixed, the test showed only the
+cursor at row 13, column 9, which looked like a hang.
+
+The page shows (observed in emulation):
+- the model (3483);
+- the ROM part number (`06G5525`);
+- digits and letters;
+- colour bars (blue, blinking red, reverse pink, green underscored,
+  turquoise, yellow, white);
+- line samples.
+
+The test loads its own glyphs into A0-AB (A-L) of the base set by
+decompressing patches with the boot-time decompressor (svc_049). They are a
+cell-edge glyph, stripes every third and every second dot, a centre line
+and a diagonal (observed in the data). Everything showing A-L, the status
+row's SETUP included, shows these glyphs while the test runs. Reset leaves
+the test: the base set is decompressed again and the state becomes 10h.
+
+The search (op 30) stops at a field attribute (character byte C0-FF), or
+ends count cells back when there is none. That is how the runtime's field
+lookup at F000:BAAD reads its result (observed). POST's check fits it too.
+
+Other accesses seen during the test, not modelled (open): writes of
+`5A`/`A5` and `55`/`AA` to `9A000-9A001` (ROM space, a RAM probe), and
+zeros to `62000-620FF` (unmapped).
 
 ## Open questions
 

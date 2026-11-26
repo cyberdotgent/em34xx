@@ -373,10 +373,19 @@ void Board3483::Coax::run_engine(uint16_t command) {
     //  - 00: copy words unchanged [observed: runtime copies 7000 -> 1000];
     //  - 08: copy, keeping the character byte and clearing the attribute
     //    byte (38A0 -> 00A0);
-    //  - 30: search backward from 58118 for a cell whose attribute byte has
-    //    bit 5 clear, leaving 58118 at it [hypothesis for the criterion].
+    //  - 30: search backward from 58118 for a field attribute (character
+    //    byte C0-FF), leaving 58118 at it, or count cells back when there is
+    //    none [observed: the runtime's field lookup, F000:BAAD, reads the
+    //    cell at 58118 as the field attribute when its character is C0-FF
+    //    and takes "start - 2 * count" as no field; POST's check, a CA
+    //    among 20 cells, fits].
+    // Bits 5-3 are the operation. Bit 6 is a flag the runtime sets during
+    // the display test (state 92) and on request; the firmware reads the
+    // results the same with it set, so it is taken to leave the data
+    // unchanged [hypothesis: timing, e.g. waiting for blanking]. Bit 0 is
+    // video on.
     Bus& bus = board_.bus_;
-    const uint16_t op = command & 0x78;
+    const uint16_t op = command & 0x38;
     uint16_t src = regs_[0x18 >> 1], dst = regs_[0x1A >> 1];
     const uint16_t count = regs_[0x1C >> 1];
     if (op == 0x00) {
@@ -391,7 +400,7 @@ void Board3483::Coax::run_engine(uint16_t command) {
         }
     } else if (op == 0x30) {
         for (uint16_t i = 0; i < count; ++i, src -= 2)
-            if (!(bus.peek8(uint32_t(src) + 1) & 0x20)) break;
+            if ((bus.peek8(src) & 0xC0) == 0xC0) break;
         regs_[0x18 >> 1] = src;
     } else {
         LOG_WARN("coax", "memory engine command %04x is not modelled (from %04x to %04x, %u words)", command, src,

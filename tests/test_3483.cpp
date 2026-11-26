@@ -216,3 +216,37 @@ TEST_CASE("3483 alarm and clicker on 58402") {
     CHECK(sink.clicks == 1);
     CHECK(sink.tones_on == 2);
 }
+
+TEST_CASE("3483 memory engine: bit 6 leaves the operation, search finds the field attribute") {
+    Rig r;
+    // Copy (op 00) with bit 6 set, as the display test starts it (C1): the
+    // coax buffer's top-left cell to the regen buffer.
+    r.bus.poke8(0xC0A0, 0xA0);
+    r.bus.poke8(0xC0A1, 0x20);
+    r.w16(0x5811C, 1);
+    r.w16(0x58118, 0xC0A0);
+    r.w16(0x5811A, 0x1000);
+    r.w16(0x58110, 0x00C1);
+    CHECK(r.bus.peek8(0x1000) == 0xA0);
+    CHECK(r.bus.peek8(0x1001) == 0x20);
+    CHECK((r.bus.mem_read16(0x58110) & 0x80) == 0);
+
+    // Search (op 30, F1 with bit 6): back to the nearest field attribute,
+    // a character C0-FF, whatever its attribute byte.
+    for (uint32_t a = 0xC000; a < 0xC010; a += 2) {
+        r.bus.poke8(a, 0x20);
+        r.bus.poke8(a + 1, 0x00);
+    }
+    r.bus.poke8(0xC004, 0xE8);
+    r.bus.poke8(0xC005, 0x20);
+    r.w16(0x5811C, 8);
+    r.w16(0x58118, 0xC00E);
+    r.w16(0x58110, 0x00F1);
+    CHECK(r.bus.mem_read16(0x58118) == 0xC004);
+    // None in range: the pointer ends count cells back (the firmware's
+    // "no field" test, F000:BB28).
+    r.bus.poke8(0xC004, 0x20);
+    r.w16(0x58118, 0xC00E);
+    r.w16(0x58110, 0x00B0);
+    CHECK(r.bus.mem_read16(0x58118) == uint16_t(0xC00E - 2 * 8));
+}
