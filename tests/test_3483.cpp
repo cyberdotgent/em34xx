@@ -181,3 +181,30 @@ TEST_CASE("3483 rule line and Black-On-White") {
     fb = r.shot();
     CHECK(Rig::px(fb, 100, 100) != colours::kBlack);
 }
+
+namespace {
+struct RecordingSink : AudioSink {
+    int tones_on = 0, tones_off = 0, clicks = 0;
+    void tone(bool on, double) override { (on ? tones_on : tones_off)++; }
+    void speaker(bool) override {}
+    void click() override { ++clicks; }
+};
+} // namespace
+
+TEST_CASE("3483 alarm and clicker on 58402") {
+    Rig r;
+    RecordingSink sink;
+    r.system.set_audio(&sink);
+    r.w16(0x58402, 0x809B);   // reset: the alarm sounds...
+    CHECK(sink.tones_on == 1);
+    r.w16(0x58402, 0x8000);   // ...until the early checks pass
+    CHECK(sink.tones_off == 1);
+    r.w16(0x58402, 0x8085);   // the alarm at a setup level
+    r.w16(0x58402, 0x8005);
+    CHECK(sink.tones_on == 2);
+    CHECK(sink.tones_off == 2);
+    r.w16(0x58402, 0x8403);   // a click: bit 10 pulsed
+    r.w16(0x58402, 0x8003);
+    CHECK(sink.clicks == 1);
+    CHECK(sink.tones_on == 2);
+}

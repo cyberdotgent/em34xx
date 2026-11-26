@@ -205,6 +205,8 @@ public:
     // expects ID BF BF) [hypothesis for the channel].
     void attach_keyboard(Set3Keyboard* kbd, uint64_t clock_hz);
     void tick(uint64_t cycles) override;
+    // Where the alarm and the clicker go (58402).
+    void set_audio(AudioSink* audio) { audio_ = audio; }
 
 private:
     uint16_t read_word(unsigned offset) const;
@@ -223,6 +225,8 @@ private:
     };
     void control_write(unsigned channel, uint16_t value);
     void data_write(unsigned channel, uint16_t value);
+    void alarm_write(uint16_t value, uint16_t old);
+    AudioSink* audio_ = nullptr;
     Set3Keyboard* kbd_ = nullptr;
     uint64_t clock_hz_ = 1;
     uint64_t byte_cycles_ = 0;

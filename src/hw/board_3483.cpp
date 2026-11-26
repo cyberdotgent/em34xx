@@ -696,6 +696,7 @@ std::string Board3483::Coax::describe() const {
 Board3483::System::System(Board3483& board) : Device("system-3483"), board_(board) { board_.system_ = this; }
 
 void Board3483::System::reset() {
+    if (audio_ && (regs_[0x02 >> 1] & 0x0080)) audio_->tone(false, 0.0);
     regs_.fill(0);
     channels_ = {};
     tx_left_ = rx_left_ = hold_left_ = 0;
@@ -815,10 +816,32 @@ uint16_t Board3483::System::read_word(unsigned off) const {
     }
 }
 
+// 58402, the alarm [observed: svc_177 D000:3478 sounds the alarm with bit
+// 7 set and bits 6-0 = setup byte 3C7 (Display Setup's alarm volume, item
+// 28h) for 8 ticks, then clears bit 7; a keystroke click is bit 10 set and
+// cleared with bits 6-0 = setup byte 3C8 (the clicker volume, item 29h);
+// POST's beeps (C000:83CD) set bit 7 with a pattern byte; reset writes
+// 809B and the end of the early RAM and ROM checks 8000, so the alarm
+// sounds until they pass]. Bits 6-0 as volume is a hypothesis (the pitch
+// is not set anywhere: the sink's default); bit 15 is always set after the
+// checks (hypothesis: speaker enable).
+void Board3483::System::alarm_write(uint16_t value, uint16_t old) {
+    if ((value ^ old) & 0x0080) {
+        LOG_DEBUG("sound", "alarm %s (level %02X)", (value & 0x80) ? "on" : "off", value & 0x7F);
+        if (audio_) audio_->tone((value & 0x0080) != 0, 0.0);
+    }
+    if ((value & ~old) & 0x0400) {
+        LOG_TRACE("sound", "click (level %02X)", value & 0x7F);
+        if (audio_) audio_->click();
+    }
+}
+
 void Board3483::System::write_word(unsigned off, uint16_t value) {
     off &= 0xFE;
+    const uint16_t old = regs_[off >> 1];
     regs_[off >> 1] = value;
     switch (off) {
+    case 0x02: alarm_write(value, old); break;
     case 0x06:
     case 0x10: control_write(off == 0x06 ? 0 : 1, value); break;
     case 0x08: data_write(0, value); break;

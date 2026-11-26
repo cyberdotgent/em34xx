@@ -143,6 +143,7 @@ public:
         if (!load_keymap(opt.keymap, opt.shift_fkeys, *keymap, error)) throw std::runtime_error(error);
         board.keyboard->set_keymap(std::move(keymap));
         sys.attach_keyboard(board.keyboard.get(), info_.clock_hz);
+        sys.set_audio(&m.audio());
         m.set_keyboard(board.keyboard.get());
         bus.map_mmio("display", 0x58000, 0x100, &disp);
         bus.map_mmio("coax", 0x58100, 0x100, &coax);
