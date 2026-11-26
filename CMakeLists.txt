@@ -264,6 +264,7 @@ em34xx_library(em34xx_machines
   src/hw/twinax_engine.cpp
   src/hw/aux_port.cpp
   src/hw/i80186_peripherals.cpp
+  src/hw/board_3483.cpp
 )
 target_link_libraries(em34xx_machines PUBLIC em34xx_emu PRIVATE em34xx_tomlplusplus)
 
