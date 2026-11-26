@@ -250,6 +250,7 @@ em34xx_library(em34xx_machines
   src/models/registry.cpp
   src/models/parts.cpp
   src/models/model_3477.cpp
+  src/models/model_3472.cpp
   src/models/model_3483.cpp
   src/models/model_3486.cpp
   src/models/model_3489.cpp
