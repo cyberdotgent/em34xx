@@ -594,7 +594,7 @@ void profile_fill_models(HWND dlg, ProfileDlg& d, const std::string& select) {
         for (const ModelVariant& v : m->info().variants) {
             const bool ready = model_roms_ready(*m, d.dirs->roms(), &v);
             combo_add(dlg, IDC_PE_MODEL,
-                      "IBM " + v.id + " (" + v.description + (ready ? ")" : ", ROM images needed)"));
+                      "IBM " + v.id + " (" + variant_label(m->info(), v) + (ready ? ")" : ", ROM images needed)"));
             if (v.id == select) sel = int(d.choices.size());
             d.choices.push_back(TerminalChoice{m, &v, ready});
         }

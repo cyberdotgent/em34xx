@@ -43,4 +43,9 @@ const Phosphor* ModelVariant::phosphor(const std::string& wanted) const {
     return &phosphors.front();
 }
 
+std::string variant_label(const ModelInfo& model, const ModelVariant& variant) {
+    const char* protocol = model.line == LineKind::Coax ? "3270" : "5250";
+    return std::string(protocol) + ", " + variant.description;
+}
+
 } // namespace em34xx

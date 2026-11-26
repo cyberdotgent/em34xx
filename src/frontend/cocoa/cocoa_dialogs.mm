@@ -808,7 +808,7 @@ std::string tls_summary(const Profile& p, const AppSettings& s) {
         for (const ModelVariant& v : m->info().variants) {
             const bool ready = model_roms_ready(*m, _dirs->roms(), &v);
             NSMenuItem* item = [[NSMenuItem alloc]
-                initWithTitle:ns("IBM " + v.id + " (" + v.description + (ready ? ")" : ", ROM images needed)"))
+                initWithTitle:ns("IBM " + v.id + " (" + variant_label(m->info(), v) + (ready ? ")" : ", ROM images needed)"))
                        action:nil
                 keyEquivalent:@""];
             item.enabled = ready;

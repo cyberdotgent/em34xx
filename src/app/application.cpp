@@ -28,7 +28,7 @@ void list_models() {
         for (const ModelVariant& v : i.variants) {
             std::string tubes;
             for (const Phosphor& p : v.phosphors) tubes += (tubes.empty() ? "" : ", ") + p.id;
-            std::printf("         %-8s %s%s%s%s\n", v.id.c_str(), v.description.c_str(), tubes.empty() ? "" : "; phosphor ",
+            std::printf("         %-8s %s%s%s%s\n", v.id.c_str(), variant_label(i, v).c_str(), tubes.empty() ? "" : "; phosphor ",
                         tubes.c_str(), &v == &i.variants.front() ? " (default)" : "");
             if (!v.roms.empty()) {
                 std::string files;

@@ -93,4 +93,8 @@ struct ModelInfo {
     std::vector<std::string> notes;  // hypotheses and open questions
 };
 
+// What a front end shows for a variant: the terminal family's protocol and
+// the variant's description, "5250, colour" or "3270, monochrome".
+std::string variant_label(const ModelInfo& model, const ModelVariant& variant);
+
 } // namespace em34xx
