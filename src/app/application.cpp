@@ -271,7 +271,7 @@ bool Application::build_machine() {
     } else if (cfg_.twinax.host != TwinaxHostKind::None) {
         return fail(std::string("there is no controller for ") + line_kind_name(info.line) + " terminals in this build");
     } else {
-        host = std::make_unique<NullLineHost>(info.line);
+        host = make_null_line_host(info.line);
     }
     if (cfg_.twinax.host == TwinaxHostKind::Tn5250)
         for (const StationConfig& st : cfg_.twinax.effective_stations())
@@ -481,10 +481,7 @@ bool Application::rebuild(const Model& model, const TerminalOptions& options, st
     // (Between machines on the same kind of line; one for another line
     // stays behind and is destroyed with the old machine.)
     std::unique_ptr<LineHost> host = emu_->with_machine([](Machine& m) {
-        std::unique_ptr<LineHost> silent;
-        if (m.line() == LineKind::Twinax) silent = std::make_unique<NullTwinaxHost>();
-        else silent = std::make_unique<NullLineHost>(m.line());
-        return m.swap_line_host(std::move(silent));
+        return m.swap_line_host(make_null_line_host(m.line()));
     });
     if (host) machine->set_line_host(std::move(host));
     machine->reset();

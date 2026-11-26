@@ -75,7 +75,7 @@ public:
         // also knows a monochrome monitor class (types 1/3, sense 51), which
         // stays reachable with --straps 51 but is drawn in colour.
         info_.variants = {
-            {"3483-V", "colour (VGA monitor, display type 2)", true, kSenseType2, "", {}, {}},
+            {"3483-V", "colour", true, kSenseType2, "", {}, {}},
         };
         info_.roms = {
             {"system ROM (80000-FFFFF, reset vector)", "06g5525.bin", 0x80000,
@@ -127,6 +127,8 @@ public:
         auto& board = m.add_device<BoardHolder>(bus, cpu_io, info_.clock_hz, sense);
         Board3483::Display& disp = m.add_device<Board3483::Display>(board.board);
         Board3483::Coax& coax = m.add_device<Board3483::Coax>(board.board);
+        Machine* machine = &m;
+        coax.set_line([machine] { return machine->coax_host(); });
         Board3483::System& sys = m.add_device<Board3483::System>(board.board);
         m.add_device<Board3483::Window>(board.board);
 

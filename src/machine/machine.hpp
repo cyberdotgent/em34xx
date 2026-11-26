@@ -175,8 +175,10 @@ public:
         return line_ == LineKind::Twinax ? static_cast<TwinaxHost*>(line_host_.get()) : nullptr;
     }
     // The same as its coax interface; null on a machine with another line.
+    // (A host of the wrong kind is refused by set_line_host; the dynamic
+    // check guards the generic "no controller" host.)
     CoaxHost* coax_host() const {
-        return line_ == LineKind::Coax ? static_cast<CoaxHost*>(line_host_.get()) : nullptr;
+        return line_ == LineKind::Coax ? dynamic_cast<CoaxHost*>(line_host_.get()) : nullptr;
     }
 
     // The display device's raw frame; present/display_profile.hpp applies

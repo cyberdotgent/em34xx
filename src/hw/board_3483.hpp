@@ -19,6 +19,7 @@
 #pragma once
 
 #include "bus/device.hpp"
+#include "machine/coax_port.hpp"
 #include "machine/peripherals.hpp"
 
 #include <array>
@@ -136,6 +137,11 @@ private:
     Board3483& board_;
 };
 
+// The coax adapter (58100-5812F) with the board's two interrupt status
+// registers; see board_3483_coax.cpp. It decodes and answers the
+// controller's commands itself, as the firmware leaves it to (link mode),
+// and loops the firmware's own words through the same decoder in POST's
+// wrap modes.
 class Board3483::Coax : public Device {
 public:
     explicit Coax(Board3483& board);
@@ -145,27 +151,56 @@ public:
     void mmio_write16(uint32_t offset, uint16_t value) override;
     uint8_t peek8(uint32_t offset) override;
     void reset() override;
+    void tick(uint64_t cycles) override;
     std::string describe() const override;
     uint16_t reg(unsigned offset) const { return regs_[(offset & 0xFF) >> 1]; }
+
+    // The controller on the line (the machine's CoaxHost), looked up on
+    // every use: a connect swaps it.
+    void set_line(std::function<CoaxHost*()> line) { line_ = std::move(line); }
+
+    // One transmission from the controller: the reply words, or false when
+    // the terminal does not answer (an undefined command). Public for tests.
+    bool execute(const CoaxMessage& msg, CoaxMessage& reply);
 
 private:
     uint16_t read_word(unsigned offset, bool side_effects);
     void write_word(unsigned offset, uint16_t value);
-    void transmit(uint16_t word);
     void run_engine(uint16_t command);
-    uint32_t cell_address(uint16_t counter) const;
-    void store(uint16_t counter, uint8_t data);
-    uint8_t fetch(uint16_t counter) const;
+
+    // The decoder, one word at a time: begin() takes a command word,
+    // data() each data word after it; reply_ holds the words answered so far.
+    void begin(uint8_t cmd);
+    void data(uint8_t byte);
+    bool defined(uint8_t cmd) const;
+    uint16_t& counter(unsigned which) { return which == 2 ? addr2_ : addr_; }
+    uint32_t cell(unsigned which, uint16_t at) const;
+    uint8_t reg_byte(unsigned index) const;
+    void reply_byte(uint8_t byte);
+    void reply_poll();
+    // The adapter register's 16-bit view of a coax word (5810A / 58108).
+    static uint16_t to_register(CoaxWord w);
+    static CoaxWord from_register(uint16_t r);
+    void wrap_transmit(uint16_t reg_word);
 
     Board3483& board_;
+    std::function<CoaxHost*()> line_;
     std::array<uint16_t, 128> regs_{};
-    uint16_t addr_ = 0, addr2_ = 0;   // address counters (+04, +06)
-    uint16_t rx_ = 0;                 // +08
-    uint16_t tx_ = 0;                 // word written to +0A
-    bool lac_hi_ = false;
-    uint8_t lac_target_ = 0;          // which counter a LOAD ADDRESS COUNTER pair loads
-    uint16_t pending_cmd_ = 0;        // last command word, for the data word after it
-    uint8_t mask_ = 0;                // LOAD MASK: bits CLEAR and WRITE DATA leave alone
+    uint16_t addr_ = 0, addr2_ = 0;   // counter 1 (13 bits, display), counter 2 (12 bits, printer)
+    uint16_t rx_ = 0, tx_ = 0;        // 58108, the word written to 5810A
+    uint8_t mask_ = 0, eab_mask_ = 0, mask2_ = 0;
+    uint8_t cmd_ = 0;                 // the command being executed
+    unsigned data_words_ = 0;         // data words received after it
+    bool waiting_ = false;            // a command that takes data words
+    bool armed_ = false;              // a poll response is armed (58102 write, bit 7)
+    bool alarm_ = false, click_ = false;
+    uint8_t eab_pending_ = 0;         // WRITE ALTERNATE: char byte awaiting its EAB byte
+    bool undefined_ = false;          // the command is undefined: no reply
+    CoaxMessage reply_;
+    // Line timing.
+    uint64_t busy_ = 0;               // cycles until the line is idle again
+    uint64_t ns_acc_ = 0, emu_ns_ = 0;
+    uint64_t timer_left_ = 0;         // cycles to the next periodic tick (5810C bit 6)
 };
 
 class Board3483::System : public Device {
