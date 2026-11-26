@@ -98,6 +98,7 @@ public:
     std::string describe() const override;
 
     void render(Framebuffer& fb) override;
+    void draw(Framebuffer& fb);   // the raster at one pixel per dot
     uint64_t animation_phase() const override { return board_.frame_count_ / 32; }
 
     uint16_t reg(unsigned offset) const { return regs_[(offset & 0xFF) >> 1]; }

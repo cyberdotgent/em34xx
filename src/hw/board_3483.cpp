@@ -409,13 +409,32 @@ std::string Board3483::Display::describe() const {
 }
 
 void Board3483::Display::render(Framebuffer& fb) {
+    draw(fb);
+    // Presented as the 5250 colour units are: a 4:3 tube with the same black
+    // border, at two raster pixels per dot, with the beam's width tied to
+    // a 1280-dot line so that it keeps its physical size (720 dots per line,
+    // VGA text timing, are coarser than the 5250 tubes').
+    const int w = fb.width, h = fb.height;
+    std::vector<uint32_t> wide(size_t(w) * 2 * size_t(h));
+    for (int y = 0; y < h; ++y)
+        for (int x = 0; x < w; ++x) wide[size_t(y) * size_t(2 * w) + size_t(2 * x)] =
+            wide[size_t(y) * size_t(2 * w) + size_t(2 * x + 1)] = fb.pixels[size_t(y) * size_t(w) + size_t(x)];
+    fb.width = 2 * w;
+    fb.pixels.swap(wide);
+    fb.display_aspect = 4.0 / 3.0;
+    fb.border_x = 0.06;
+    fb.border_y = 0.077;
+    fb.pixels_per_dot = 2;
+    fb.dot_pitch = 1280.0 / double(fb.width);
+}
+
+void Board3483::Display::draw(Framebuffer& fb) {
     // 9 dots per cell [hypothesis], geometry from the mode registers; see
     // cell_dots().
     const unsigned cols = columns(), nrows = rows(), cell_h = cell_height();
     const unsigned cell_w = 9;
     fb.width = int(cols * cell_w);
     fb.height = int((nrows + 1) * cell_h);   // + the status row
-    fb.display_aspect = 4.0 / 3.0;
     fb.pixels.assign(size_t(fb.width) * size_t(fb.height), colours::kBlack);
     const bool video_on = board_.coax_ && (board_.coax_->reg(0x10) & 1);
     if (!video_on) return;
