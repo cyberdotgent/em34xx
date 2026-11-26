@@ -98,11 +98,20 @@ public:
     uint64_t animation_phase() const override { return board_.frame_count_ / 32; }
 
     uint16_t reg(unsigned offset) const { return regs_[(offset & 0xFF) >> 1]; }
+    // A colour tube shows the three guns; a monochrome one their level.
+    void set_colour(bool colour) { colour_ = colour; }
 
 private:
     uint16_t read_word(unsigned offset) const;
     void write_word(unsigned offset, uint16_t value);
-    bool screen_has_ink() const;
+    bool colour_ = false;
+    struct FieldState;
+    uint16_t cell_dots(uint8_t ch, uint8_t eab, FieldState& field, unsigned y, unsigned cell_h,
+                       unsigned& index) const;
+    FieldState initial_field() const;
+    unsigned cell_height() const;
+    unsigned lit_guns() const;
+    uint8_t level(unsigned gun, unsigned index) const;
     unsigned rows() const;
     unsigned columns() const;
     uint32_t row_address(unsigned row) const;

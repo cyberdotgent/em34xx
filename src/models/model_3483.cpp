@@ -37,9 +37,12 @@ namespace {
 
 constexpr uint32_t kDramBase = 0x00000, kDramSize = 0x40000;   // [hypothesis]
 constexpr uint32_t kSramBase = 0x40000, kSramSize = 0x10000;   // battery-backed [hypothesis]
-// Monitor sense code: type 1 (51), an 80-column 3270 tube [observed table;
-// which code the 3483's own tube gives is a hypothesis].
-constexpr uint8_t kMonitorSense = 0x51;
+// Monitor sense codes [observed: table C000:B9EB and the class table at
+// C000:B9D7]: 44 = display type 2, class 2 (the colour drive table), which
+// is also what the firmware assumes for an unknown monitor; 51 = type 1,
+// class 1 (the monochrome table). Which code the 3483's own tube gives is
+// a hypothesis; --straps selects another.
+constexpr uint8_t kSenseType2 = 0x44;
 
 // Owns the board state the three register devices share and the keyboard;
 // a device only so the machine keeps them alive.
@@ -66,8 +69,9 @@ public:
         info_.max_printer_sessions = 0;
         // The ROM header names "3483 V00"; oec was tested with a 3483-V
         // (documented, oec README). Monochrome or colour is not known yet.
+        // The variant's strap byte is the monitor sense code it presents.
         info_.variants = {
-            {"3483-V", "display", false, 0x00, "", {phosphor_green()}, {}},
+            {"3483-V", "colour (display type 2)", true, kSenseType2, "", {}, {}},
         };
         info_.roms = {
             {"system ROM (80000-FFFFF, reset vector)", "06g5525.bin", 0x80000,
@@ -82,8 +86,13 @@ public:
             "the coax reply words and the memory engine are fitted to POST's checks (hypothesis)",
             "character generator: the firmware decompresses its character sets into SRAM, 32 bytes per character: "
             "base set 48000, APL/GE set 4A000, companion planes 40000/42000 (observed); the companion byte as dots 9+ "
-            "and which set a cell uses are hypotheses; text is readable, attributes (field attributes, GE set, "
-            "line drawing) are not decoded yet",
+            "is a hypothesis",
+            "display: cells are a 3270 buffer-code character and a 3270 extended attribute; C0-FF are field "
+            "attributes; colours go through the firmware's own drive table at 58040-6F (one block per gun); 18-line "
+            "cells (POST's blank test screen requires it); rows continue from the regen origin 0:1000 when their "
+            "row-list entry has bit 7 set (hypotheses fitted to POST's video sense and the setup screens)",
+            "monitor sense 44 (display type 2, colour class, the firmware's default for an unknown monitor) by default; "
+            "--straps 51 gives type 1 (monochrome class); the sense lines are pulled low by 5840E bits 12-15",
             "keyboard: the 122-key keyboard on serial channel A (POST resets it, reads ID BF BF, selects set 3) "
             "(observed dialogue; the channel is a hypothesis)",
             "ROM 06G5525 (U24, AM27C400), linear at 80000-FFFFF; per-segment checksums 1234/5678/9ABC/DEF0 "
@@ -106,15 +115,18 @@ public:
         I80186Peripherals& cpu_io = m.add_device<I80186Peripherals>(bus);
         bus.set_interrupt_controller(&cpu_io);
         bus.map_ram("block RAM", 0x50000, 0x800);   // 50000-507FF: four blocks with registers at x108 [observed use]
-        auto& board = m.add_device<BoardHolder>(bus, cpu_io, info_.clock_hz, kMonitorSense);
+        const TerminalOptions& opt = m.options();
+        const ModelVariant& variant = variant_for(opt);
+        const uint8_t sense = opt.straps >= 0 ? uint8_t(opt.straps) : variant.straps;
+        auto& board = m.add_device<BoardHolder>(bus, cpu_io, info_.clock_hz, sense);
         Board3483::Display& disp = m.add_device<Board3483::Display>(board.board);
+        disp.set_colour(variant.colour);
         Board3483::Coax& coax = m.add_device<Board3483::Coax>(board.board);
         Board3483::System& sys = m.add_device<Board3483::System>(board.board);
         m.add_device<Board3483::Window>(board.board);
 
         // The 122-key keyboard on serial channel A [hypothesis: POST
         // expects ID BF BF and talks to channel A in its keyboard test].
-        const TerminalOptions& opt = m.options();
         uint8_t id1 = 0xBF, id2 = 0xBF;
         std::string error;
         if (!resolve_keyboard_id(opt, id1, id2, error)) throw std::runtime_error(error);

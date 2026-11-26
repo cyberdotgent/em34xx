@@ -100,8 +100,21 @@ void Board3483::Window::mmio_write8(uint32_t offset, uint8_t value) {
 
 namespace {
 
-constexpr uint32_t kCgBase = 0x48000;        // base character set [observed: decompressed there]
-constexpr uint32_t kCgExtension = 0x40000;   // its companion plane [observed]; dots 9+ [hypothesis]
+// Character sets as the firmware decompresses them into SRAM, 32 bytes
+// per character [observed]: the base 3270 set at 48000 and the APL/GE set
+// at 4A000, each with a sparse companion plane 4000h below (40000, 42000)
+// that holds the dots right of the first eight [hypothesis: the window's
+// word layout puts the low byte at 40000 and the high byte at 48000].
+constexpr uint32_t kCgSets[2] = {0x48000, 0x4A000};
+constexpr uint32_t kCgCompanion = 0x8000;
+
+// The black level of the drive table at 58040-6F [observed: index 0 of
+// every table the firmware loads].
+constexpr uint8_t kBlackLevel = 0x18;
+
+// Start of the regen buffer: cell 800h, the bias of row-list addresses
+// [hypothesis, see row_address()].
+constexpr uint32_t kRegenOrigin = 0x1000;
 
 } // namespace
 
@@ -119,16 +132,13 @@ uint16_t Board3483::Display::read_word(unsigned off) const {
         // three outputs selected by 58021 bits 0-2 that carried a lit dot
         // while video was on (58110 bit 0) [observed: the display test
         // expects 3->2, 2->1, 4->1 over a test pattern, and 0 over a blank
-        // screen or with video off]. A cell is taken as lit when it holds a
-        // character other than null (00) or space (10) and its attribute
-        // byte does not have bit 5 set [hypothesis: bit 5 marks a 3270 field
-        // attribute, which shows as a blank; the blank test screen has 02/20
-        // in its first and last columns].
+        // screen or with video off]. A gun counts when a displayed dot drove
+        // it above the black level (lit_guns()).
         const uint16_t sel = uint16_t((regs_[0x20 >> 1] >> 8) & 7);
         const bool video = board_.coax_ && (board_.coax_->reg(0x10) & 1);
         unsigned n = 0;
-        if (video && screen_has_ink())
-            for (uint16_t b = sel; b; b &= uint16_t(b - 1)) ++n;
+        if (video)
+            for (uint16_t b = uint16_t(sel & lit_guns()); b; b &= uint16_t(b - 1)) ++n;
         return uint16_t((regs_[0x20 >> 1] & 0xFF00) | n);
     }
     if (off == 0x26) {
@@ -164,27 +174,118 @@ uint32_t Board3483::Display::row_address(unsigned row) const {
     if (regs_[0x1A >> 1] & 0x0040) return regs_[0x1C >> 1] + 2u * row * columns();
     const uint32_t a = 0x50108 + 4 * row, b = 0x50508 + 4 * row;
     const uint8_t first = board_.bus_.peek8(a);
-    // Bit 7 set: the row follows on linearly from the start address +1C
-    // (low 4 bits ignored) [hypothesis: the runtime's own screens set it on
-    // every row, with the text linear at 0:1000 and +1C = 1004].
-    if (first & 0x80) return (regs_[0x1C >> 1] & 0xFFF0u) + 2u * row * columns();
+    // Bit 7 set: the row continues where the previous one ended, the first
+    // at the start of the regen buffer (cell 800h = 0:1000, the origin the
+    // row addresses are biased by) [hypothesis: the runtime sets it on every
+    // row of its screens, which are linear at 0:1000; 5801C differs between
+    // units (1004, 3004) with the same screen, so it is not the origin].
+    if (first & 0x80) return row ? row_address(row - 1) + 2u * columns() : kRegenOrigin;
     const uint32_t cell = uint32_t(first & 0x7F) << 8 | board_.bus_.peek8(b);
     return 2 * cell;
 }
 
-bool Board3483::Display::screen_has_ink() const {
+// One cell as the display shows it [hypothesis throughout, fitted to the
+// firmware's screens and POST's video sense]: a two-byte cell is a
+// character in 3270 buffer code and a 3270 extended attribute (EAB) byte.
+//  - A character C0-FF is a field attribute: it shows as background and
+//    sets the cells after it: bits 3-2 = 11 non-display, 10 high
+//    intensity, bit 5 protected [observed: FC hides Offline Setup's hidden
+//    values, F8 is its title]. Its EAB byte is the field's extended
+//    attribute.
+//  - EAB bits 7-6: 00 none, 01 blink, 10 reverse, 11 underscore; bits 5-3
+//    colour in 3270 numbering (1 blue, 2 red, 3 pink, 4 green, 5 turquoise,
+//    6 yellow, 7 white); bits 2-0 character set, 1 = APL/GE [observed:
+//    B9/09 is Offline Setup's rule, B9 a line in the GE set; C9/B8 marks the
+//    selected item; the colour table the firmware loads has those colours
+//    at those indices].
+//  - A cell without a colour takes its field's; a field without one takes
+//    the 3279 base colours: blue (protected), red (high), green, white
+//    (protected and high).
+//  - The colour index selects a level per gun from the table at 58040-6F
+//    (gun 0 at 58040: blue; 58050: red; 58060: green) [observed: table
+//    contents]. Index 0 is the background.
+struct Board3483::Display::FieldState {
+    bool nondisplay = false;
+    bool high = false;
+    bool protect = false;
+    uint8_t eab = 0;
+};
+
+uint8_t Board3483::Display::level(unsigned gun, unsigned index) const {
+    const unsigned off = 0x40 + 16 * gun + (index & 15);
+    return uint8_t(regs_[off >> 1] >> ((off & 1) * 8));
+}
+
+// Dots of scan line y of a cell (bit 15 = leftmost) and the colour index of
+// its lit dots; unlit dots are index 0.
+uint16_t Board3483::Display::cell_dots(uint8_t ch, uint8_t eab, FieldState& field, unsigned y, unsigned cell_h,
+                                       unsigned& index) const {
+    index = 0;
+    if ((ch & 0xC0) == 0xC0) {
+        field.nondisplay = (ch & 0x0C) == 0x0C;
+        field.high = (ch & 0x0C) == 0x08;
+        field.protect = (ch & 0x20) != 0;
+        field.eab = eab;
+        return 0;
+    }
+    if (field.nondisplay) return 0;
+    unsigned colour = (eab >> 3) & 7;
+    if (!colour) colour = (field.eab >> 3) & 7;
+    if (!colour) colour = field.protect ? (field.high ? 7 : 1) : (field.high ? 2 : 4);
+    index = colour;
+    const unsigned set = (eab & 7) == 1 ? 1 : 0;
+    const uint32_t at = kCgSets[set] + uint32_t(ch) * 32 + y;
+    uint16_t bits = uint16_t(board_.bus_.peek8(at) << 8 | board_.bus_.peek8(at - kCgCompanion));
+    const uint8_t hl = (eab & 0xC0) ? (eab >> 6) : (field.eab >> 6);
+    if (hl == 3 && y + 1 == cell_h) bits = 0xFF80;             // underscore on the last line
+    if (hl == 2) bits = uint16_t(~bits & 0xFF80);              // reverse, over the 9-dot cell
+    return bits;
+}
+
+// The field attribute in force at the start of the screen: the last one on
+// it (3270 fields wrap from the end of the buffer to its start).
+Board3483::Display::FieldState Board3483::Display::initial_field() const {
+    FieldState f;
+    unsigned idx;
     for (unsigned r = 0; r < rows(); ++r) {
         const uint32_t start = row_address(r);
         for (unsigned c = 0; c < columns(); ++c) {
             const uint8_t ch = board_.bus_.peek8(start + 2 * c);
-            const uint8_t attr = board_.bus_.peek8(start + 2 * c + 1);
-            if (ch != 0x00 && ch != 0x10 && !(attr & 0x20)) {
-                LOG_DEBUG("display", "sense: row %u at %05x, cell %u holds %02x", r, start, c, ch);
-                return true;
-            }
+            if ((ch & 0xC0) == 0xC0) cell_dots(ch, board_.bus_.peek8(start + 2 * c + 1), f, 0, 1, idx);
         }
     }
-    return false;
+    return f;
+}
+
+// The guns that carried a dot above the black level, as a bit mask.
+unsigned Board3483::Display::lit_guns() const {
+    const unsigned cell_h = cell_height();
+    unsigned guns = 0;
+    FieldState f = initial_field();
+    for (unsigned r = 0; r < rows(); ++r) {
+        const uint32_t start = row_address(r);
+        for (unsigned c = 0; c < columns(); ++c) {
+            const uint8_t ch = board_.bus_.peek8(start + 2 * c), eab = board_.bus_.peek8(start + 2 * c + 1);
+            const FieldState before = f;
+            for (unsigned y = 0; y < cell_h; ++y) {
+                f = before;
+                unsigned idx;
+                if (!(cell_dots(ch, eab, f, y, cell_h, idx) & 0xFF80)) continue;
+                for (unsigned g = 0; g < 3; ++g)
+                    if (level(g, idx) > kBlackLevel) guns |= 1u << g;
+            }
+            if (guns == 7) return guns;
+        }
+    }
+    return guns;
+}
+
+unsigned Board3483::Display::cell_height() const {
+    // +0A low byte = scan lines per row [observed: POST's blank test screen
+    // holds glyph 02, whose only dots are on lines 18-19, and expects no
+    // light with 12h here, under both drive tables].
+    const unsigned h = regs_[0x0A >> 1] & 0xFF;
+    return h >= 8 && h <= 32 ? h : 20;
 }
 
 uint16_t Board3483::Display::mmio_read16(uint32_t off) { return read_word(off); }
@@ -211,13 +312,11 @@ std::string Board3483::Display::describe() const {
 }
 
 void Board3483::Display::render(Framebuffer& fb) {
-    // First cut [hypothesis throughout]: cell height from +0A low byte,
-    // cells of two bytes (character in 3270 buffer code, attribute) per
-    // row_address(), glyphs as 16-bit rows, 32 per character, in the 40000
-    // window; 9 dots per cell. Attributes are ignored for now.
-    const unsigned cols = columns(), nrows = rows();
-    unsigned cell_h = (regs_[0x0A >> 1] & 0xFF) + 1;
-    if (cell_h < 8 || cell_h > 32) cell_h = 20;
+    // 9 dots per cell [hypothesis], cell height from +0A; see cell_dots().
+    // Each dot is the level of its colour index for each gun; a monochrome
+    // tube shows the levels as brightness, the presentation adds the
+    // phosphor.
+    const unsigned cols = columns(), nrows = rows(), cell_h = cell_height();
     const unsigned cell_w = 9;
     fb.width = int(cols * cell_w);
     fb.height = int(nrows * cell_h);
@@ -225,23 +324,26 @@ void Board3483::Display::render(Framebuffer& fb) {
     fb.pixels.assign(size_t(fb.width) * size_t(fb.height), 0xFF000000u);
     const bool video_on = board_.coax_ && (board_.coax_->reg(0x10) & 1);
     if (!video_on) return;
+    uint32_t colour_of[16];
+    for (unsigned i = 0; i < 16; ++i) {
+        auto lift = [](uint8_t v) { return uint32_t(v <= kBlackLevel ? 0 : v); };
+        const uint32_t b = lift(level(0, i)), rr = lift(level(1, i)), g = lift(level(2, i));
+        colour_of[i] = colour_ ? (0xFF000000u | rr << 16 | g << 8 | b)
+                               : (0xFF000000u | g << 16 | g << 8 | g);
+    }
+    FieldState f = initial_field();
     for (unsigned r = 0; r < nrows; ++r) {
         const uint32_t start = row_address(r);
         for (unsigned c = 0; c < cols; ++c) {
-            const uint8_t ch = board_.bus_.peek8(start + 2 * c);
-            if (board_.bus_.peek8(start + 2 * c + 1) & 0x20) continue;   // field attribute: blank [hypothesis]
+            const uint8_t ch = board_.bus_.peek8(start + 2 * c), eab = board_.bus_.peek8(start + 2 * c + 1);
+            const FieldState before = f;
             for (unsigned y = 0; y < cell_h; ++y) {
-                // Glyph row [observed: the firmware decompresses its
-                // character sets to 48000 (base set) and 4A000 (APL/GE set),
-                // 32 bytes per character, with sparse companion planes at
-                // 40000 and 42000; hypothesis: the companion byte holds the
-                // dots right of the first 8, as the window's word layout
-                // (low byte to 40000, high byte to 48000) suggests].
-                const uint32_t at = uint32_t(ch) * 32 + y;
-                const uint16_t bits = uint16_t(board_.bus_.peek8(kCgBase + at) << 8 | board_.bus_.peek8(kCgExtension + at));
+                f = before;
+                unsigned idx;
+                const uint16_t bits = cell_dots(ch, eab, f, y, cell_h, idx);
                 uint32_t* row = &fb.pixels[size_t(r * cell_h + y) * size_t(fb.width) + c * cell_w];
                 for (unsigned x = 0; x < cell_w; ++x)
-                    if (bits & (0x8000u >> x)) row[x] = 0xFF33FF66u;
+                    if (bits & (0x8000u >> x)) row[x] = colour_of[idx];
             }
         }
     }
@@ -553,6 +655,11 @@ uint16_t Board3483::System::sense() const {
         }
         if (level) v |= uint16_t(0x0800 >> line);
     }
+    // Bits 12-15 written: each pulls its own sense line (bit 8-11) low; no
+    // line is tied to another [observed: the loopback check C000:B82F drives
+    // one line at a time and expects only that line to drop for an
+    // ordinary monitor; hypothesis for the wiring].
+    v = uint16_t(v & ~((regs_[0x0E >> 1] >> 4) & 0x0F00));
     return v;
 }
 
