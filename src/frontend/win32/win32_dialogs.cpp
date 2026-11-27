@@ -590,14 +590,14 @@ void profile_fill_models(HWND dlg, ProfileDlg& d, const std::string& select) {
     SendDlgItemMessageW(dlg, IDC_PE_MODEL, CB_RESETCONTENT, 0, 0);
     d.choices.clear();
     int sel = 0;
-    for (const Model* m : runnable_models()) {
-        for (const ModelVariant& v : m->info().variants) {
-            const bool ready = model_roms_ready(*m, d.dirs->roms(), &v);
-            combo_add(dlg, IDC_PE_MODEL,
-                      "IBM " + v.id + " (" + variant_label(m->info(), v) + (ready ? ")" : ", ROM images needed)"));
-            if (v.id == select) sel = int(d.choices.size());
-            d.choices.push_back(TerminalChoice{m, &v, ready});
-        }
+    for (const TerminalVariant& t : runnable_variants()) {
+        const Model* m = t.model;
+        const ModelVariant& v = *t.variant;
+        const bool ready = model_roms_ready(*m, d.dirs->roms(), &v);
+        combo_add(dlg, IDC_PE_MODEL,
+                  "IBM " + v.id + " (" + variant_label(m->info(), v) + (ready ? ")" : ", ROM images needed)"));
+        if (v.id == select) sel = int(d.choices.size());
+        d.choices.push_back(TerminalChoice{m, &v, ready});
     }
     combo_set_sel(dlg, IDC_PE_MODEL, sel);
     d.model_sel = sel;

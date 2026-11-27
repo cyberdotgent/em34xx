@@ -804,23 +804,23 @@ std::string tls_summary(const Profile& p, const AppSettings& s) {
     _variants.clear();
     NSInteger sel = 0;
     bool lacking = false;
-    for (const Model* m : runnable_models()) {
-        for (const ModelVariant& v : m->info().variants) {
-            const bool ready = model_roms_ready(*m, _dirs->roms(), &v);
-            NSMenuItem* item = [[NSMenuItem alloc]
-                initWithTitle:ns("IBM " + v.id + " (" + variant_label(m->info(), v) + (ready ? ")" : ", ROM images needed)"))
-                       action:nil
-                keyEquivalent:@""];
-            item.enabled = ready;
-            if (!ready) {
-                item.toolTip = ns("Needs " + trim(unusable_roms_text(*m, _dirs->roms(), &v)));
-                lacking = true;
-            }
-            [_model.menu addItem:item];
-            if (v.id == select) sel = NSInteger(_variants.size());
-            _models.push_back(m);
-            _variants.push_back(&v);
+    for (const TerminalVariant& t : runnable_variants()) {
+        const Model* m = t.model;
+        const ModelVariant& v = *t.variant;
+        const bool ready = model_roms_ready(*m, _dirs->roms(), &v);
+        NSMenuItem* item = [[NSMenuItem alloc]
+            initWithTitle:ns("IBM " + v.id + " (" + variant_label(m->info(), v) + (ready ? ")" : ", ROM images needed)"))
+                   action:nil
+            keyEquivalent:@""];
+        item.enabled = ready;
+        if (!ready) {
+            item.toolTip = ns("Needs " + trim(unusable_roms_text(*m, _dirs->roms(), &v)));
+            lacking = true;
         }
+        [_model.menu addItem:item];
+        if (v.id == select) sel = NSInteger(_variants.size());
+        _models.push_back(m);
+        _variants.push_back(&v);
     }
     if (lacking) {
         [_model.menu addItem:[NSMenuItem separatorItem]];

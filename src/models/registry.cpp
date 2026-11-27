@@ -4,6 +4,8 @@
 #include "machine/machine.hpp"
 #include "util/strings.hpp"
 
+#include <algorithm>
+
 namespace em34xx {
 
 std::string Model::can_build() const {
@@ -43,10 +45,10 @@ const ModelVariant* Model::variant_with_colour(bool colour) const {
 }
 
 const std::vector<const Model*>& all_models() {
-    // The order of every model list in the front ends: the 3270 (coax)
-    // terminals first, then the 5250 (twinax) ones.
+    // The order of every model list: the 3270 (coax) terminals first, then
+    // the 5250 (twinax) ones; monochrome before colour within each.
     static const std::vector<const Model*> models = {
-        &model_3483(), &model_3472(),                                // 3270
+        &model_3472(), &model_3483(),                                // 3270
         &model_3477(), &model_3486(), &model_3487(), &model_3489(),  // 5250
     };
     return models;
@@ -94,6 +96,18 @@ std::vector<const Model*> runnable_models() {
     std::vector<const Model*> out;
     for (const Model* m : all_models())
         if (m->can_build().empty() && m->info().status == ModelStatus::Bringup) out.push_back(m);
+    return out;
+}
+
+std::vector<TerminalVariant> runnable_variants() {
+    std::vector<TerminalVariant> out;
+    for (const Model* m : runnable_models())
+        for (const ModelVariant& v : m->info().variants) out.push_back({m, &v});
+    auto rank = [](const TerminalVariant& t) {
+        return (t.model->info().line == LineKind::Coax ? 0 : 2) + (t.variant->colour ? 1 : 0);
+    };
+    std::stable_sort(out.begin(), out.end(),
+                     [&](const TerminalVariant& a, const TerminalVariant& b) { return rank(a) < rank(b); });
     return out;
 }
 

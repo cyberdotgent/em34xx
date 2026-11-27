@@ -64,6 +64,13 @@ void select_legacy_display(const Model& model, DisplaySubtype legacy, std::strin
 // Models an end user can run: buildable, with a complete ROM dump known
 // (not RomIncomplete, not a placeholder). What a GUI offers.
 std::vector<const Model*> runnable_models();
+// Their variants in the order a GUI lists them: 3270 before 5250, and
+// monochrome before colour within each (3472-G, 3483-V, 3477-FG, ...).
+struct TerminalVariant {
+    const Model* model;
+    const ModelVariant* variant;
+};
+std::vector<TerminalVariant> runnable_variants();
 
 // Individual model singletons (defined in model_*.cpp).
 const Model& model_3477();

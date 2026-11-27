@@ -506,7 +506,10 @@ TEST_CASE("profile: the connect configuration and trusting a certificate") {
 TEST_CASE("models offered to end users") {
     const auto models = runnable_models();
     REQUIRE_FALSE(models.empty());
-    // 3270 terminals first, then 5250 (all_models).
-    CHECK(models[0]->info().name == "3483");
+    // 3270 terminals first, then 5250; monochrome before colour.
+    CHECK(models[0]->info().name == "3472");
     for (const Model* m : models) CHECK(m->info().status == ModelStatus::Bringup);
+    std::vector<std::string> ids;
+    for (const TerminalVariant& t : runnable_variants()) ids.push_back(t.variant->id);
+    CHECK(ids == std::vector<std::string>{"3472-G", "3483-V", "3477-FG", "3486-BA", "3487-HG", "3477-FC", "3487-HC"});
 }
