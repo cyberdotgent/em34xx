@@ -17,7 +17,14 @@ display on coax (CUT mode) with its own tube, running the ROM pair
 - Reset continues to the start-up screen: the IBM logo, "3472 Control
   Program" and "Copyright IBM Corp. 1989". The terminal then idles, waiting
   for a controller (observed; the waiting is a hypothesis).
-- `tests/rc/3472-smoke.rc` checks both screens.
+- Against a TN3270 host (moshix.tech:2300, a 3270 BBS) the CUT controller
+  connects. The host's screen and the controller's status line ("TN3270")
+  show (observed, 2026-11-27).
+- `tests/rc/3472-smoke.rc` checks the POST and start-up screens.
+- POST's error line is only the letters, e.g. `M12`. The 3483 also shows a
+  test number, an error code and data words (observed: the writer at
+  `E000:3C3A` stores three cells and stops). The terminal then waits for
+  Reset, as the 3483 does.
 
 ## Memory map
 
@@ -57,6 +64,11 @@ The clock is 8 MHz (hypothesis). POST's timing windows pass with it.
   The cell bias is 3D00h, so the regen origin is `0:7A00`.
 - The picture is drawn in two intensities for the phosphor (hypothesis:
   high intensity brighter).
+- **Status row** at `0:96F8` (observed). The status routine (`E000:A8AE`)
+  builds the operator information area from coax cells 0-79, as the 3483's
+  does. It then copies 84h cells to `0:96F8` (`E000:AA01`). The runtime row
+  list names the same cell (`4B7C`) in its two entries below the screen.
+  The 3483's list names its `0:0A00` there in the same way (observed).
 
 ## Video sense (POST test 6, `E000:2B4A`)
 
@@ -73,13 +85,9 @@ What made it pass (hypotheses, shared with the 3483, docs/bringup-3483.md):
 
 ## Open
 
-- **The status row**: drawn from `0:8900`, the row after the 24th (a
-  hypothesis; blank without a controller). Not traced the way the 3483's
-  (`0:0A00`) was. `0:7400`, 600h below the regen as on the 3483, holds
-  pattern data instead.
-- The coax buffer, the translate tables and the memory engine's addresses
-  in segment 0 are the 3483's values and are untested on the 3472. No
-  controller has been connected yet.
+- The coax buffer at `0:C000` and the memory engine work as on the 3483
+  (observed: the engine copies `C0A0` to `7A00`, 780h words). The
+  translate tables' addresses are the 3483's (untested).
 - The keyboard: the 3483's 122-key keyboard on serial channel A
   (hypothesis).
 - The monitor sense code: `51`, the 3483 firmware's monochrome class

@@ -50,11 +50,11 @@ CoaxBoardLayout layout_3472() {
     l.sram = kSramBase;
     l.block_ram = kBlockRamBase;
     l.regen = 0x7A00;
-    // The row after the 24th [hypothesis: the runtime's row list continues
-    // there below the screen; blank without a controller. Not traced like
-    // the 3483's, whose displayed status row is 0:0A00, 600h below its
-    // regen; 600h below the 3472's (0:7400) holds pattern data].
-    l.status_row = 0x8900;
+    // The status row [observed: the status routine (E000:A8AE) builds the
+    // operator information area from coax cells 0-79 and copies 84h cells
+    // to 0:96F8 (E000:AA01); the runtime's row list names the same cell
+    // (4B7C) in its entries below the screen, as the 3483's names 0:0A00].
+    l.status_row = 0x96F8;
     l.sync_reads_high = true;
     l.monochrome = true;
     l.cell_dots = 12;   // main 3-0, companion 7-0 [observed: its fonts]
