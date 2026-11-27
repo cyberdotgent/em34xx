@@ -47,8 +47,9 @@ Main logic board 09F4564; parts as marked:
 | latches | 74LS373 | 8086 address demultiplexing (hypothesis) |
 
 Connectors: the coax BNC; a modular jack (CN1, the keyboard,
-hypothesis); a D-sub on the side (purpose unknown); a 30-way edge
-connector to the tube's power and deflection board (hypothesis).
+hypothesis); a DB-25, the parallel printer port for the printer session
+(documented: project owner); a 30-way edge connector to the tube's power
+and deflection board (hypothesis).
 
 ## Memory map
 
@@ -133,6 +134,8 @@ connected, or on any reset.
   (hypothesis).
 - The monitor sense code: `51`, the 3483 firmware's monochrome class
   (hypothesis).
+- The printer port: its registers are not found yet, and the model has
+  no printer session (`max_printer_sessions` 0).
 - The CPU clock: 8 MHz, the N8086-2's rating. Neither oscillator divides
   to it by a small whole number (56.6092 / 7 = 8.09 MHz), so the gate
   array's divider is not known.

@@ -111,6 +111,8 @@ public:
             "battery-backed part a hypothesis); a first boot with an empty SRAM stops at M12, Reset writes the "
             "setup, and the next boot passes it (observed: tests rom_3472_save_setup/boot_saved)",
             "gate array: Toshiba 09F4534 (observed, board photo)",
+            "printer port: a DB-25 parallel port for the printer session (documented: project owner); its registers "
+            "are not found and it is not modelled",
             "line: coax, CUT mode (hypothesis, strong; same adapter design as the 3483)",
         };
     }
