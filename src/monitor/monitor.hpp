@@ -12,6 +12,7 @@
 
 #include <cstdint>
 #include <functional>
+#include <map>
 #include <memory>
 #include <mutex>
 #include <string>
@@ -79,6 +80,9 @@ private:
 
     // Blocking run with Ctrl-C support; prints the stop location.
     bool run_and_wait(uint64_t max_instructions);
+    // Runs a breakpoint's or watchpoint's `do` commands; false if it has none.
+    bool run_action(const StopEvent& ev);
+    bool split_action(std::vector<std::string>& a, std::string& action);
     void print_stop(const StopEvent& ev);
     std::string location_line(Machine& m);
     std::string regs_text(Machine& m);
@@ -123,6 +127,7 @@ private:
     bool cmd_key(const std::vector<std::string>& a);
     bool cmd_assert(const std::vector<std::string>& a);
     bool cmd_echo(const std::vector<std::string>& a);
+    bool cmd_print(const std::vector<std::string>& a);
     bool cmd_source(const std::vector<std::string>& a);
     bool cmd_quit(const std::vector<std::string>& a);
 
@@ -136,6 +141,11 @@ private:
     bool quit_ = false;
     unsigned failures_ = 0;
     int script_depth_ = 0;
+    // `bp ... do "cmds"` / `wp ... do "cmds"`: commands run on a hit, after
+    // which the run continues (keyed by breakpoint/watchpoint id).
+    std::map<int, std::string> bp_actions_;
+    std::map<int, std::string> wp_actions_;
+    int action_depth_ = 0;
     uint32_t next_dump_ = 0;
     uint32_t next_unasm_ = 0;
     bool have_next_dump_ = false;

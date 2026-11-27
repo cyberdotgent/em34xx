@@ -51,10 +51,31 @@ rc file exits before the window opens.
 
 | Command | Description |
 | --- | --- |
-| `bp addr` | Execution breakpoint. |
-| `wp addr [len] [r\|w\|rw]` | Watchpoint (default: write). |
+| `bp addr [do "cmds"]` | Execution breakpoint. With `do`, a hit runs `cmds` (separated by `;`) and the run goes on. |
+| `wp addr [len] [r\|w\|rw] [do "cmds"]` | Watchpoint (default: write); `do` as for `bp`. |
 | `bl` | List breakpoints and watchpoints. |
 | `bc id\|addr\|*`, `wc id\|*` | Clear breakpoints or watchpoints. |
+
+### Logging breakpoints
+
+A breakpoint or watchpoint with `do` logs instead of stopping: on a hit the
+monitor prints one line (the breakpoint's location, or the watchpoint's
+access), runs the commands and continues, within the budget of the `run`
+or `go` that is running. So one `run` logs every call of a routine or every
+write to a range, with no stop-and-resume loop:
+
+```
+bp d000:7a3e do "print word[ss:sp+6] word[ss:sp+4] word[ss:sp+a] word[ss:sp+8]"
+wp 40000 8000 w do "print word[58020] cx di"
+run #300000000
+```
+
+Actions cannot run the machine (`go`, `run`, `step`, ...); `stop` in an
+action ends the run at that hit. A `go` with logging breakpoints only
+returns at another stop, so give such scripts a `run n` instead.
+Watchpoints see the CPU's accesses at the address it uses: a device that
+mirrors a write elsewhere (the 3483's 40000 window, for one) does not
+trigger a watchpoint on the mirror.
 
 ## Memory and state
 
@@ -97,6 +118,7 @@ rc file exits before the window opens.
 | --- | --- |
 | `assert expr [message]` | Count a failure if `expr` is zero. |
 | `echo text` | Print text. |
+| `print expr ...` | Print expressions in hex, e.g. `print ax word[ss:sp+4] byte[2000:6fc]`. |
 | `source file` | Run another script. |
 | `screenshot file.bmp\|file.ppm [raw]` | Save the display, stretched to the tube's proportions (4:3 on the 3477) unless `raw`. |
 | `burnin [off\|slow\|fast\|hyper\|expose SECONDS\|reset]` | Screen burn-in of the monitor's own tube (docs/burn-in.md): set the speed, leave the current picture on the tube for that long, or fit a new tube. Off at start and never saved; it shows in `screenshot`. |

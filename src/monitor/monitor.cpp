@@ -277,11 +277,66 @@ void Monitor::print_stop(const StopEvent& ev) {
 
 bool Monitor::run_and_wait(uint64_t max_instructions) {
     SigintScope sig(emu_);
-    waiting_ = true;
-    emu_.resume(max_instructions);
-    const StopEvent ev = emu_.wait_stopped();
-    waiting_ = false;
-    print_stop(ev);
+    uint64_t left = max_instructions;
+    for (;;) {
+        const uint64_t before = emu_.with_machine([](Machine& m) { return m.cpu().instructions(); });
+        waiting_ = true;
+        emu_.resume(left);
+        const StopEvent ev = emu_.wait_stopped();
+        waiting_ = false;
+        if (left != UINT64_MAX) {
+            const uint64_t done = emu_.with_machine([](Machine& m) { return m.cpu().instructions(); }) - before;
+            left = done >= left ? 0 : left - done;
+        }
+        // A breakpoint or watchpoint with `do` commands logs and goes on, as
+        // long as the run has instructions left; anything else ends the run.
+        if (left > 0 && run_action(ev)) continue;
+        print_stop(ev);
+        return true;
+    }
+}
+
+bool Monitor::run_action(const StopEvent& ev) {
+    const std::map<int, std::string>* actions = nullptr;
+    if (ev.reason == StopEvent::Reason::Breakpoint) actions = &bp_actions_;
+    else if (ev.reason == StopEvent::Reason::Watchpoint) actions = &wp_actions_;
+    if (!actions) return false;
+    const auto it = actions->find(ev.id);
+    if (it == actions->end()) return false;
+    const std::string cmds = it->second;  // the action may clear its own entry
+    if (ev.reason == StopEvent::Reason::Breakpoint)
+        out(format("bp %d %s", ev.id, emu_.with_machine([&](Machine& m) { return location_line(m); }).c_str()));
+    else
+        out(format("wp %d %s\n", ev.id, ev.detail.c_str()));
+    if (action_depth_ > 0) return true;
+    ++action_depth_;
+    for (const std::string& c : split(cmds, ';')) {
+        const std::string t = trim(c);
+        const std::string verb = to_lower(split_words(t).empty() ? "" : split_words(t)[0]);
+        if (verb == "go" || verb == "g" || verb == "c" || verb == "cont" || verb == "run" || verb == "bg" ||
+            verb == "step" || verb == "s" || verb == "trace" || verb == "t" || verb == "proceed" || verb == "p") {
+            fail("'" + verb + "' cannot run inside a breakpoint action");
+            continue;
+        }
+        if (verb == "stop") {  // end the run here, leaving the machine at the hit
+            --action_depth_;
+            return false;
+        }
+        if (!t.empty()) execute(t);
+    }
+    --action_depth_;
+    return true;
+}
+
+// Takes `do "commands"` off the end of a bp/wp command line.
+bool Monitor::split_action(std::vector<std::string>& a, std::string& action) {
+    for (size_t i = 1; i < a.size(); ++i) {
+        if (to_lower(a[i]) != "do") continue;
+        if (i + 1 >= a.size()) return fail("'do' needs the commands to run, in quotes");
+        for (size_t j = i + 1; j < a.size(); ++j) action += (j > i + 1 ? " " : "") + a[j];
+        a.resize(i);
+        return true;
+    }
     return true;
 }
 
@@ -303,10 +358,10 @@ void Monitor::register_commands() {
     add("bg", {}, "[addr]", "run in the background and return to the prompt", [this](A a) { return cmd_go(a, false); });
     add("run", {}, "count", "run count instructions (no tracing)", [this](A a) { return cmd_run(a); });
     add("stop", {}, "", "stop a background run", [this](A a) { return cmd_stop(a); });
-    add("bp", {"break"}, "addr", "set an execution breakpoint", [this](A a) { return cmd_break(a); });
+    add("bp", {"break"}, "addr [do \"cmds\"]", "set an execution breakpoint; with do, run cmds and continue", [this](A a) { return cmd_break(a); });
     add("bc", {}, "id|addr|*", "clear breakpoint(s)", [this](A a) { return cmd_break_clear(a); });
     add("bl", {}, "", "list breakpoints and watchpoints", [this](A a) { return cmd_break_list(a); });
-    add("wp", {"watch"}, "addr [len] [r|w|rw]", "set a memory watchpoint (default: write)", [this](A a) { return cmd_watch(a); });
+    add("wp", {"watch"}, "addr [len] [r|w|rw] [do \"cmds\"]", "set a memory watchpoint (default: write); with do, run cmds and continue", [this](A a) { return cmd_watch(a); });
     add("wc", {}, "id|*", "clear watchpoint(s)", [this](A a) { return cmd_watch_clear(a); });
     add("dump", {"d", "db"}, "[addr] [len]", "hex dump memory (no side effects)", [this](A a) { return cmd_dump(a); });
     add("unasm", {"u"}, "[addr] [count]", "disassemble", [this](A a) { return cmd_unassemble(a); });
@@ -334,6 +389,7 @@ void Monitor::register_commands() {
     add("eeprom", {"nvram"}, "[dump|save [file]|set addr byte]", "show, dump, save or edit the EEPROM (hex)", [this](A a) { return cmd_eeprom(a); });
     add("assert", {}, "expr [message]", "fail the script if expr is zero", [this](A a) { return cmd_assert(a); });
     add("echo", {}, "text", "print text", [this](A a) { return cmd_echo(a); });
+    add("print", {"?="}, "expr ...", "print expressions in hex", [this](A a) { return cmd_print(a); });
     add("source", {}, "file", "run commands from a file", [this](A a) { return cmd_source(a); });
     add("quit", {"q", "exit"}, "[code]", "exit the emulator", [this](A a) { return cmd_quit(a); });
 }
@@ -468,12 +524,17 @@ bool Monitor::cmd_stop(const std::vector<std::string>&) {
     return true;
 }
 
-bool Monitor::cmd_break(const std::vector<std::string>& a) {
-    if (a.size() < 2) return cmd_break_list(a);
+bool Monitor::cmd_break(const std::vector<std::string>& args) {
+    if (args.size() < 2) return cmd_break_list(args);
+    std::vector<std::string> a = args;
+    std::string action;
+    if (!split_action(a, action)) return false;
     uint32_t addr;
     if (!parse_addr(join_args(a, 1), addr)) return false;
     const int id = emu_.with_machine([&](Machine& m) { return m.add_breakpoint(addr); });
-    out(format("breakpoint %d at %06X\n", id, addr));
+    if (!action.empty()) bp_actions_[id] = action;
+    else bp_actions_.erase(id);
+    out(format("breakpoint %d at %06X%s\n", id, addr, action.empty() ? "" : (" do " + action).c_str()));
     return true;
 }
 
@@ -481,11 +542,15 @@ bool Monitor::cmd_break_clear(const std::vector<std::string>& a) {
     if (a.size() < 2) return fail("usage: bc id|addr|*");
     if (a[1] == "*") {
         emu_.with_machine([](Machine& m) { m.clear_breakpoints(); });
+        bp_actions_.clear();
         return true;
     }
     uint64_t id;
     if (parse_uint(a[1], id, 10) && a[1].find(':') == std::string::npos) {
-        if (emu_.with_machine([&](Machine& m) { return m.remove_breakpoint(int(id)); })) return true;
+        if (emu_.with_machine([&](Machine& m) { return m.remove_breakpoint(int(id)); })) {
+            bp_actions_.erase(int(id));
+            return true;
+        }
     }
     uint32_t addr;
     if (!parse_addr(a[1], addr)) return false;
@@ -498,10 +563,16 @@ bool Monitor::cmd_break_list(const std::vector<std::string>&) {
     std::string s = emu_.with_machine([&](Machine& m) {
         std::string t;
         for (const Breakpoint& b : m.breakpoints())
-            t += format("  bp %-3d %06X%s\n", b.id, b.address, b.temporary ? " (temporary)" : "");
+        {
+            const auto act = bp_actions_.find(b.id);
+            t += format("  bp %-3d %06X%s%s\n", b.id, b.address, b.temporary ? " (temporary)" : "",
+                        act == bp_actions_.end() ? "" : (" do " + act->second).c_str());
+        }
         for (const Watchpoint& w : m.bus().watchpoints()) {
             const char* k = w.kind == AccessKind::Read ? "r" : w.kind == AccessKind::Write ? "w" : "rw";
-            t += format("  wp %-3d %06X len %X %s\n", w.id, w.start, w.length, k);
+            const auto act = wp_actions_.find(w.id);
+            t += format("  wp %-3d %06X len %X %s%s\n", w.id, w.start, w.length, k,
+                        act == wp_actions_.end() ? "" : (" do " + act->second).c_str());
         }
         return t;
     });
@@ -509,8 +580,11 @@ bool Monitor::cmd_break_list(const std::vector<std::string>&) {
     return true;
 }
 
-bool Monitor::cmd_watch(const std::vector<std::string>& a) {
-    if (a.size() < 2) return fail("usage: wp addr [len] [r|w|rw]");
+bool Monitor::cmd_watch(const std::vector<std::string>& args) {
+    if (args.size() < 2) return fail("usage: wp addr [len] [r|w|rw] [do \"commands\"]");
+    std::vector<std::string> a = args;
+    std::string action;
+    if (!split_action(a, action)) return false;
     uint32_t addr;
     if (!parse_addr(a[1], addr)) return false;
     uint32_t len = 1;
@@ -527,7 +601,9 @@ bool Monitor::cmd_watch(const std::vector<std::string>& a) {
         }
     }
     const int id = emu_.with_machine([&](Machine& m) { return m.bus().add_watchpoint(addr, len, kind); });
-    out(format("watchpoint %d at %06X len %X\n", id, addr, len));
+    if (!action.empty()) wp_actions_[id] = action;
+    else wp_actions_.erase(id);
+    out(format("watchpoint %d at %06X len %X%s\n", id, addr, len, action.empty() ? "" : (" do " + action).c_str()));
     return true;
 }
 
@@ -535,12 +611,14 @@ bool Monitor::cmd_watch_clear(const std::vector<std::string>& a) {
     if (a.size() < 2) return fail("usage: wc id|*");
     if (a[1] == "*") {
         emu_.with_machine([](Machine& m) { m.bus().clear_watchpoints(); });
+        wp_actions_.clear();
         return true;
     }
     uint64_t id;
     if (!parse_uint(a[1], id, 10)) return fail("bad watchpoint id");
     if (!emu_.with_machine([&](Machine& m) { return m.bus().remove_watchpoint(int(id)); }))
         return fail("no such watchpoint");
+    wp_actions_.erase(int(id));
     return true;
 }
 
@@ -1083,6 +1161,18 @@ bool Monitor::cmd_assert(const std::vector<std::string>& a) {
     } else {
         out(format("ok: %s\n", a[1].c_str()));
     }
+    return true;
+}
+
+bool Monitor::cmd_print(const std::vector<std::string>& a) {
+    if (a.size() < 2) return fail("usage: print expr ...");
+    std::string t;
+    for (size_t i = 1; i < a.size(); ++i) {
+        int64_t v;
+        if (!parse_value(a[i], v)) return false;
+        t += format("%s%s=%llX", i > 1 ? " " : "", a[i].c_str(), (unsigned long long)v);
+    }
+    out(t + "\n");
     return true;
 }
 
