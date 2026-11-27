@@ -1,0 +1,11 @@
+# First of two runs sharing one --nvram file (tests/CMakeLists.txt): an empty
+# battery-backed RAM stops POST at its setup check with M12; Reset continues
+# to the start-up screen, and the firmware writes its setup on the way.
+policy log
+speed max
+run #600000000
+assert byte[7a24]==ac&&byte[7a26]==21&&byte[7a28]==22 "POST's M12 line on row 0"
+key lctrl
+run #600000000
+assert byte[825c]==23&&byte[825e]==24&&byte[8260]==27&&byte[8262]==22 "start-up screen after Reset"
+quit

@@ -21,10 +21,34 @@ display on coax (CUT mode) with its own tube, running the ROM pair
   connects. The host's screen and the controller's status line ("TN3270")
   show (observed, 2026-11-27).
 - `tests/rc/3472-smoke.rc` checks the POST and start-up screens.
+- Reset after `M12` also writes the setup into battery-backed RAM. With the
+  same `--nvram` file, the next boot passes the setup check and reaches the
+  start-up screen with no key pressed (observed;
+  `tests/rc/3472-save-setup.rc`, `tests/rc/3472-boot-saved.rc`). Unlike the
+  3483, the 3472 opens no setup screen on that path.
 - POST's error line is only the letters, e.g. `M12`. The 3483 also shows a
   test number, an error code and data words (observed: the writer at
   `E000:3C3A` stores three cells and stops). The terminal then waits for
   Reset, as the 3483 does.
+
+## Board (photo, observed)
+
+Main logic board 09F4564; parts as marked:
+
+| Part | Marking | Role |
+| --- | --- | --- |
+| CPU | AMD N8086-2 (PLCC) | 8086, 8 MHz grade |
+| gate array | Toshiba 09F4534 T3A17B | display, coax and system control (hypothesis: one chip for all three) |
+| ROM | NEC, "3472 PROGRAM 09F4604" and "09F4605", IBM 1989 | even and odd bytes |
+| DRAM | 2x Panasonic MN41464A-08 (64Kx4) | 64 KiB at `00000` |
+| SRAM | 2x NEC D43256AGU-10LL (32Kx8, low power) | 64 KiB at `10000` |
+| battery | Sanyo lithium coin cell (B1) | keeps the SRAM (hypothesis) |
+| oscillators | Y1 CTS 56.6092 MHz, Y2 45.9600 MHz | dot and CPU clocks (hypothesis; neither divides to a CPU clock evenly) |
+| latches | 74LS373 | 8086 address demultiplexing (hypothesis) |
+
+Connectors: the coax BNC; a modular jack (CN1, the keyboard,
+hypothesis); a D-sub on the side (purpose unknown); a 30-way edge
+connector to the tube's power and deflection board (hypothesis).
 
 ## Memory map
 
@@ -109,4 +133,6 @@ connected, or on any reset.
   (hypothesis).
 - The monitor sense code: `51`, the 3483 firmware's monochrome class
   (hypothesis).
-- The CPU clock.
+- The CPU clock: 8 MHz, the N8086-2's rating. Neither oscillator divides
+  to it by a small whole number (56.6092 / 7 = 8.09 MHz), so the gate
+  array's divider is not known.

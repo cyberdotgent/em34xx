@@ -13,11 +13,16 @@
 //  - the same register design as the 3483 at other addresses [observed in
 //    code]: display 28000, coax adapter and interrupt status 28100, system
 //    control 30000, row lists and coax status block 20108/20308/20508;
-//    those devices are not modelled yet, and stop the machine on first
-//    access;
-//  - RAM: 64 KiB DRAM at 00000, SRAM at 10000-1FFFF (character generator
-//    10000-1BFFF, setup 1C000-1FFFF, battery-backed [hypothesis]), gate
-//    array RAM 20000-207FF [observed use; placement from the RAM tests].
+//    modelled by the 3483's board model (hw/board_3483.hpp);
+//  - gate array: Toshiba 09F4534 (T3A17B) [observed, board photo];
+//  - RAM: 64 KiB DRAM at 00000 (two Panasonic MN41464A-08, 64Kx4), 64 KiB
+//    SRAM at 10000-1FFFF (two NEC D43256AGU-10LL, 32Kx8, low-power parts
+//    next to a Sanyo lithium cell) [parts observed, board photo]; the
+//    character generator at 10000-1BFFF and the setup above it [observed
+//    use]; the SRAM as the battery-backed part [hypothesis, strong: the
+//    firmware keeps its setup there, and only those parts are low-power
+//    ones beside the cell]; gate array
+//    RAM 20000-207FF [observed use; placement from the RAM tests].
 #include "models/model.hpp"
 
 #include "bus/bus.hpp"
@@ -100,7 +105,12 @@ public:
             "the gate array supplies interrupt vector 20h (hypothesis)",
             "ROMs 09F4604 (even bytes) and 09F4605 (odd bytes), 128 KiB each, interleaved at C0000-FFFFF "
             "(observed: checksums, reset vector)",
-            "CPU: AMD N8086-2 (observed); clock 8 MHz (hypothesis)",
+            "CPU: AMD N8086-2 (observed); clock 8 MHz (hypothesis; oscillators 56.6092 and 45.9600 MHz observed)",
+            "RAM: 64 KiB DRAM (2x MN41464A-08) at 00000 and 64 KiB SRAM (2x NEC D43256AGU-10LL) at 10000, the SRAM "
+            "battery-backed by a lithium cell (parts observed on the board; placement observed in use, the "
+            "battery-backed part a hypothesis); a first boot with an empty SRAM stops at M12, Reset writes the "
+            "setup, and the next boot passes it (observed: tests rom_3472_save_setup/boot_saved)",
+            "gate array: Toshiba 09F4534 (observed, board photo)",
             "line: coax, CUT mode (hypothesis, strong; same adapter design as the 3483)",
         };
     }

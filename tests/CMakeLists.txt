@@ -102,6 +102,20 @@ if(EXISTS "${PROJECT_SOURCE_DIR}/roms/09f4604.bin" AND EXISTS "${PROJECT_SOURCE_
            COMMAND em34xx-headless --model 3472 --rom-dir "${PROJECT_SOURCE_DIR}/roms" --batch
                    --rc "${CMAKE_CURRENT_SOURCE_DIR}/rc/3472-smoke.rc")
   set_tests_properties(rom_3472_smoke PROPERTIES LABELS "rom;slow" TIMEOUT 900)
+
+  # A first boot leaves the setup in battery-backed RAM; the next boots past it.
+  set(nvram_3472 "${CMAKE_CURRENT_BINARY_DIR}/3472-saved.nvram")
+  add_test(NAME rom_3472_nvram_clean COMMAND ${CMAKE_COMMAND} -E rm -f "${nvram_3472}")
+  add_test(NAME rom_3472_save_setup
+           COMMAND em34xx-headless --model 3472 --rom-dir "${PROJECT_SOURCE_DIR}/roms" --batch
+                   --nvram "${nvram_3472}" --rc "${CMAKE_CURRENT_SOURCE_DIR}/rc/3472-save-setup.rc")
+  add_test(NAME rom_3472_boot_saved
+           COMMAND em34xx-headless --model 3472 --rom-dir "${PROJECT_SOURCE_DIR}/roms" --batch
+                   --nvram "${nvram_3472}" --rc "${CMAKE_CURRENT_SOURCE_DIR}/rc/3472-boot-saved.rc")
+  set_tests_properties(rom_3472_nvram_clean PROPERTIES LABELS "rom;slow" FIXTURES_SETUP nvram3472clean)
+  set_tests_properties(rom_3472_save_setup PROPERTIES LABELS "rom;slow" TIMEOUT 900
+                       FIXTURES_REQUIRED nvram3472clean FIXTURES_SETUP nvram3472)
+  set_tests_properties(rom_3472_boot_saved PROPERTIES LABELS "rom;slow" TIMEOUT 900 FIXTURES_REQUIRED nvram3472)
 endif()
 
 # TN3270 (src/tn3270): the 3270 data stream.
