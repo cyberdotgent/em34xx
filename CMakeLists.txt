@@ -142,6 +142,32 @@ if(EM34XX_HAVE_SDL AND CMAKE_SYSTEM_NAME STREQUAL "Linux")
   endif()
 endif()
 
+# EM34XX_FRONTEND_QT  AUTO (default): build `em34xx-qt` on Linux and the BSDs
+#                      when the system's Qt 6 Widgets is found
+#                      ON: fail configuration without it;  OFF: skip it
+# Qt comes from the system (a distribution package), not from vcpkg.
+set(EM34XX_FRONTEND_QT AUTO CACHE STRING "Qt 6 front end (em34xx-qt, Linux/BSD): AUTO, ON or OFF")
+set_property(CACHE EM34XX_FRONTEND_QT PROPERTY STRINGS AUTO ON OFF)
+string(TOUPPER "${EM34XX_FRONTEND_QT}" _em34xx_qt)
+if(NOT _em34xx_qt MATCHES "^(AUTO|ON|OFF)$")
+  message(FATAL_ERROR "EM34XX_FRONTEND_QT must be AUTO, ON or OFF (got '${EM34XX_FRONTEND_QT}')")
+endif()
+set(EM34XX_HAVE_QT OFF)
+if(UNIX AND NOT APPLE)
+  if(_em34xx_qt STREQUAL "ON")
+    find_package(Qt6 6.4 REQUIRED COMPONENTS Widgets)
+    set(EM34XX_HAVE_QT ON)
+  elseif(_em34xx_qt STREQUAL "AUTO")
+    find_package(Qt6 6.4 QUIET COMPONENTS Widgets)
+    if(Qt6Widgets_FOUND)
+      set(EM34XX_HAVE_QT ON)
+    endif()
+  endif()
+elseif(_em34xx_qt STREQUAL "ON")
+  message(FATAL_ERROR "EM34XX_FRONTEND_QT=ON, but em34xx-qt builds on Linux and the BSDs only")
+endif()
+message(STATUS "Qt front end (em34xx-qt): ${EM34XX_HAVE_QT}")
+
 # EM34XX_FRONTEND_COCOA  AUTO (default) / ON: build em34xx.app on macOS;
 #                        OFF: skip it. Never built elsewhere.
 set(EM34XX_FRONTEND_COCOA AUTO CACHE STRING "Cocoa front end (em34xx.app, macOS only): AUTO, ON or OFF")
@@ -162,6 +188,7 @@ message(STATUS "Cocoa front end (em34xx.app): ${EM34XX_HAVE_COCOA}")
 set(EM34XX_EXE_SDL em34xx)                 # SDL3 window + developer tooling
 set(EM34XX_EXE_HEADLESS em34xx-headless)   # no window, monitor on stdin/stdout
 set(EM34XX_EXE_WIN32 em34xxw)              # native Win32 GUI (end-user), WIN32 only
+set(EM34XX_EXE_QT em34xx-qt)               # Qt 6 GUI (end-user), Linux and the BSDs
 set(EM34XX_EXE_COCOA em34xx)               # Cocoa GUI, bundled as em34xx.app (target em34xx_app), APPLE only
 find_package(replxx CONFIG REQUIRED)
 find_package(tomlplusplus CONFIG REQUIRED)
@@ -202,6 +229,7 @@ endif()
 #   em34xx_runtime   config, Application, HostLink             -> machines, bridge, present
 #   em34xx_devtools  monitor, console (replxx), GDB stub, probes -> runtime, net
 #   em34xx_frontend_sdl  SDL3 front end                        -> runtime
+#   em34xx_frontend_qt   Qt 6 front end (Linux, BSD)           -> runtime
 #   em34xx_frontend_win32  Win32 front end (WIN32 only)        -> runtime
 #   em34xx_frontend_cocoa  Cocoa front end (APPLE only)        -> runtime
 #
@@ -398,6 +426,52 @@ endif()
 # Native end-user front ends link em34xx_runtime and their own front-end
 # library only, never em34xx_devtools (docs/architecture.md).
 #
+# em34xx-qt: the Qt 6 Widgets GUI for Linux and the BSDs (docs/frontend-qt.md).
+# No moc or uic: the front end declares no signals or slots. rcc embeds the
+# icons and glyphs (PNGs from tools/gen_linux_assets.py), the third-party
+# notices, the .em34xx file type and the desktop entry.
+if(EM34XX_HAVE_QT)
+  em34xx_library(em34xx_frontend_qt
+    src/frontend/qt/qt_frontend.cpp
+    src/frontend/qt/qt_dialogs.cpp
+    src/frontend/qt/qt_util.cpp
+    src/frontend/qt/qt_keys.cpp
+  )
+  target_link_libraries(em34xx_frontend_qt PUBLIC em34xx_runtime
+    PRIVATE em34xx_version_header Qt6::Widgets)
+  target_compile_definitions(em34xx_frontend_qt PRIVATE QT_NO_KEYWORDS QT_NO_CAST_FROM_ASCII)
+  # Debug builds check the standard library's preconditions (std::clamp's
+  # range, indices...), as distributions' package builds do.
+  target_compile_definitions(em34xx_frontend_qt PRIVATE $<$<CONFIG:Debug>:_GLIBCXX_ASSERTIONS>)
+  add_executable(${EM34XX_EXE_QT} src/main_qt.cpp)
+  target_link_libraries(${EM34XX_EXE_QT} PRIVATE em34xx_frontend_qt em34xx_warnings)
+
+  # Embedded: the window icon (":/icons/<n>x<n>/apps/em34xx.png"), the
+  # toolbar and status glyphs (":/glyphs/<name>-<n>.png"), and the files
+  # About and Settings > Open .em34xx files use. Installed: the executable,
+  # the desktop entry, the file type and the icons in the hicolor theme.
+  set(_em34xx_qt_res ${PROJECT_SOURCE_DIR}/src/frontend/qt/res)
+  set(_em34xx_qt_icons)
+  foreach(_size IN ITEMS 16 24 32 48 64 96 128 192 256)
+    list(APPEND _em34xx_qt_icons ${_em34xx_qt_res}/hicolor/${_size}x${_size}/apps/em34xx.png)
+  endforeach()
+  file(GLOB _em34xx_qt_glyphs CONFIGURE_DEPENDS ${_em34xx_qt_res}/glyphs/*.png)
+  qt_add_resources(em34xx_frontend_qt em34xx_qt_icons PREFIX /icons BASE ${_em34xx_qt_res}/hicolor
+    FILES ${_em34xx_qt_icons})
+  qt_add_resources(em34xx_frontend_qt em34xx_qt_glyphs PREFIX /glyphs BASE ${_em34xx_qt_res}/glyphs
+    FILES ${_em34xx_qt_glyphs})
+  qt_add_resources(em34xx_frontend_qt em34xx_qt_files PREFIX / BASE ${_em34xx_qt_res}
+    FILES ${_em34xx_qt_res}/notices.txt ${_em34xx_qt_res}/em34xx-mime.xml ${_em34xx_qt_res}/em34xx.desktop)
+
+  include(GNUInstallDirs)
+  install(TARGETS ${EM34XX_EXE_QT} RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
+  install(FILES ${_em34xx_qt_res}/em34xx.desktop DESTINATION ${CMAKE_INSTALL_DATADIR}/applications)
+  install(FILES ${_em34xx_qt_res}/em34xx-mime.xml DESTINATION ${CMAKE_INSTALL_DATADIR}/mime/packages
+    RENAME em34xx.xml)
+  install(DIRECTORY ${_em34xx_qt_res}/hicolor DESTINATION ${CMAKE_INSTALL_DATADIR}/icons
+    FILES_MATCHING PATTERN "*.png")
+endif()
+
 # em34xxw: the Win32 GUI (GUI subsystem, resources from em34xxw.rc built by
 # windres; docs/frontend-win32.md).
 if(WIN32)

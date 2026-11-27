@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- The .em34xx connection profile (docs/frontend-qt.md), for
+     shared-mime-info: installed to share/mime/packages, or written to
+     $XDG_DATA_HOME/mime/packages by Settings > Open .em34xx files. -->
+<mime-info xmlns="http://www.freedesktop.org/standards/shared-mime-info">
+  <mime-type type="application/x-em34xx-profile">
+    <comment>em34xx connection profile</comment>
+    <sub-class-of type="text/plain"/>
+    <icon name="application-x-em34xx-profile"/>
+    <glob pattern="*.em34xx"/>
+  </mime-type>
+</mime-info>

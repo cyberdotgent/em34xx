@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=em34xx
+GenericName=IBM 5250 Terminal Emulator
+Comment=Emulates IBM 34xx 5250 terminals and connects to an IBM i host over TN5250
+Exec=em34xx-qt %f
+Icon=em34xx
+Terminal=false
+Categories=System;Emulator;
+MimeType=application/x-em34xx-profile;
+Keywords=5250;tn5250;twinax;3477;3486;3487;AS/400;IBM i;
