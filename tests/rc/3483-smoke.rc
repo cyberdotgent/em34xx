@@ -1,23 +1,37 @@
 # Smoke test for the 3483 ROM (06g5525.bin) with the modelled hardware.
 # A first boot with an empty battery-backed RAM: POST passes up to its
 # setup check (test 10, "M12 ... NVR"), Reset continues and the runtime
-# opens Offline Setup with "SETUP" in its local status buffer (0:0800) (docs/bringup-3483.md),
-# then runs the display test.
+# opens Offline Setup with "SETUP" in its local status buffer (0:0800) and
+# on the status row (0:0A00), waits for the screen saver, wakes it with a
+# key and then runs the display test (docs/bringup-3483.md).
 assert pc==ffff0 "reset vector"
 policy log
 speed max
 run #300000000
 assert byte[5840a]==0a "POST stopped at test 10, the setup check"
 key lctrl
-run #400000000
+run #30000000
 assert word[58006]==1c17&&word[5800a]==0812 "24x80 with 18-line cells"
 assert byte[800]==b2&&byte[802]==a4&&byte[804]==b3 "local status buffer starts 'SET'"
+assert byte[a00]==b2&&byte[a02]==a4&&byte[a04]==b3 "status row shows SETUP at once"
+assert (byte[2000:6fd]&20)==0 "screen saver off"
 assert byte[58403]&0x80 "alarm off, speaker bit on"
-# Test display station (Down four times, Enter): its glyph patterns go
-# through the 40000 window to other characters, so the base set's "A"
-# (A0, 48000 + A0*32) keeps its apex in row 4 (docs/bringup-3483.md).
+# Ten minutes without a key (setup bytes 3C5 = 1, 3C6 = 0A; 664 ticks of
+# about 90 ms a minute) start the screen saver: [06FD] bit 5, a blank status
+# row with symbol 1F in cell 71 and 5801A bit 6 (docs/bringup-3483.md).
+run #370000000
+assert (byte[2000:6fd]&20)!=0 "screen saver on after ten idle minutes"
+assert byte[a00]==0&&byte[a00+2*#71]==1f "screen saver status row"
+assert word[5801a]&0x40 "screen saver sets 5801A bit 6"
+# The first key only ends it: the key is not acted on.
 key down
 run #5000000
+assert (byte[2000:6fd]&20)==0 "a key ends the screen saver"
+assert byte[a00]==b2&&byte[a02]==a4&&byte[a04]==b3 "status row shows SETUP again"
+assert (word[5801a]&0x40)==0 "5801A bit 6 clear again"
+# Test display station (Down three times, Enter): its glyph patterns go
+# through the 40000 window to other characters, so the base set's "A"
+# (A0, 48000 + A0*32) keeps its apex in row 4 (docs/bringup-3483.md).
 key down
 run #5000000
 key down

@@ -159,9 +159,9 @@ far pointer at `D000:D53A`) (observed):
 - in setup and the other local states (`[07B8]` nonzero): its local status
   buffer at `0:0800` (pointer `D000:D536`), 132 cells, where setup writes
   "SETUP" in reverse white (`F000:62CB`);
-- with `[06FD]` bit 5 set (set in the keyboard code at `F000:A633`): a
-  blank row with one symbol in cell 71 (`1F`, or `A3` for the values 28h,
-  37h and 24h of `[0003]`).
+- with `[06FD]` bit 5 set (the screen saver, see below): a blank row with
+  one symbol in cell 71 (`1F`, or `A3` for the values 28h, 37h and 24h of
+  `[0003]`).
 
 The display mode set clears `0:0A00` (84h words of `2140`) together with
 the regen buffer (`D000:48E8`, `D000:4B05`), and after POST the CPU never
@@ -194,6 +194,38 @@ supports the block/blink assignment above.
 This explains the values seen: `1000` is the mode record's default during
 POST, `0` the display test's reset, `3004` and `1004` the runtime with and
 without bit 13. Bit 13 is not modelled.
+
+### Screen saver
+
+`[06FD]` bit 5 is the screen saver (observed, 2026-11-27). The timer
+routine counts `[07A4]` up once per tick (`F000:A5D5`) while setup byte
+`3C5` (item 26h) is nonzero, and when the count reaches `3C6` (item 27h)
+times 298h it sets the bit (`F000:A633`) and asks for a redraw (`[0784]`
+bits 2 and 13). A key resets the count (`D000:BDDA`); a key while the bit
+is set clears it (`D000:BE4E`), asks for the redraw and is not acted on
+otherwise (observed). An empty battery-backed RAM gives `3C5` = 1 and
+`3C6` = 0Ah (observed). In emulation a tick is about 90 ms (2878 ticks in
+2.6e9 cycles at 10 MHz, observed), so 298h = 664 ticks is a minute and the
+default is ten minutes (hypothesis, strong: the firmware's own constant).
+Neither item appears in Customization (observed); where it is set is open
+(hypothesis: Display Setup, with the alarm and clicker volumes, items 28h
+and 29h).
+
+While the saver is on, the status routine draws the blank row with the
+cell-71 symbol, and the display update (`F000:B64E`) sets `5801A` bit 6
+(the shadow `[026C]`), which it also sets for `[079B]` and a local flag
+(observed). The bit also selects the linear screen in the model (POST's
+screens set it), so the model's picture keeps the setup text: on a real
+unit the saver presumably blanks the screen, which bit 6 alone cannot do
+if POST's text shows with it set (open). What symbol `1F` shows is open.
+
+This was first taken for a keyboard fault: the boot scripts idle about 17
+emulated minutes in Offline Setup (`run #400000000` after Reset), so the
+saver was on when they looked, and the first key "was swallowed". Right
+after Reset the status row shows SETUP (`tests/rc/3483-smoke.rc` checks
+both, and needs three Downs after the waking key to reach the display
+test). It is not caused by the keyboard's unsolicited ID bytes after its
+BAT result (a separate issue with the boot path).
 
 ### Cursor
 
@@ -500,11 +532,8 @@ for is open.
   emulation, a blank screen and a blank status row (observed), with no
   cursor. (The "blank start and reverse bar" seen before was `0:0800`, the
   local buffer, which the model drew until the status row was found.)
-- The first Offline Setup screen after an NVR reset shows a blank status
-  row with symbol `1F` in cell 71 (`[06FD]` bit 5, set in the keyboard
-  code); the first key clears it and SETUP appears (observed in emulation).
-  Whether this is the indicator behind "the first key after boot is
-  swallowed" is open.
+- The screen saver (see Screen saver): whether `5801A` bit 6 blanks the
+  picture, what symbol `1F` is, and which setup page sets items 26h-27h.
 - What the controller should write in cells 0-79: a 3270 controller
   writes the operator information area in its own character set; the
   status routine compares cell 0 with `20`, `31`, `2F`, `09` and `BF`
