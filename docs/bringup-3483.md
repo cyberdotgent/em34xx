@@ -110,19 +110,38 @@ Customization's "Screen rows x columns" switches between 24x80, 32x80 and
 43x80 on the 3483-V (observed in emulation and on the real unit's
 Customization photo; 27x132 is not offered there). The setup screens
 themselves always run in 24x80 (observed). In emulation, choosing 32x80
-and leaving setup gives 33 rows of 13-line cells (observed).
+and leaving setup gives 32 rows of 13-line cells, linear from `0:1000`
+(observed). Before the row list below was worked out, row 28 repeated row 0.
 
 ### Screen rows and the status row
 
-`5801A` bit 6 set: a linear screen from `0:1000` (POST's screens, observed).
-Clear: each row's start comes from the row list in block RAM, entry r at
-`50108+4r` (A) and `50508+4r` (B), copied there by `svc_244` from the
-firmware's data segment (observed). The runtime sets A bit 7 on every row
-and its screens are linear at `0:1000` (observed), so A bit 7 is taken as
-"continue after the previous row" (hypothesis). Otherwise the row starts at
-cell `((A & 7F) << 8) | B[0]`, biased by 800h cells (hypothesis fitted to
-the display test). The other B bytes (`01`, `7C` or `B0`) and A's low bits
-are not understood (open).
+`5801A` bit 6 set: a linear screen from `0:1000` (POST's screens and the
+setup screens, observed). Clear (the online runtime, POST test 7): each row's
+start comes from the row list in block RAM. Entry e is at `50108+4e` (A)
+and `50508+4e` (B). An entry with A bit 7 clear names the cell
+`((A & 7F) << 8) | B[0]`, biased by 800h cells (observed: the firmware
+adds the 800h itself). An entry with bit 7 set continues after the previous
+row.
+
+The list runs downward. The runtime's builder (`D000:4F50`, `D000:513C`)
+writes entries 0-61 (observed):
+- the default "continue" entry (`85`, B `00 01 7C`) everywhere;
+- row r's start at entry 62 - r for r = 1 to rows - 1;
+- two "continue" entries below the last row;
+- the regen origin (`08 00`) under them, at entry 60 - rows.
+
+It writes the same layout in 24, 32 and 43 rows, so the `0800` lands at
+entries 36, 28 and 17. Reading entry r for row r repeated row 0 at row 28
+in 32x80 (and would have at row 17 in 43x80). The model takes the walk to
+start at entry 61 during row 0, with the entry read during a row setting
+the next row's start. So row r >= 1 comes from entry 62 - r, and row 0
+from the lowest entry below the screen with bit 7 clear (the last one read
+during vertical blanking) (hypothesis). It fits the runtime in all three
+sizes and all six of POST test 7's sense readings, whose lists repeat one
+entry. B[2] is minus the row length (`7C` = -132, `B0` = -80, observed
+values). B[1] bit 0 and A's other bytes are not understood (open). With
+`[es:bx+6]` nonzero the builder starts at a later window row (open: where
+the runtime uses that).
 
 The status row (the 3270 operator information area) is the 80 cells at
 `0:0800`, shown below the screen with a thin rule along its top edge
@@ -400,7 +419,11 @@ Offline Setup. Reset leaves the test.
   emulation, a blank screen and a status row whose first six cells are
   blank and the rest a reverse bar (observed), with no cursor.
 - `5801C` bits 2, 12 and 13; `58014`, `58022`, `58024`, `58018`, `58028`.
-- The status row's address; the row-list entry fields besides A bit 7.
+- The status row's address; the row-list fields B[1], B[2] and A[1-3].
+- The status row in CUT mode: the controller writes it at coax addresses
+  0-79 (TN3270, X SYSTEM), but it does not reach `0:0800` in emulation
+  (observed with a TN3270 host: the row stays a blank start and a reverse
+  bar). Where the firmware takes it from is open.
 - The printer port.
 - What the letters `M`, `D` and `C` of the POST error line stand for.
 - The colour-table drive levels against the photographed palette.

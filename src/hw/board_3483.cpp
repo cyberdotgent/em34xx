@@ -204,22 +204,45 @@ uint32_t Board3483::Display::row_address(unsigned row) const {
     // 5801A bit 6 set: linear, rows follow each other from the regen origin
     // 0:1000 [observed: POST's own screens set it and write their text from
     // 0:1000]. 5801C is not a start address: the runtime keeps control bits
-    // in it (cursor on/shape/blink, see cursor()) [observed]. Clear: the
-    // row list in block RAM [observed: svc_244 copies it there], entry r at
-    // 50108+4r and 50508+4r; the row starts at cell
-    // ((A[0] & 7F) << 8 | B[0]), stored with a bias of 800h cells, so the
-    // byte address is twice that [hypothesis, fits the display test: cell
-    // 1F5 is cleared regen at 13EA].
-    if (regs_[0x1A >> 1] & 0x0040) return kRegenOrigin + 2u * row * columns();
-    const uint32_t a = 0x50108 + 4 * row, b = 0x50508 + 4 * row;
-    const uint8_t first = board_.bus_.peek8(a);
-    // Bit 7 set: the row continues where the previous one ended, the first
-    // at the start of the regen buffer (cell 800h = 0:1000, the origin the
-    // row addresses are biased by) [hypothesis: the runtime sets it on every
-    // row of its screens, which are linear at 0:1000].
-    if (first & 0x80) return row ? row_address(row - 1) + 2u * columns() : kRegenOrigin;
-    const uint32_t cell = uint32_t(first & 0x7F) << 8 | board_.bus_.peek8(b);
-    return 2 * cell;
+    // in it (cursor on/shape/blink, see cursor()) [observed].
+    //
+    // Clear: the row list in block RAM [observed: svc_244 copies it there],
+    // entry e at A = 50108+4e and B = 50508+4e, cell ((A[0] & 7F) << 8 |
+    // B[0]) stored with a bias of 800h cells, so the byte address is twice
+    // that [observed: the firmware adds 800h itself, C000:CBCD, D000:5189].
+    // The controller walks the list downward from entry 61, one entry per
+    // character row, and the entry it reads during a row sets where the next
+    // row starts: so row r >= 1 comes from entry 62 - r, and row 0 from the
+    // entries read during vertical blanking [observed: the runtime's builder
+    // (D000:4F50, D000:513C) writes 62 entries (0-61), row r's start at entry
+    // 62 - r for r >= 1, and the regen origin (0800) a little below the last
+    // row, in 24, 32 and 43 rows]. An entry with A bit 7 clear gives its
+    // cell; bit 7 set continues after the previous row. Row 0 starts at the
+    // cell of the lowest entry below the screen with bit 7 clear, the last
+    // one read before the frame [hypothesis: fits that runtime layout and
+    // all six of POST test 7's video sense readings, over lists of one
+    // repeated entry]; with none, at the regen origin.
+    const unsigned cols = columns();
+    if (regs_[0x1A >> 1] & 0x0040) return kRegenOrigin + 2u * row * cols;
+    Bus& bus = board_.bus_;
+    auto starts_row = [&bus](unsigned e) { return !(bus.peek8(0x50108 + 4 * e) & 0x80); };
+    auto entry_cell = [&bus](unsigned e) {
+        return uint32_t(bus.peek8(0x50108 + 4 * e) & 0x7F) << 8 | bus.peek8(0x50508 + 4 * e);
+    };
+    constexpr unsigned kLast = 61;   // the list is entries 0-61
+    const unsigned shown = std::min(rows(), kLast + 1);
+    uint32_t addr = kRegenOrigin;
+    for (unsigned e = kLast + 1 - shown; e-- > 0;)
+        if (starts_row(e)) addr = 2 * entry_cell(e);
+    for (unsigned r = 0;; ++r) {
+        uint32_t start = addr;
+        if (r > 0) {
+            const unsigned e = kLast + 1 - std::min(r, kLast + 1);
+            if (starts_row(e)) start = 2 * entry_cell(e);
+        }
+        if (r >= row) return start;
+        addr = start + 2u * cols;
+    }
 }
 
 // One cell as the display shows it [hypothesis throughout, fitted to the
