@@ -50,7 +50,7 @@ CoaxBoardLayout layout_3472() {
     l.sram = kSramBase;
     l.block_ram = kBlockRamBase;
     l.regen = 0x7A00;
-    l.status_row = 0x7200;   // [hypothesis: 800h below the regen, as on the 3483]
+    l.status_row = 0x7200;   // [hypothesis: 800h below the regen; the 3483's is 600h below, 0:0A00]
     l.sync_reads_high = true;
     l.monochrome = true;
     l.cell_dots = 12;   // main 3-0, companion 7-0 [observed: its fonts]

@@ -49,9 +49,12 @@ struct CoaxBoardLayout {
     uint32_t block_ram = 0x50000;
     // In segment 0: the regen buffer's origin, twice the row lists' cell
     // bias [observed: the 3483 firmware adds 800h to a cell, the 3472's
-    // 3D00h], and the status row's 80 cells [3483: 0:0800, observed: the
-    // runtime keeps "SETUP" there; hypothesis: that the address is fixed].
-    uint32_t regen = 0x1000, status_row = 0x0800;
+    // 3D00h], and the status row (the screen's width of 132 cells)
+    // [3483: 0:0A00, observed: the runtime copies the operator information
+    // area it builds there, D000:D31F, and the mode set clears it with the
+    // regen buffer; 0:0800 is its local status buffer, "SETUP" in setup,
+    // which it copies in; hypothesis: that the address is fixed].
+    uint32_t regen = 0x1000, status_row = 0x0A00;
     // Vertical sync in the system sense register (bit 2): high during the
     // pulse instead of during the frame (the 3472's own tube).
     bool sync_reads_high = false;
