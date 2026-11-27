@@ -390,3 +390,76 @@ TEST_CASE("tn5250 terminal type: the unit's own, overridable per station") {
     bare.host = "h";
     CHECK(telnet_settings_for(bare).terminal_type == "IBM-3477-FC");
 }
+
+// TN3270E (RFC 2355): only when the settings ask for it.
+namespace {
+std::vector<uint8_t> sb(std::initializer_list<uint8_t> body, const std::string& text = "",
+                        std::initializer_list<uint8_t> tail = {}) {
+    std::vector<uint8_t> v = {IAC, SB, OPT_TN3270E};
+    v.insert(v.end(), body);
+    v.insert(v.end(), text.begin(), text.end());
+    v.insert(v.end(), tail);
+    v.insert(v.end(), {IAC, SE});
+    return v;
+}
+bool contains(const std::vector<uint8_t>& hay, const std::vector<uint8_t>& needle) {
+    return std::search(hay.begin(), hay.end(), needle.begin(), needle.end()) != hay.end();
+}
+} // namespace
+
+TEST_CASE("TN3270E is refused unless enabled") {
+    tn5250::TelnetCodec codec(tn5250::TelnetSettings{});
+    std::vector<uint8_t> reply;
+    std::vector<std::vector<uint8_t>> recs;
+    const uint8_t in[] = {IAC, DO, OPT_TN3270E};
+    codec.receive(in, sizeof in, reply, recs);
+    CHECK(reply == std::vector<uint8_t>{IAC, WONT, OPT_TN3270E});
+}
+
+TEST_CASE("TN3270E: device type with a name, a reject, then the server's LU") {
+    tn5250::TelnetSettings s;
+    s.terminal_type = "IBM-3279-2-E";
+    s.tn3270e = true;
+    s.device_name = "MYLU";
+    tn5250::TelnetCodec codec(s);
+    std::vector<uint8_t> reply;
+    std::vector<std::vector<uint8_t>> recs;
+    auto feed = [&](const std::vector<uint8_t>& in) {
+        reply.clear();
+        codec.receive(in.data(), in.size(), reply, recs);
+    };
+    feed({IAC, DO, OPT_TN3270E});
+    CHECK(reply == std::vector<uint8_t>{IAC, WILL, OPT_TN3270E});
+    feed(sb({E_SEND, E_DEVICE_TYPE}));
+    CHECK(contains(reply, sb({E_DEVICE_TYPE, E_REQUEST}, "IBM-3279-2-E", {E_CONNECT, 'M', 'Y', 'L', 'U'})));
+    // INV-NAME: ask again without a name.
+    feed(sb({E_DEVICE_TYPE, E_REJECT, E_REASON, 3}));
+    CHECK(reply == sb({E_DEVICE_TYPE, E_REQUEST}, "IBM-3279-2-E"));
+    feed(sb({E_DEVICE_TYPE, E_IS}, "IBM-3279-2-E", {E_CONNECT, 'T', 'C', 'P', '1'}));
+    CHECK(reply == sb({E_FUNCTIONS, E_REQUEST}));
+    CHECK(codec.tn3270e_lu() == "TCP1");
+    CHECK_FALSE(codec.transparent());
+    feed(sb({E_FUNCTIONS, E_IS}));
+    CHECK(codec.tn3270e_active());
+    CHECK(codec.transparent());
+}
+
+TEST_CASE("TN3270E: a server's function request is answered with none") {
+    tn5250::TelnetSettings s;
+    s.tn3270e = true;
+    tn5250::TelnetCodec codec(s);
+    std::vector<uint8_t> reply;
+    std::vector<std::vector<uint8_t>> recs;
+    const std::vector<uint8_t> d = {IAC, DO, OPT_TN3270E};
+    codec.receive(d.data(), d.size(), reply, recs);
+    reply.clear();
+    const std::vector<uint8_t> req = sb({E_FUNCTIONS, E_REQUEST, 0x00, 0x02});   // BIND-IMAGE, RESPONSES
+    codec.receive(req.data(), req.size(), reply, recs);
+    CHECK(reply == sb({E_FUNCTIONS, E_REQUEST}));
+    CHECK_FALSE(codec.tn3270e_active());
+    reply.clear();
+    const std::vector<uint8_t> none = sb({E_FUNCTIONS, E_REQUEST});
+    codec.receive(none.data(), none.size(), reply, recs);
+    CHECK(reply == sb({E_FUNCTIONS, E_IS}));
+    CHECK(codec.tn3270e_active());
+}

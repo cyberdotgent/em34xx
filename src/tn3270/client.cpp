@@ -84,8 +84,22 @@ void Client::log_locked(const std::string& line) {
     log_.push_back(line);
 }
 
+std::string Client::lu_name() const {
+    std::lock_guard<std::mutex> g(mu_);
+    return lu_;
+}
+
 void Client::queue_outbound(const std::vector<uint8_t>& record) {
-    auto framed = tn5250::TelnetCodec::frame(record);
+    std::vector<uint8_t> framed;
+    if (tn3270e_) {
+        // TN3270E header: 3270-DATA, no request or response flags, sequence
+        // number 0 (no RESPONSES function) [RFC 2355 section 8].
+        std::vector<uint8_t> r = {0, 0, 0, 0, 0};
+        r.insert(r.end(), record.begin(), record.end());
+        framed = tn5250::TelnetCodec::frame(r);
+    } else {
+        framed = tn5250::TelnetCodec::frame(record);
+    }
     log(format("send record, %zu bytes, AID %02X", record.size(), record.empty() ? 0 : record[0]));
     std::lock_guard<std::mutex> g(mu_);
     if (outbound_overflow_ || outbound_bytes_ + framed.size() > kMaxQueuedBytes) {
@@ -160,6 +174,10 @@ void Client::run_session() {
 
     tn5250::TelnetSettings settings;
     settings.terminal_type = cfg_.terminal_type.empty() ? kDefaultTerminalType : cfg_.terminal_type;
+    // TN3270E when the server offers it, asking for the configured device
+    // name as the LU (the same setting as a TN5250 session's DEVNAME).
+    settings.tn3270e = true;
+    settings.device_name = cfg_.device_name;
     tn5250::TelnetCodec codec(settings);
     std::vector<uint8_t> buf(8192), reply;
     std::vector<std::vector<uint8_t>> records;
@@ -191,10 +209,30 @@ void Client::run_session() {
                 break;
             }
             if (codec.transparent() && state_ == ConnState::Negotiating) {
+                tn3270e_ = codec.tn3270e_active();
+                {
+                    std::lock_guard<std::mutex> g(mu_);
+                    lu_ = codec.tn3270e_lu();
+                }
                 state_ = ConnState::Ready;
-                log("3270 mode (BINARY + EOR both ways, terminal type sent)");
+                if (tn3270e_)
+                    log("TN3270E mode, device type " + codec.tn3270e_device_type() +
+                        (codec.tn3270e_lu().empty() ? std::string() : ", LU " + codec.tn3270e_lu()));
+                else
+                    log("3270 mode (BINARY + EOR both ways, terminal type sent)");
             }
             for (auto& rec : records) {
+                if (tn3270e_) {
+                    // Strip the TN3270E header; 3270-DATA and SSCP-LU-DATA
+                    // (a USS screen before a BIND) carry a 3270 data stream.
+                    if (rec.size() < 5) continue;
+                    const uint8_t type = rec[0];
+                    if (type != 0 && type != 7) {
+                        log(format("recv TN3270E data type %02X, %zu bytes (ignored)", type, rec.size()));
+                        continue;
+                    }
+                    rec.erase(rec.begin(), rec.begin() + 5);
+                }
                 log(format("recv record, %zu bytes, command %02X", rec.size(), rec.empty() ? 0 : rec[0]));
                 std::lock_guard<std::mutex> g(mu_);
                 inbound_bytes_ += rec.size();

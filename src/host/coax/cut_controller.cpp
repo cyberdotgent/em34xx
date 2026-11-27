@@ -267,11 +267,18 @@ void CutController::paint_status() {
     // The status line belongs to the controller [documented]. Drawn as
     // text in the display code: the connection state, X SYSTEM while the
     // keyboard is locked, the insert indicator.
+    // TN3270, or TN3270E and the LU name the host assigned (the configured
+    // device name when the host accepted it).
     std::string text = "TN3270";
+    if (session_ && session_->tn3270e()) {
+        text = "TN3270E";
+        const std::string lu = session_->lu_name();
+        if (!lu.empty()) text += " " + lu;
+    }
     if (!session_) text = "COAX";
     else if (session_->state() != tn3270::ConnState::Ready) text += " " + std::string(tn3270::conn_state_name(session_->state()));
     std::string line(kStatusCells, ' ');
-    for (size_t i = 0; i < text.size() && i < 20; ++i) line[i] = text[i];
+    for (size_t i = 0; i < text.size() && i < 20; ++i) line[i] = text[i];   // "TN3270E " + 8-char LU fits
     if (session_ && session_->engine().keyboard_locked()) {
         const std::string x = "X SYSTEM";
         line.replace(20, x.size(), x);
@@ -336,7 +343,9 @@ std::string CutController::describe() const {
     std::string s = format("coax CUT controller: %s, %dx%d%s\n", kPhase[int(phase_)], rows_, cols_,
                            eab_ ? ", extended attributes" : "");
     if (session_)
-        s += format("  TN3270 session: %s%s\n", tn3270::conn_state_name(session_->state()),
+        s += format("  %s session: %s%s%s\n", session_->tn3270e() ? "TN3270E" : "TN3270",
+                    tn3270::conn_state_name(session_->state()),
+                    session_->lu_name().empty() ? "" : (", LU " + session_->lu_name()).c_str(),
                     session_->last_error().empty() ? "" : (" (" + session_->last_error() + ")").c_str());
     return s;
 }

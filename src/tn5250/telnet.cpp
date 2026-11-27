@@ -18,6 +18,7 @@ const char* telnet::option_name(uint8_t opt) {
     case OPT_EOR: return "END-OF-RECORD";
     case OPT_NAWS: return "NAWS";
     case OPT_NEW_ENVIRON: return "NEW-ENVIRON";
+    case OPT_TN3270E: return "TN3270E";
     default: return nullptr;
     }
 }
@@ -40,7 +41,7 @@ const char* cmd_text(uint8_t cmd) {
 }
 
 // Options we are willing to perform ourselves (answer DO with WILL).
-bool local_supported(uint8_t opt) {
+bool basic_local_supported(uint8_t opt) {
     return opt == OPT_BINARY || opt == OPT_EOR || opt == OPT_TTYPE || opt == OPT_NEW_ENVIRON;
 }
 // Options we let the server perform (answer WILL with DO).
@@ -72,7 +73,89 @@ std::vector<std::string> TelnetCodec::take_log() {
 }
 
 bool TelnetCodec::transparent() const {
+    if (tn3270e_active()) return true;
     return local_[OPT_BINARY] && remote_[OPT_BINARY] && local_[OPT_EOR] && remote_[OPT_EOR] && ttype_sent_;
+}
+
+bool TelnetCodec::local_supported(uint8_t opt) const {
+    return basic_local_supported(opt) || (opt == OPT_TN3270E && settings_.tn3270e);
+}
+
+// DEVICE-TYPE REQUEST <type> [CONNECT <name>] (RFC 2355 section 7.1).
+void TelnetCodec::send_device_type(std::vector<uint8_t>& reply, bool with_name) {
+    reply.insert(reply.end(), {IAC, SB, OPT_TN3270E, E_DEVICE_TYPE, E_REQUEST});
+    for (char c : settings_.terminal_type) reply.push_back(uint8_t(c));
+    std::string text = "send SB TN3270E DEVICE-TYPE REQUEST " + settings_.terminal_type;
+    name_requested_ = with_name && !settings_.device_name.empty();
+    if (name_requested_) {
+        reply.push_back(E_CONNECT);
+        for (char c : settings_.device_name) reply.push_back(uint8_t(c));
+        text += " CONNECT " + settings_.device_name;
+    }
+    reply.insert(reply.end(), {IAC, SE});
+    note(text);
+}
+
+void TelnetCodec::handle_tn3270e(std::vector<uint8_t>& reply) {
+    const std::vector<uint8_t>& b = sb_;
+    if (!local_[OPT_TN3270E]) {
+        note("recv SB TN3270E (not enabled; ignored)");
+        return;
+    }
+    if (b.size() >= 3 && b[1] == E_SEND && b[2] == E_DEVICE_TYPE) {
+        note("recv SB TN3270E SEND DEVICE-TYPE");
+        send_device_type(reply, true);
+        return;
+    }
+    if (b.size() >= 3 && b[1] == E_DEVICE_TYPE && b[2] == E_IS) {
+        // IS <type> CONNECT <lu>
+        size_t i = 3;
+        e_device_type_.clear();
+        e_lu_.clear();
+        while (i < b.size() && b[i] != E_CONNECT) e_device_type_.push_back(char(b[i++]));
+        if (i < b.size()) ++i;
+        while (i < b.size()) e_lu_.push_back(char(b[i++]));
+        note("recv SB TN3270E DEVICE-TYPE IS " + e_device_type_ + (e_lu_.empty() ? "" : " CONNECT " + e_lu_));
+        // No functions: no BIND images, responses, SYSREQ or SCS data.
+        reply.insert(reply.end(), {IAC, SB, OPT_TN3270E, E_FUNCTIONS, E_REQUEST, IAC, SE});
+        note("send SB TN3270E FUNCTIONS REQUEST (none)");
+        return;
+    }
+    if (b.size() >= 3 && b[1] == E_DEVICE_TYPE && b[2] == E_REJECT) {
+        static const char* const kReason[] = {"CONN-PARTNER", "DEVICE-IN-USE", "INV-ASSOCIATE", "INV-NAME",
+                                              "INV-DEVICE-TYPE", "TYPE-NAME-ERROR", "UNKNOWN-ERROR",
+                                              "UNSUPPORTED-REQ"};
+        const int reason = b.size() >= 5 && b[3] == E_REASON ? b[4] : -1;
+        note(format("recv SB TN3270E DEVICE-TYPE REJECT %s",
+                    reason >= 0 && reason < 8 ? kReason[reason] : format("reason %d", reason).c_str()));
+        if (name_requested_) {
+            // The name is taken or unknown: let the server choose.
+            send_device_type(reply, false);
+        } else {
+            // Fall back to plain TN3270.
+            local_[OPT_TN3270E] = false;
+            send_cmd(reply, WONT, OPT_TN3270E);
+        }
+        return;
+    }
+    if (b.size() >= 3 && b[1] == E_FUNCTIONS && (b[2] == E_REQUEST || b[2] == E_IS)) {
+        const bool request = b[2] == E_REQUEST;
+        note(format("recv SB TN3270E FUNCTIONS %s (%zu functions)", request ? "REQUEST" : "IS", b.size() - 3));
+        if (!request || b.size() == 3) {
+            if (request) {
+                reply.insert(reply.end(), {IAC, SB, OPT_TN3270E, E_FUNCTIONS, E_IS, IAC, SE});
+                note("send SB TN3270E FUNCTIONS IS (none)");
+            }
+            functions_agreed_ = true;
+            note("TN3270E in force" + (e_lu_.empty() ? std::string() : ", LU " + e_lu_));
+        } else {
+            // Counter-propose none of them (RFC 2355 section 7.2).
+            reply.insert(reply.end(), {IAC, SB, OPT_TN3270E, E_FUNCTIONS, E_REQUEST, IAC, SE});
+            note("send SB TN3270E FUNCTIONS REQUEST (none)");
+        }
+        return;
+    }
+    note(format("recv SB TN3270E (%zu bytes, ignored)", b.size() - 1));
 }
 
 void TelnetCodec::send_cmd(std::vector<uint8_t>& reply, uint8_t cmd, uint8_t opt) {
@@ -193,6 +276,10 @@ void TelnetCodec::handle_command(uint8_t cmd, uint8_t opt, std::vector<uint8_t>&
 void TelnetCodec::handle_subnegotiation(std::vector<uint8_t>& reply) {
     if (sb_.empty()) return;
     const uint8_t opt = sb_[0];
+    if (opt == OPT_TN3270E) {
+        handle_tn3270e(reply);
+        return;
+    }
     if (opt == OPT_TTYPE && sb_.size() >= 2 && sb_[1] == TT_SEND) {
         note("recv SB TERMINAL-TYPE SEND");
         if (!local_[OPT_TTYPE]) {

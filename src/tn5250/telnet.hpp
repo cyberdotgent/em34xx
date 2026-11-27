@@ -11,6 +11,10 @@
 //   TERMINAL-TYPE (RFC 1091)                     WILL; answers SEND with IS <type>
 //   NEW-ENVIRON (RFC 1572, IBM usage RFC 4777)   WILL; answers SEND with IS
 //   TIMING-MARK (RFC 860)                        DO is answered WILL, stateless
+//   TN3270E (RFC 2355)                           WILL when settings.tn3270e: device
+//                                                type with CONNECT <name> when one is
+//                                                set, no functions (no BIND images,
+//                                                responses or SYSREQ)
 //   anything else                                refused (WONT / DONT)
 //
 // NEW-ENVIRON: we send only what the configuration provides (DEVNAME when
@@ -33,7 +37,10 @@ constexpr uint8_t IAC = 255, DONT = 254, DO = 253, WONT = 252, WILL = 251, SB = 
                   EL = 248, EC = 247, AYT = 246, AO = 245, IP = 244, BRK = 243, DM = 242, NOP = 241,
                   SE = 240, EOR = 239;
 constexpr uint8_t OPT_BINARY = 0, OPT_ECHO = 1, OPT_SGA = 3, OPT_TIMING_MARK = 6, OPT_TTYPE = 24,
-                  OPT_EOR = 25, OPT_NAWS = 31, OPT_NEW_ENVIRON = 39;
+                  OPT_EOR = 25, OPT_NAWS = 31, OPT_NEW_ENVIRON = 39, OPT_TN3270E = 40;
+// TN3270E subnegotiation codes (RFC 2355).
+constexpr uint8_t E_ASSOCIATE = 0, E_CONNECT = 1, E_DEVICE_TYPE = 2, E_FUNCTIONS = 3, E_IS = 4, E_REASON = 5,
+                  E_REJECT = 6, E_REQUEST = 7, E_SEND = 8;
 // TERMINAL-TYPE and NEW-ENVIRON subcommands.
 constexpr uint8_t TT_IS = 0, TT_SEND = 1;
 constexpr uint8_t ENV_IS = 0, ENV_SEND = 1, ENV_INFO = 2;
@@ -50,6 +57,10 @@ struct EnvVariable {
 struct TelnetSettings {
     std::string terminal_type = "IBM-3477-FC";
     std::vector<EnvVariable> environment;
+    // TN3270 only: accept TN3270E, asking for `device_name` as the LU
+    // (CONNECT) when it is not empty.
+    bool tn3270e = false;
+    std::string device_name;
 };
 
 class TelnetCodec {
@@ -72,8 +83,14 @@ public:
     // Escape a logical record (IAC doubling) and terminate it with IAC EOR.
     static std::vector<uint8_t> frame(const std::vector<uint8_t>& record);
 
-    // BINARY and EOR agreed both ways and the terminal type sent.
+    // BINARY and EOR agreed both ways and the terminal type sent, or
+    // TN3270E agreed (device type and functions).
     bool transparent() const;
+    // TN3270E in force: records carry the 5-byte TN3270E header.
+    bool tn3270e_active() const { return local_[telnet::OPT_TN3270E] && functions_agreed_; }
+    // The device type and LU name the server assigned (TN3270E), empty if none.
+    const std::string& tn3270e_device_type() const { return e_device_type_; }
+    const std::string& tn3270e_lu() const { return e_lu_; }
     bool local_enabled(uint8_t opt) const { return local_[opt]; }
     bool remote_enabled(uint8_t opt) const { return remote_[opt]; }
     bool terminal_type_sent() const { return ttype_sent_; }
@@ -92,6 +109,9 @@ private:
     void handle_command(uint8_t cmd, uint8_t opt, std::vector<uint8_t>& reply);
     void handle_subnegotiation(std::vector<uint8_t>& reply);
     void answer_environ(const std::vector<uint8_t>& request, std::vector<uint8_t>& reply);
+    void handle_tn3270e(std::vector<uint8_t>& reply);
+    void send_device_type(std::vector<uint8_t>& reply, bool with_name);
+    bool local_supported(uint8_t opt) const;
     void send_cmd(std::vector<uint8_t>& reply, uint8_t cmd, uint8_t opt);
     void note(const std::string& line) { log_.push_back(line); }
     void fail(const std::string& why);
@@ -103,6 +123,9 @@ private:
     bool local_[256] = {};
     bool remote_[256] = {};
     bool ttype_sent_ = false;
+    bool functions_agreed_ = false;
+    bool name_requested_ = false;
+    std::string e_device_type_, e_lu_;
     std::vector<uint8_t> server_seed_;
     std::vector<std::string> log_;
     std::string error_;

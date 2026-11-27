@@ -30,7 +30,7 @@
 //   host = "pub400.com"
 //   port = 992
 //   tls = true
-//   device_name = ""               optional DEVNAME
+//   device_name = ""               optional DEVNAME (TN5250) or LU name (TN3270E)
 //
 //   [[session]]                    session 2 (station 1); optional
 //   host = ""                      empty = not used

@@ -49,6 +49,10 @@ public:
     bool start(std::string& error);
     void stop();
     ConnState state() const { return state_.load(); }
+    // TN3270E in force (RFC 2355), and the LU name the server assigned
+    // (empty with plain TN3270, or when the server names none).
+    bool tn3270e() const { return tn3270e_.load(); }
+    std::string lu_name() const;
     std::string last_error() const;
     std::vector<std::string> take_log();
 
@@ -77,6 +81,8 @@ private:
     std::thread thread_;
     std::atomic<bool> stop_{false};
     std::atomic<ConnState> state_{ConnState::Idle};
+    std::atomic<bool> tn3270e_{false};
+    std::string lu_;   // under mu_
     mutable std::mutex mu_;
     std::deque<std::vector<uint8_t>> inbound_;
     std::deque<std::vector<uint8_t>> outbound_;   // framed

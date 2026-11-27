@@ -471,8 +471,16 @@ zeros to `62000-620FF` (unmapped).
    settings). It runs against the emulated 3483 and a TN3270 host: the screen
    lands from coax cell 80 and the status line from cells 0-79, through the
    firmware's status row at `0:0A00` (observed, 2026-11-27).
-4. **Then the 3472:** refactor the board into a coax-terminal device shared with the
-   3483.
+   - **TN3270E.** The TN3270 client accepts TN3270E (RFC 2355) when the host
+     offers it. It asks for the configured device name as its LU (`CONNECT`,
+     the same setting as a TN5250 session's DEVNAME), and asks again
+     without a name if the host rejects it. It negotiates no functions.
+   - **Status line.** It reads "TN3270" for plain TN3270, or "TN3270E" and
+     the LU the host assigned.
+   - **Against 10.16.0.90** (observed, 2026-11-27): the host assigns
+     `TCP0000n` and shows it on its greeter, top right. With plain TN3270
+     it left those cells blank. It rejects other names as INV-NAME.
+4. **The 3472** runs on the same board model (docs/bringup-3472.md).
 
 To reach the test from a first boot (keys as `tests/rc/3483-smoke.rc` uses them):
 Reset (`lctrl`) at the NVR line, then Down four times and Enter (`rctrl`) in
