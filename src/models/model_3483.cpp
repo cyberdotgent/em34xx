@@ -11,8 +11,9 @@
 //  - devices at 58000 (display), 58100 (coax adapter, memory engine and
 //    interrupt status), 58400 (system control), with display row lists in
 //    block RAM at 50108/50508 [observed code; roles are hypotheses]; see
-//    hw/board_3483.hpp. POST runs to its setup check (test 10) and
-//    shows its NVR line readably;
+//    hw/board_3483.hpp. POST passes, the runtime starts, and the CUT
+//    controller (host/coax/cut_controller.hpp) puts it on line over
+//    TN3270/TN3270E [observed];
 //  - RAM: two 256Kx4 DRAMs and two 32Kx8 SRAMs next to the battery
 //    [observed, board photo]. Placing the DRAM at 00000-3FFFF and the
 //    battery-backed SRAM at 40000-4FFFF is a hypothesis (the firmware's
@@ -56,7 +57,7 @@ public:
         info_.max_sessions = 1;
         info_.max_printer_sessions = 0;
         // The ROM header names "3483 V00"; oec was tested with a 3483-V
-        // (documented, oec README). Monochrome or colour is not known yet.
+        // (documented, oec README).
         // A logic unit with a VGA monitor (project owner), so colour only:
         // the monochrome coax terminal is the 3472, with its own tube. The
         // strap byte is the sense code the monitor presents. The firmware
@@ -73,7 +74,8 @@ public:
             "bring-up: POST passes tests 3 (RAM), 4 (40000 window), 5 (coax internal wrap), 7 (display timing, "
             "video sense, memory engine), 11-17 (serial channels, keyboard handshake) and 9, and shows its NVR line "
             "(no saved setup) in test 10; Reset continues, the firmware rewrites its setup blocks in SRAM, and the "
-            "runtime shows Offline Setup (observed); with --nvram the repaired setup survives the next boot",
+            "runtime shows its start-up screen, or Offline Setup with a key held at power-on (observed); with "
+            "--nvram the repaired setup survives the next boot",
             "board devices (hw/board_3483.hpp) follow the firmware's use of them; display row lists, video sense, "
             "the coax reply words and the memory engine are fitted to POST's checks (hypothesis)",
             "character generator: the firmware decompresses its character sets into SRAM, 32 bytes per character: "
@@ -95,14 +97,15 @@ public:
             "drawn black on white (hypothesis for the drawing); colours are the shared terminal set (owner's decision), "
             "the drive table 58040-6F only feeds POST's video sense",
             "monitor sense 44 (display type 2, colour class, the firmware's default for an unknown monitor) by default; "
-            "--straps 51 gives type 1 (the monochrome class); the sense lines are pulled low by 5840E bits 12-15",
+            "--straps 51 gives type 1 (the monochrome class); the sense lines are pulled low by 5840E bits 12-15 (observed)",
             "alarm: 58402 bit 7 with a level in bits 6-0, a click is a pulse of bit 10 (observed: svc_177, POST's beep; "
             "reset's 809B sounds it until the early checks pass); level as volume is a hypothesis",
             "serial channel B: the same PS/2-style port as A, for a mouse (observed: the firmware sends a type-2 "
             "device F3 28 E8 03 F4; the mouse reading is a hypothesis); nothing attached",
             "setup: two copies at 47400/47500 in battery-backed RAM; a change in Customization saved with F3 survives a "
-            "reboot, and the next boot goes to the normal start-up, not Offline Setup (observed: tests "
-            "rom_3483_save_setup/boot_saved); printer port registers not found (printing is planned for v0.5)",
+            "reboot (observed, by hand); the setup Reset writes after an NVR stop survives too, and the next boot goes "
+            "to the normal start-up, not Offline Setup (observed: tests rom_3483_save_setup/boot_saved); printer port "
+            "registers not found (printing is planned for v0.5)",
             "keyboard: the 122-key keyboard on serial channel A (POST resets it, reads ID BF BF, selects set 3) "
             "(observed dialogue; the channel is a hypothesis)",
             "ROM 06G5525 (U24, AM27C400), linear at 80000-FFFFF; per-segment checksums 1234/5678/9ABC/DEF0 "

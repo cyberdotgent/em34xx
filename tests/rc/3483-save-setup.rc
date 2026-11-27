@@ -1,6 +1,8 @@
 # First of two runs sharing one --nvram file (tests/CMakeLists.txt): an empty
-# battery-backed RAM stops POST at its NVR line, Reset opens Offline Setup,
-# and a change in Customization saved with F3, F3 writes the setup.
+# battery-backed RAM stops POST at its NVR line, and Reset repairs and writes
+# the setup, then goes to the start-up screen (no key is held at power-on, so
+# not to Offline Setup; the keys below change nothing there). The second run
+# checks that the written setup survives.
 policy log
 speed max
 run #300000000

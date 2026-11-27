@@ -4,9 +4,9 @@
 // A model states its line (ModelInfo::line). Each kind of line has its own
 // host interface, because what travels on it differs: TwinaxHost
 // (machine/twinax_port.hpp) exchanges Twinax frames with the terminal's
-// link engine. A coax terminal would get a CoaxHost next to it, with a
-// controller that wraps a TN3270 session the way the workstation controller
-// in src/host/twinax wraps TN5250. What every line host has in common is
+// link engine. A coax terminal has a CoaxHost (machine/coax_port.hpp), the
+// CUT controller in src/host/coax, which wraps a TN3270 session the way the
+// workstation controller in src/host/twinax wraps TN5250. What every line host has in common is
 // here, so the machine, the application and the front ends hold a LineHost
 // and do not care which line it is.
 #pragma once

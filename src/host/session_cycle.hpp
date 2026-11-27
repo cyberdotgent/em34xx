@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // The life of one host session behind a terminal's line, whatever the line
 // and the protocol: a controller (the Twinax workstation controller with
-// its TN5250 sessions today, a coax controller with TN3270 sessions later)
+// its TN5250 sessions; the coax CUT controller does not use it yet)
 // owns one SessionCycle per session and gives it the session through Hooks.
 //
 // The rules (docs/twinax-bridge.md, "Session and terminal lifecycle"):

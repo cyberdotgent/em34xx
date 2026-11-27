@@ -77,8 +77,9 @@ appends the ID after `AA` for the 122-key type only
 (`Set3Keyboard::set_bat_sends_id`). Whether the 5250 terminals rely on
 this is unknown. The coax terminals (3483, 3472) must not get it. The
 3483's POST takes any byte waiting after the reset for a key held at
-power-on and opens Offline Setup at every boot (observed,
-docs/bringup-3483.md), so their keyboard sends `AA` alone.
+power-on, so with the ID appended it would open Offline Setup at every
+boot (observed before the fix, docs/bringup-3483.md); their keyboard sends
+`AA` alone.
 
 A key still held down when the keyboard is reset (power-on or `FF`) is sent
 as a make code after `AA` (and the ID). It repeats if its mode is

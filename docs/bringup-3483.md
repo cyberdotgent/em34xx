@@ -8,8 +8,8 @@ the board devices `src/hw/board_3483.{hpp,cpp}`; its status is
 the firmware's use of the hardware, or in photos of a real 3483 taken by
 the project owner), **documented** (with the source), or **hypothesis**.
 No board documentation is available: everything here comes from the
-firmware's own use of the registers. This file describes hardware only;
-the coax line and the controller side are documented with them.
+firmware's own use of the registers. It covers the hardware and, at the
+end, the coax line as em34xx's CUT controller drives it (TN3270E, keys).
 
 ## Summary
 
@@ -225,7 +225,8 @@ saver was on when they looked, and the first key "was swallowed". Right
 after Reset the status row shows SETUP (`tests/rc/3483-smoke.rc` checks
 both, and needs three Downs after the waking key to reach the display
 test). It is not caused by the keyboard's unsolicited ID bytes after its
-BAT result (a separate issue with the boot path).
+BAT result (a separate issue with the boot path, since fixed; see the
+power-on section).
 
 ### Cursor
 
@@ -455,7 +456,7 @@ Other accesses seen during the test, not modelled (open): writes of
 `5A`/`A5` and `55`/`AA` to `9A000-9A001` (ROM space, a RAM probe), and
 zeros to `62000-620FF` (unmapped).
 
-## Where bring-up stands (2026-11-26)
+## Where bring-up stands (2026-11-27)
 
 1. **Test display station: fixed (2026-11-27).** The 40000 window was modelled
    as writing each byte twice at 40000 + w. That sent the test's glyphs onto
@@ -477,14 +478,15 @@ zeros to `62000-620FF` (unmapped).
      without a name if the host rejects it. It negotiates no functions.
    - **Status line.** It reads "TN3270" for plain TN3270, or "TN3270E" and
      the LU the host assigned.
-   - **Against 10.16.0.90** (observed, 2026-11-27): the host assigns
+   - **Against a private MVS TN3270 server** (observed, 2026-11-27): the host assigns
      `TCP0000n` and shows it on its greeter, top right. With plain TN3270
      it left those cells blank. It rejects other names as INV-NAME.
 4. **The 3472** runs on the same board model (docs/bringup-3472.md).
 
 To reach the test from a first boot (keys as `tests/rc/3483-smoke.rc` uses them):
-Reset (`lctrl`) at the NVR line, then Down four times and Enter (`rctrl`) in
-Offline Setup. Reset leaves the test.
+hold a key at power-on (`key +down`) so that Reset (`lctrl`) at the NVR
+line opens Offline Setup, release it, wake the screen saver with a key,
+then Down three times and Enter (`rctrl`). Reset leaves the test.
 
 ## Keys on the coax
 
