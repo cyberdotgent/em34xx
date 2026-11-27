@@ -665,6 +665,16 @@ and other tables needs a country setting and the CCSID 285 (etc.) code
 points; the 3489 User's Guide appendix I has the national layouts as figures
 (not yet transcribed).
 
+## 3270 coax (3483) key codes
+
+The 3483 relays its 122-key keyboard's set-3 bytes in its poll responses,
+with `F0` before a break code (observed; docs/bringup-3483.md, "Keys on
+the coax"). The CUT controller (`src/host/coax/cut_controller.cpp`)
+folds `F0` + code into code | 80h and decodes with the Enhanced table of
+`KeyboardMap`, with the 3270 rule that pressing Shift releases Caps Lock
+(documented; `KeyboardMap::set_shift_releases_lock`). Caps Lock still
+toggles on its own key and affects letters only (hypothesis).
+
 ## Sources
 
 - IBM, *5250 Information Display System to S/36, S/38, AS/400 System Units

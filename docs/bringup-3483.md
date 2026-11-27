@@ -206,6 +206,20 @@ without bit 13. Bit 13 is not modelled.
   reverses the cell (hypothesis, photos 1220-1222 of the real unit show
   both styles over a full cell).
 - Blink phase: about 1 Hz (hypothesis), shared with blinking characters.
+- The underline cursor reverses its lines rather than lighting them
+  (hypothesis: mixed into the video like the block cursor). The underscore
+  highlight uses the same lines in the same colour, and a 3270 cursor
+  nearly always sits in an underscored input field, so a lit underline
+  cursor could not be seen there: on line it looked as if no cursor was
+  drawn (observed in emulation, 2026-11-27, at moshix.tech's User field).
+  Reversed, it shows as a gap in the underscore and as a line elsewhere.
+  How a real 3483 shows the cursor over an underscore is open.
+- On line the firmware places the cursor itself from the coax address
+  counter: after the controller's last LOAD ADDRESS COUNTER, `58010` holds
+  the counter's position less the 80-cell status line (observed: counter
+  `0529`, `58010` = `0F29`, row 15 column 41) and `5801C` bit 7 is set
+  (`3084`). The status row's `0016/042` is the same position, counted
+  from 1.
 - The setup screens never turn the hardware cursor on: their "cursor" is a
   reverse-video bar written into the regen buffer (observed). The display
   test's first page is the cursor alone at 13,9 (observed in emulation).
@@ -431,6 +445,26 @@ zeros to `62000-620FF` (unmapped).
 To reach the test from a first boot (keys as `tests/rc/3483-smoke.rc` uses them):
 Reset (`lctrl`) at the NVR line, then Down four times and Enter (`rctrl`) in
 Offline Setup. Reset leaves the test.
+
+## Keys on the coax
+
+On line the firmware sends the controller its keyboard's scan-code set 3
+bytes unchanged, one per poll response (observed, 2026-11-27, with
+`log coax=debug`): `x` gives `22`; Shift gives `12` and, when let go,
+`F0 12`; Caps Lock `14`, `F0 14`; typing keys send no break (the
+firmware's key modes). Shift and the lock are the controller's business
+(documented 3270: the terminal sends key codes). The CUT controller used
+to read each byte as a 5250 Enhanced-keyboard code with bit 7 for a break,
+so `F0` was a key of its own and the `12` after it a second make: Shift
+stayed down for good and Caps Lock toggled twice per press, so lower case
+could not be typed once Shift had been used. It now turns `F0` + code into
+the break (`CutController::decode_key`), Caps Lock toggles on its make,
+and either Shift releases it (documented 3270 behaviour for Shift Lock).
+Caps Lock affects letters only (hypothesis: the 3483's key may be a
+typewriter Shift Lock, which would also shift digits and symbols; open).
+Set-3 make codes above `7F` (some keypad keys) are not translated (open).
+`tests/test_cut_controller.cpp` covers it; checked at moshix.tech
+(`aBcDe@x` typed with Shift, Caps Lock and Shift again).
 
 ## Open questions
 

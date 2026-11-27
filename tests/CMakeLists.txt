@@ -36,6 +36,7 @@ add_executable(em34xx_app_tests
   test_burn_in.cpp
   test_display.cpp
   test_connect.cpp
+  test_cut_controller.cpp
   test_probe.cpp
   test_gdb_stub.cpp
   test_user_data.cpp

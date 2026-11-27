@@ -339,6 +339,7 @@ bool KeyboardMap::translate(uint8_t scan, OperatorAction& out) {
     switch (key) {
     case 0x12: case 0x59:
         (key == 0x12 ? lshift_ : rshift_) = !brk;
+        if (!brk && shift_releases_lock_) caps_ = false;
         return false;
     case 0x19: case 0x39: alt_ = !brk; return false;
     case 0x14:   // Caps Lock toggles
