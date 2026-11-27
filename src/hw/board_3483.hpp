@@ -47,12 +47,23 @@ struct CoaxBoardLayout {
     uint32_t sram = 0x40000;
     // Block RAM: the row lists at +108/+508, the coax registers at +300.
     uint32_t block_ram = 0x50000;
+    // In segment 0: the regen buffer's origin, twice the row lists' cell
+    // bias [observed: the 3483 firmware adds 800h to a cell, the 3472's
+    // 3D00h], and the status row's 80 cells [3483: 0:0800, observed: the
+    // runtime keeps "SETUP" there; hypothesis: that the address is fixed].
+    uint32_t regen = 0x1000, status_row = 0x0800;
     // Vertical sync in the system sense register (bit 2): high during the
     // pulse instead of during the frame (the 3472's own tube).
     bool sync_reads_high = false;
     // A monochrome board without the colour drive table: the video sense
-    // outputs are the colour index bits.
+    // outputs are the colour index bits, and the picture is drawn in two
+    // intensities for the tube's phosphor.
     bool monochrome = false;
+    // A glyph row is the main byte over the companion byte; a cell shows
+    // `cell_dots` dots of it, the rightmost at bit `dot_low_bit` [3483: 9
+    // dots, main 6-0 and companion 7-6; 3472: 12 dots, main 3-0 and
+    // companion 7-0, observed in the fonts each firmware unpacks].
+    unsigned cell_dots = 9, dot_low_bit = 6;
 };
 
 class Board3483 : public InterruptController {
@@ -153,6 +164,7 @@ private:
     unsigned cell_colour(uint8_t ch, uint8_t eab, const FieldState& field) const;
     bool on_underline(unsigned y, unsigned cell_h) const;
     uint16_t underscore_dots() const;
+    uint16_t dot_mask() const;   // the cell's dots, from bit 15 down
     bool blink_off() const;
     FieldState initial_field() const;
     unsigned lit_guns() const;

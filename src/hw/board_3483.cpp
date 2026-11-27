@@ -122,16 +122,7 @@ constexpr uint32_t kCgCompanion = 0x8000;
 // and D8 is a hypothesis].
 constexpr uint8_t kSenseThreshold = 0xCC;
 
-// Start of the regen buffer: cell 800h, the bias of row-list addresses
-// [hypothesis, see row_address()].
-constexpr uint32_t kRegenOrigin = 0x1000;
-
-// The status row (3270 operator information area): 80 cells at 0:0800,
-// shown below the screen's rows with a rule along its top edge [observed:
-// the runtime keeps "SETUP" in reverse white there, and photos of a real
-// 3483 show that bar under a thin blue line on every setup screen;
-// hypothesis: that the address is fixed, no register seen points to it].
-constexpr uint32_t kStatusRow = 0x0800;
+// The regen origin and the status row are in the board layout (CoaxBoardLayout).
 
 // Frames per blink phase (cursor and blinking characters): about 1 Hz at
 // 60 Hz [hypothesis].
@@ -227,7 +218,7 @@ uint32_t Board3483::Display::row_address(unsigned row) const {
     // from the regen origin) [hypothesis: fits those layouts and the 3483's
     // and 3472's POST video sense readings].
     const unsigned cols = columns();
-    if (regs_[0x1A >> 1] & 0x0040) return kRegenOrigin + 2u * row * cols;
+    if (regs_[0x1A >> 1] & 0x0040) return board_.layout_.regen + 2u * row * cols;
     Bus& bus = board_.bus_;
     const uint32_t list_a = board_.layout_.block_ram + 0x108, list_b = board_.layout_.block_ram + 0x508;
     auto starts_row = [&](unsigned e) { return !(bus.peek8(list_a + 4 * e) & 0x80); };
@@ -237,7 +228,7 @@ uint32_t Board3483::Display::row_address(unsigned row) const {
     constexpr unsigned kLast = 61;   // the list is entries 0-61
     const unsigned shown = std::min(rows(), kLast - 1);
     const unsigned latch = kLast - 1 - shown;   // 60 - rows
-    uint32_t addr = starts_row(latch) ? 2 * entry_cell(latch) : kRegenOrigin;
+    uint32_t addr = starts_row(latch) ? 2 * entry_cell(latch) : board_.layout_.regen;
     for (unsigned r = 0;; ++r) {
         uint32_t start = addr;
         if (r > 0) {
@@ -313,11 +304,13 @@ uint16_t Board3483::Display::cell_dots(uint8_t ch, uint8_t eab, FieldState& fiel
     const unsigned cs = (eab & 7) ? (eab & 7) : (field.eab & 7);
     const unsigned set = cs == 1 ? 1 : 0;
     const uint32_t at = board_.layout_.sram + kCgSets[set] + uint32_t(ch) * 32 + y;
-    // The 9 dots of a cell are bits 6-0 of the main byte and bits 7-6 of
-    // the companion [observed: the GE line glyph B9 lights exactly those,
-    // and a rule of them is solid on a real 3483; text glyphs keep main bit
-    // 7 clear].
-    uint16_t bits = uint16_t((board_.bus_.peek8(at) << 8 | board_.bus_.peek8(at - kCgCompanion)) << 1);
+    // The dots of a cell: on the 3483 bits 6-0 of the main byte and bits
+    // 7-6 of the companion [observed: the GE line glyph B9 lights exactly
+    // those, and a rule of them is solid on a real 3483; text glyphs keep
+    // main bit 7 clear]; see CoaxBoardLayout::cell_dots for the 3472.
+    const unsigned shift = 16 - board_.layout_.cell_dots - board_.layout_.dot_low_bit;
+    uint16_t bits = uint16_t(
+        uint16_t((board_.bus_.peek8(at) << 8 | board_.bus_.peek8(at - kCgCompanion)) << shift) & dot_mask());
     const uint8_t hl = (eab & 0xC0) ? (eab >> 6) : (field.eab >> 6);
     // Blink: the character goes dark in one phase [hypothesis for the rate:
     // the same phase as the cursor's blink].
@@ -328,7 +321,7 @@ uint16_t Board3483::Display::cell_dots(uint8_t ch, uint8_t eab, FieldState& fiel
     // "Underscore style" toggles that bit alone; the dash pattern is a
     // hypothesis].
     if (hl == 3 && on_underline(y, cell_h)) bits |= underscore_dots();
-    if (hl == 2) bits = uint16_t(~bits & 0xFF80);              // reverse, over the 9-dot cell
+    if (hl == 2) bits = uint16_t(~bits & dot_mask());          // reverse, over the cell
     return bits;
 }
 
@@ -341,7 +334,14 @@ bool Board3483::Display::on_underline(unsigned y, unsigned cell_h) const {
 uint16_t Board3483::Display::underscore_dots() const {
     // Solid across the cell, or dashed: a short gap at each end so that
     // neighbouring cells give "- - -".
-    return (regs_[0x16 >> 1] & 0x0080) ? uint16_t(0xFF80) : uint16_t(0x3E00);
+    const uint16_t m = dot_mask();
+    const uint16_t low2 = uint16_t(m & ~(m << 2));   // the cell's last two dots
+    return (regs_[0x16 >> 1] & 0x0080) ? m : uint16_t(m & ~0xC000 & ~low2);
+}
+
+uint16_t Board3483::Display::dot_mask() const {
+    const unsigned n = std::min(board_.layout_.cell_dots, 16u);
+    return uint16_t(0xFFFFu << (16 - n));
 }
 
 // The field attribute in force at the start of the screen: the last one on
@@ -491,10 +491,11 @@ void Board3483::Display::render(Framebuffer& fb) {
 }
 
 void Board3483::Display::draw(Framebuffer& fb) {
-    // 9 dots per cell [hypothesis], geometry from the mode registers; see
+    // The layout's dots per cell, geometry from the mode registers; see
     // cell_dots().
     const unsigned cols = columns(), nrows = rows(), cell_h = cell_height();
-    const unsigned cell_w = 9;
+    const unsigned cell_w = std::min(board_.layout_.cell_dots, 16u);
+    const uint16_t mask = dot_mask();
     fb.width = int(cols * cell_w);
     fb.height = int((nrows + 1) * cell_h);   // + the status row
     fb.pixels.assign(size_t(fb.width) * size_t(fb.height), colours::kBlack);
@@ -508,7 +509,13 @@ void Board3483::Display::draw(Framebuffer& fb) {
     static constexpr uint32_t kColour[8] = {colours::kGreen, colours::kBlue,      colours::kRed,
                                             colours::kPink,  colours::kGreen,     colours::kTurquoise,
                                             colours::kYellow, colours::kWhite};
-    auto shade = [&](unsigned idx, bool) { return kColour[idx & 7]; };
+    // A monochrome board draws two intensities for the phosphor [hypothesis:
+    // high intensity brighter, colour not shown].
+    const bool mono = board_.layout_.monochrome;
+    auto shade = [&](unsigned idx, bool high) {
+        if (mono) return high ? colours::kGreyBright : colours::kGreyNormal;
+        return kColour[idx & 7];
+    };
     const bool blink = blink_off();
     const Cursor cur = cursor();
     // Rule line [observed: the rule-line routine D000:3632 writes 58012 =
@@ -523,7 +530,7 @@ void Board3483::Display::draw(Framebuffer& fb) {
     FieldState f = initial_field();
     for (unsigned r = 0; r <= nrows; ++r) {
         const bool status = r == nrows;
-        const uint32_t start = status ? kStatusRow : row_address(r);
+        const uint32_t start = status ? board_.layout_.status_row : row_address(r);
         if (status) {
             f = FieldState();   // the status row has no fields of the screen's
             std::fill_n(&fb.pixels[size_t(r * cell_h) * size_t(fb.width)], size_t(fb.width), shade(1, false));
@@ -542,15 +549,15 @@ void Board3483::Display::draw(Framebuffer& fb) {
                 if (at_cursor) {
                     // A block cursor reverses the whole cell; the underline
                     // cursor lights its lines in the cell's colour.
-                    if (cur.block) bits = uint16_t(~bits & 0xFF80);
-                    else if (y >= cur.first_line && y <= cur.last_line) bits = 0xFF80;
+                    if (cur.block) bits = uint16_t(~bits & mask);
+                    else if (y >= cur.first_line && y <= cur.last_line) bits = mask;
                 }
                 uint32_t* row = &fb.pixels[size_t(r * cell_h + y) * size_t(fb.width) + c * cell_w];
                 const uint32_t ink = shade(idx, f.high);
                 for (unsigned x = 0; x < cell_w; ++x)
                     if (bits & (0x8000u >> x)) row[x] = ink;
                 if (!status && ((r == rule_row && y == uline) || c == rule_col)) {
-                    const uint16_t rd = r == rule_row && y == uline ? uint16_t(0xAA80) : uint16_t(0x8000);
+                    const uint16_t rd = r == rule_row && y == uline ? uint16_t(0xAAAA & mask) : uint16_t(0x8000);
                     for (unsigned x = 0; x < cell_w; ++x)
                         if (rd & (0x8000u >> x)) row[x] = shade(7, false);
                 }

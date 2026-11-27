@@ -35,12 +35,29 @@ constexpr uint32_t kDramBase = 0x00000, kDramSize = 0x10000;
 constexpr uint32_t kSramBase = 0x10000, kSramSize = 0x10000;
 constexpr uint32_t kBlockRamBase = 0x20000, kBlockRamSize = 0x800;
 constexpr uint32_t kRomBase = 0xC0000, kChipSize = 0x20000;
-// The 3483's board registers at the 3472's addresses [observed: the
-// firmware's first accesses write the same offsets of 28000, 28100 and
-// 30000 that the 3483's reset writes of 58000, 58100 and 58400].
-// Vertical sync reads high during the pulse [observed: POST test 6 times
-// the high phase at 14-39 loops and the low phase at 756-2265].
-constexpr CoaxBoardLayout kLayout{0x28000, 0x28100, 0x30000, kSramBase, kBlockRamBase, true, true};
+// The 3483's board at the 3472's addresses [observed: the firmware's first
+// accesses write the same offsets of 28000, 28100 and 30000 that the
+// 3483's reset writes of 58000, 58100 and 58400; its row lists carry a
+// 3D00h cell bias (E000:38EE), so the regen buffer starts at 0:7A00, where
+// POST writes its error line]. Vertical sync reads high during the pulse
+// [observed: POST test 6 times the high phase at 14-39 loops and the low
+// phase at 756-2265]. No colour drive table: monochrome.
+CoaxBoardLayout layout_3472() {
+    CoaxBoardLayout l;
+    l.display = 0x28000;
+    l.coax = 0x28100;
+    l.system = 0x30000;
+    l.sram = kSramBase;
+    l.block_ram = kBlockRamBase;
+    l.regen = 0x7A00;
+    l.status_row = 0x7200;   // [hypothesis: 800h below the regen, as on the 3483]
+    l.sync_reads_high = true;
+    l.monochrome = true;
+    l.cell_dots = 12;   // main 3-0, companion 7-0 [observed: its fonts]
+    l.dot_low_bit = 0;
+    return l;
+}
+
 // Monitor sense: the 3483 firmware's monochrome class (type 1) [hypothesis:
 // the 3472's own tube].
 constexpr uint8_t kSenseMono = 0x51;
@@ -93,7 +110,7 @@ public:
         bus.map_ram("gate array RAM", kBlockRamBase, kBlockRamSize);
         const TerminalOptions& opt = m.options();
         const uint8_t sense = opt.straps >= 0 ? uint8_t(opt.straps) : kSenseMono;
-        build_coax_terminal(m, info_, kLayout, nullptr, sense);
+        build_coax_terminal(m, info_, layout_3472(), nullptr, sense);
         if (roms.size() != 2 || roms[0].data.size() != kChipSize || roms[1].data.size() != kChipSize)
             throw std::runtime_error("3472: needs both ROM chips");
         std::vector<uint8_t> image(2 * kChipSize);
