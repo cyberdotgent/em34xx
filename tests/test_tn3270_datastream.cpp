@@ -161,3 +161,26 @@ TEST_CASE("EBCDIC to the 3483's display code") {
     CHECK(ebcdic_to_display(0x00) == 0x00);
     CHECK(display_field_attribute(0x20) == 0xE0);
 }
+
+TEST_CASE("WCC reset MDT acts before the orders: a field written with its MDT set keeps it") {
+    // GA23-0059 3.4: the MDTs of the existing buffer are reset before any
+    // data is written or orders are performed.
+    Engine e;
+    // EW, WCC restore + reset MDT, SF(unprotected, MDT on) "AB".
+    run(e, {0xF5, 0x03, 0x1D, 0xC1, 0xC1, 0xC2});
+    std::vector<std::vector<uint8_t>> out;
+    e.aid(uint8_t(Aid::Enter), out);
+    REQUIRE(out.size() == 1);
+    const auto& r = out[0];
+    REQUIRE(r.size() == 8);   // AID, cursor, SBA to 1, "AB"
+    CHECK(r[3] == 0x11);
+    CHECK(decode_address(r[4], r[5]) == 1);
+    CHECK(r[6] == 0xC1);
+    CHECK(r[7] == 0xC2);
+    // A later Write with reset MDT clears it.
+    run(e, {0xF1, 0x43});
+    out.clear();
+    e.aid(uint8_t(Aid::Enter), out);
+    REQUIRE(out.size() == 1);
+    CHECK(out[0].size() == 3);
+}

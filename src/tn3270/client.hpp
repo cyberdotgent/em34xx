@@ -15,6 +15,7 @@
 
 #include "host/host_config.hpp"
 #include "tn3270/engine.hpp"
+#include "tn5250/telnet.hpp"
 #include "tn5250/tls_trust.hpp"
 #include "tn5250/transport.hpp"
 
@@ -65,6 +66,12 @@ public:
     bool type(uint8_t ebcdic) { return engine_.type(ebcdic); }
     void key(Key k) { engine_.key(k); }
     void aid(uint8_t aid);
+    // The ATTN key: a Telnet IP command [documented: RFC 2355 section 11].
+    void attn() { send_command(tn5250::telnet::IP, "ATTN"); }
+    // The SYSREQ key: a Telnet AO command [documented: RFC 2355 section
+    // 10.5.2, for the SYSREQ function; a server that has not agreed to it
+    // ignores the command]. The keyboard is not locked.
+    void sysreq() { send_command(tn5250::telnet::AO, "SYSREQ"); }
 
 private:
     void run();
@@ -73,6 +80,7 @@ private:
     void log(const std::string& line);
     void log_locked(const std::string& line);
     void queue_outbound(const std::vector<uint8_t>& record);
+    void send_command(uint8_t command, const char* what);
 
     Tn5250Config cfg_;
     TransportFactory factory_;

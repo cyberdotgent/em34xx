@@ -110,6 +110,18 @@ void Client::queue_outbound(const std::vector<uint8_t>& record) {
     outbound_.push_back(std::move(framed));
 }
 
+void Client::send_command(uint8_t command, const char* what) {
+    if (state_ != ConnState::Ready) return;
+    log(format("send %s (IAC %u)", what, unsigned(command)));
+    std::lock_guard<std::mutex> g(mu_);
+    if (outbound_overflow_ || outbound_bytes_ + 2 > kMaxQueuedBytes) {
+        outbound_overflow_ = true;
+        return;
+    }
+    outbound_bytes_ += 2;
+    outbound_.push_back({tn5250::telnet::IAC, command});
+}
+
 void Client::pump() {
     std::deque<std::vector<uint8_t>> in;
     {

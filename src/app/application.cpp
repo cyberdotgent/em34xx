@@ -267,14 +267,24 @@ bool Application::build_machine() {
     };
     CoaxHostFactory coax = [bridge_variant, trust](const Tn5250Config& tn,
                                                    std::string& err) -> std::unique_ptr<CoaxHost> {
+        err = tn.validate();
+        if (!err.empty()) return nullptr;
+        if (!tn.configured()) {
+            err = "the coax controller needs a TN3270 host name";
+            return nullptr;
+        }
         // The variant's type (a monochrome 3472 is a 3278, a colour 3483 a
         // 3279) unless the configuration names one.
         Tn5250Config cfg = tn;
         if (cfg.terminal_type.empty()) cfg.terminal_type = bridge_variant->load()->tn5250_type;
-        auto session = std::make_unique<tn3270::Client>(cfg);
-        if (auto fn = trust->for_new_bridge()) session->set_tls_trust_handler(std::move(fn));
-        if (!session->start(err)) return nullptr;
-        return std::make_unique<CutController>(std::move(session));
+        auto ask = trust->for_new_bridge();
+        // A new client for every session (the controller reconnects).
+        CutController::ClientFactory make = [cfg, ask]() {
+            auto session = std::make_unique<tn3270::Client>(cfg);
+            if (ask) session->set_tls_trust_handler(ask);
+            return session;
+        };
+        return std::make_unique<CutController>(std::move(make), cfg);
     };
     // The controller for the model's line.
     std::unique_ptr<LineHost> host;

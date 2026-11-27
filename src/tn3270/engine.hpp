@@ -108,6 +108,7 @@ public:
 private:
     void erase(int rows, int cols);
     void write(const uint8_t* p, size_t n, bool erase_first, int rows, int cols);
+    void reset_mdts();
     void apply_wcc(uint8_t wcc);
     void read_buffer(std::vector<std::vector<uint8_t>>& out) const;
     void read_modified(uint8_t aid, bool all, std::vector<std::vector<uint8_t>>& out) const;

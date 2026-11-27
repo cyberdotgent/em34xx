@@ -121,6 +121,46 @@ const struct { const char* alias; const char* name; } kFunctionAliases[] = {
     {"pagedown", "rollup"}, {"duplicate", "dup"},
 };
 
+// The 3270 legends of the 122-key keyboard, for the coax terminals (3483,
+// 3472) [documented: IBM Personal Communications/3270 V4.0 Reference Guide
+// for Windows, S20H-1773, 5.1.1, "PS/2 122 Key Keyboard"; hypothesis: the
+// 3483's and 3472's keyboards carry the same]: names with the prefix
+// "3270:". The coax controller decodes these positions the same way
+// (host/coax/cut_controller.cpp). No Enhanced keyboard strokes.
+const Fn kFunctions3270[] = {
+    {"attn",      {0x05, R, R}, {}},
+    {"sysrq",     {0x05, R, P}, {}},
+    {"clear",     {0x06, R, R}, {}},
+    {"erinp",     {0x0C, R, R}, {}},
+    {"ereof",     {0x0B, R, R}, {}},
+    {"pa1",       {0x67, R, R}, {}},
+    {"pa2",       {0x6E, R, R}, {}},
+    {"pa3",       {0x6F, R, P}, {}},
+    {"dup",       {0x67, P, R}, {}},
+    {"fieldmark", {0x6E, P, R}, {}},
+    {"backtab",   {0x64, R, R}, {}},
+    {"insert",    {0x65, R, R}, {}},
+    {"delete",    {0x6D, R, R}, {}},
+    {"home",      {0x62, R, P}, {}},
+    {"rule",      {0x62, R, R}, {}},
+    {"up",        {0x63, R, R}, {}},
+    {"down",      {0x60, R, R}, {}},
+    {"left",      {0x61, R, R}, {}},
+    {"right",     {0x6A, R, R}, {}},
+    {"backspace", {0x66, R, R}, {}},
+    {"tab",       {0x0D, R, R}, {}},
+    {"newline",   {0x5A, R, R}, {}},
+    {"enter",     {0x58, R, R}, {}},
+    {"reset",     {0x11, R, R}, {}},
+    {"quit",      {0x11, R, P}, {}},
+    {"setup",     {0x01, R, R}, {}},
+};
+
+const struct { const char* alias; const char* name; } kFunctionAliases3270[] = {
+    {"attention", "attn"}, {"sysreq", "sysrq"}, {"systemrequest", "sysrq"}, {"eraseinput", "erinp"},
+    {"eraseeof", "ereof"}, {"fm", "fieldmark"}, {"duplicate", "dup"},
+};
+
 constexpr uint8_t kLowerRow[12] = {0x07, 0x0F, 0x17, 0x1F, 0x27, 0x2F, 0x37, 0x3F, 0x47, 0x4F, 0x56, 0x5E};
 constexpr uint8_t kUpperRow[12] = {0x08, 0x10, 0x18, 0x20, 0x28, 0x30, 0x38, 0x40, 0x48, 0x50, 0x57, 0x5F};
 
@@ -327,10 +367,63 @@ const BuiltinRule kTn5250Rules[] = {
     {"f22", "*", "f22", false, ""}, {"f23", "*", "f23", false, ""}, {"f24", "*", "f24", false, ""},
 };
 
+// "pcomm3270": IBM Personal Communications' 3270 default keyboard for the
+// Enhanced keyboard [documented: S20H-1773, 5.1.2, "PS/2 Enhanced
+// Keyboard": Esc Attn (Shift: SysReq), Pause Clear, Insert (Shift: Dup,
+// Alt: PA1), Home (Shift: Field Mark, Ctrl: Rule, Alt: PA2), Page Up with
+// Shift PA3, End Erase EOF (Alt: Erase Input), Return New Line, Left Ctrl
+// Reset, Right Ctrl and keypad Enter Enter], in the 3270 legends of the
+// coax terminals' 122-key keyboard. Page Up and Page Down alone do nothing
+// there.
+const BuiltinRule kPcomm3270Rules[] = {
+    {"escape", "", "3270:attn", false, ""},
+    {"escape", "shift", "3270:sysrq", false, ""},
+    {"pause", "", "3270:clear", false, ""},
+    {"tab", "shift", "3270:backtab", false, ""},
+    {"enter", "", "3270:newline", false, ""},
+    {"enter", "shift", "3270:newline", false, ""},
+    {"lctrl", "*", "3270:reset", true, ""},
+    {"lctrl", "alt", "3270:quit", true, ""},
+    {"rctrl", "*", "3270:enter", true, ""},
+    {"kpenter", "*", "3270:enter", false, ""},
+    {"insert", "*", "3270:insert", false, ""},
+    {"insert", "shift", "3270:dup", false, ""},
+    {"insert", "alt", "3270:pa1", false, ""},
+    {"home", "*", "3270:home", false, ""},
+    {"home", "shift", "3270:fieldmark", false, ""},
+    {"home", "ctrl", "3270:rule", false, ""},
+    {"home", "alt", "3270:pa2", false, ""},
+    {"pageup", "*", "none", false, ""},
+    {"pageup", "shift", "3270:pa3", false, ""},
+    {"pagedown", "*", "none", false, ""},
+    {"delete", "*", "3270:delete", false, ""},
+    {"end", "*", "3270:ereof", false, ""},
+    {"end", "alt", "3270:erinp", false, ""},
+    {"f13", "*", "f13", false, ""}, {"f14", "*", "f14", false, ""}, {"f15", "*", "f15", false, ""},
+    {"f16", "*", "f16", false, ""}, {"f17", "*", "f17", false, ""}, {"f18", "*", "f18", false, ""},
+    {"f19", "*", "f19", false, ""}, {"f20", "*", "f20", false, ""}, {"f21", "*", "f21", false, ""},
+    {"f22", "*", "f22", false, ""}, {"f23", "*", "f23", false, ""}, {"f24", "*", "f24", false, ""},
+};
+
+// "mac3270": "pcomm3270" for Mac keyboards, which have no Right Ctrl: Return
+// is Enter and keypad Enter (fn+Return) New Line, as "mac" does for 5250.
+const BuiltinRule kMac3270Overrides[] = {
+    {"enter", "", "3270:enter", false, ""},
+    {"kpenter", "*", "3270:newline", false, ""},
+};
+
 // The rules of a built-in map with rules ("pcomm", "mac" or "tn5250"), in
 // order.
 std::vector<BuiltinRule> builtin_rules(const std::string& normalised) {
     if (normalised == "tn5250") return std::vector<BuiltinRule>(std::begin(kTn5250Rules), std::end(kTn5250Rules));
+    if (normalised == "pcomm3270" || normalised == "mac3270") {
+        std::vector<BuiltinRule> rules(std::begin(kPcomm3270Rules), std::end(kPcomm3270Rules));
+        if (normalised == "mac3270")
+            for (BuiltinRule& r : rules)
+                for (const BuiltinRule& o : kMac3270Overrides)
+                    if (std::string(r.host) == o.host && std::string(r.mods) == o.mods) r = o;
+        return rules;
+    }
     std::vector<BuiltinRule> rules(std::begin(kPcommRules), std::end(kPcommRules));
     if (normalised == "mac") {
         for (BuiltinRule& r : rules)
@@ -510,6 +603,23 @@ bool terminal_target_from_name(const std::string& name, std::array<TerminalStrok
         to[0] = to[1] = {uint8_t(v), K, K};
         return true;
     }
+    if (starts_with(n, "3270:")) {
+        n = n.substr(5);
+        for (const auto& a : kFunctionAliases3270)
+            if (n == a.alias) n = a.name;
+        if (function_key(n, to)) {
+            ok = {{true, false}};
+            return true;
+        }
+        for (const Fn& f : kFunctions3270)
+            if (n == f.name) {
+                to[0] = f.t122;
+                to[1] = {};
+                ok = {{true, false}};
+                return true;
+            }
+        return false;
+    }
     for (const auto& a : kFunctionAliases)
         if (n == a.alias) n = a.name;
     if (function_key(n, to)) return true;
@@ -533,7 +643,9 @@ std::vector<std::string> terminal_function_names() {
 
 bool builtin_keymap(const std::string& name, bool shift_fkeys, Keymap& out) {
     const std::string n = normalise(name);
-    if (n != "positional" && n != "pcomm" && n != "mac" && n != "tn5250" && n != "none") return false;
+    if (n != "positional" && n != "pcomm" && n != "mac" && n != "tn5250" && n != "pcomm3270" && n != "mac3270" &&
+        n != "none")
+        return false;
     out = Keymap();
     if (n == "none") return true;
     if (shift_fkeys) add_shift_fkey_rules(out);
@@ -549,6 +661,13 @@ bool builtin_keymap(const std::string& name, bool shift_fkeys, Keymap& out) {
         out.add(r);
     }
     return true;
+}
+
+std::string keymap_for_3270(const std::string& spec) {
+    const std::string n = normalise(spec);
+    if (n == "pcomm" || n == "tn5250") return "pcomm3270";
+    if (n == "mac") return "mac3270";
+    return spec;
 }
 
 bool parse_keymap(const std::string& text, const std::string& origin, bool shift_fkeys, Keymap& out,

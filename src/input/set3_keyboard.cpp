@@ -363,7 +363,8 @@ bool Set3Keyboard::terminal_key(const std::string& function, bool pressed) {
     std::array<TerminalStroke, 2> to{};
     std::array<bool, 2> ok{};
     const size_t ti = type_ == KeyboardType::Enhanced ? 1 : 0;
-    if (!terminal_target_from_name(function, to, ok) || !ok[ti] || to[ti].code == 0) return false;
+    const std::string name = legends_3270_ ? "3270:" + function : function;
+    if (!terminal_target_from_name(name, to, ok) || !ok[ti] || to[ti].code == 0) return false;
     TN_LOG("input", Debug, "terminal function %s %s (set-3 %02X)", function.c_str(), pressed ? "press" : "release",
            to[ti].code);
     keymap_.stroke(to[ti], pressed, [this](uint8_t code, bool down) { key(code, down); });
@@ -372,7 +373,7 @@ bool Set3Keyboard::terminal_key(const std::string& function, bool pressed) {
 
 bool Set3Keyboard::set_host_keymap(const std::string& spec, bool shift_fkeys, std::string& error) {
     auto km = std::make_shared<Keymap>();
-    if (!load_keymap(spec, shift_fkeys, *km, error)) return false;
+    if (!load_keymap(legends_3270_ ? keymap_for_3270(spec) : spec, shift_fkeys, *km, error)) return false;
     shift_fkeys_ = shift_fkeys;
     keymap_.set_keymap(std::move(km));
     return true;

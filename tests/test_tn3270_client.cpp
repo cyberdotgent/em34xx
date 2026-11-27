@@ -109,5 +109,12 @@ TEST_CASE("TN3270 client negotiates, applies a write, answers a query and sends 
         std::lock_guard<std::mutex> g(wire.mu);
         CHECK(contains(wire.from_client, {0xC1, IAC, EOR}));
     }
+    // ATTN and SYSREQ are Telnet commands [RFC 2355 sections 11, 10.5.2].
+    client.attn();
+    client.sysreq();
+    REQUIRE(wait_for([&] {
+        std::lock_guard<std::mutex> g(wire.mu);
+        return contains(wire.from_client, {IAC, IP}) && contains(wire.from_client, {IAC, AO});
+    }));
     client.stop();
 }

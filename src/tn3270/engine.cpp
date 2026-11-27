@@ -113,10 +113,17 @@ void Engine::set_mdt(int addr) {
     if (f >= 0) buf_[size_t(f)].ch |= 0x01;
 }
 
+// The WCC's reset-MDT bit acts on the buffer as it was before the write's
+// orders: a field the same write starts with its MDT set keeps it
+// [documented: GA23-0059 3.4, "reset before any data is written or orders
+// are performed"]. The rest of the WCC (alarm, keyboard restore) is
+// deferred until the data is written.
+void Engine::reset_mdts() {
+    for (Cell& c : buf_)
+        if (c.fa) c.ch &= uint8_t(~0x01);
+}
+
 void Engine::apply_wcc(uint8_t wcc) {
-    if (wcc & kWccResetMdt)
-        for (Cell& c : buf_)
-            if (c.fa) c.ch &= uint8_t(~0x01);
     if (wcc & kWccAlarm) ++alarms_;
     if (wcc & kWccRestore) {
         locked_ = false;
@@ -159,6 +166,7 @@ void Engine::write(const uint8_t* p, size_t n, bool erase_first, int rows, int c
     if (erase_first) erase(rows, cols);
     if (n == 0) return;
     const uint8_t wcc = p[0];
+    if (wcc & kWccResetMdt) reset_mdts();
     size_t i = 1;
     int addr = erase_first ? 0 : cursor_;
     const int sz = size();

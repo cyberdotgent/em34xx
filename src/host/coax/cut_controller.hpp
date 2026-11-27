@@ -14,36 +14,62 @@
 // translates the host's EBCDIC into the terminal's display code, draws the
 // status line (addresses 0-79) and leaves the address counter at the
 // cursor, which a CUT terminal shows there. It polls for keystrokes, which
-// arrive as the keyboard's scan codes, and turns them into 3270 operator
-// actions with the 5250 workstation controller's keyboard map (same
-// keyboard, same codes).
+// arrive as the keyboard's scan-code set 3 bytes, and turns them into 3270
+// operator actions by the 3270 legends of the 122-key keyboard (Attn,
+// Clear, PA1-PA3, Erase EOF, ...; the typing keys through the workstation
+// controller's character table).
+//
+// The session follows the terminal (SessionCycle): it is opened again with
+// a growing wait when it ends at the host's side, and a terminal that is
+// reset, switched off or restarted meets a new one (a new sign-on).
 #pragma once
 
+#include "host/host_config.hpp"
+#include "host/session_cycle.hpp"
 #include "host/twinax/wsc/keyboard_map.hpp"
 #include "machine/coax_port.hpp"
 #include "tn3270/client.hpp"
 
 #include <cstdint>
 #include <deque>
+#include <functional>
 #include <memory>
 #include <string>
 #include <vector>
 
 namespace em34xx {
 
+// One operator action from the keyboard, in 3270 terms.
+struct CoaxKey {
+    enum class Kind { None, Character, Key, Aid, Attn, SysReq };
+    Kind kind = Kind::None;
+    uint8_t ebcdic = 0;               // Character
+    tn3270::Key key = tn3270::Key::Reset;   // Key
+    uint8_t aid = 0;                  // Aid (tn3270::Aid or pf_aid())
+    uint8_t position = 0;             // the set-3 key position, for logs
+};
+
 class CutController : public CoaxHost {
 public:
-    // Takes the session; null runs the controller without a host (the
-    // terminal is identified and shown a blank screen).
-    explicit CutController(std::unique_ptr<tn3270::Client> session);
+    // A new, unstarted client for each session (configured, with its TLS
+    // trust handler).
+    using ClientFactory = std::function<std::unique_ptr<tn3270::Client>()>;
+
+    // `make` null runs the controller without a host (the terminal is
+    // identified and shown a blank screen). `cfg` is the session's endpoint,
+    // for the status.
+    explicit CutController(ClientFactory make, Tn5250Config cfg = Tn5250Config(),
+                           SessionCycleOptions cycle = SessionCycleOptions());
     ~CutController() override;
 
     const char* kind() const override { return "tn3270"; }
-    bool bridges_sessions() const override { return session_ != nullptr; }
+    bool bridges_sessions() const override { return bool(make_); }
     void advance(uint64_t emu_ns) override;
     void terminal_reset() override;
+    bool disconnect_station(unsigned address) override;
     std::string describe() const override;
     std::vector<LineSessionStatus> session_status() const override;
+    unsigned sessions_started() const { return cycle_.sessions_started(); }
 
     void from_terminal(const CoaxMessage& msg) override;
     bool to_terminal(CoaxMessage& out) override;
@@ -59,7 +85,7 @@ public:
     // the byte only changes state (a break prefix, a shift key, a break).
     // The 3483 sends its keyboard's scan-code set 3 bytes unchanged: a
     // make code, or F0 and the make code for a break [observed].
-    bool decode_key(uint8_t code, wsc::OperatorAction& out);
+    bool decode_key(uint8_t code, CoaxKey& out);
     const wsc::KeyboardMap& keyboard() const { return keys_; }
 
 private:
@@ -68,14 +94,23 @@ private:
 
     void queue(CoaxMessage msg, Sent kind = Sent::Other) { out_.push_back({std::move(msg), kind}); }
     void start_identify();
+    void on_line();
     void restart();
+    SessionPhase phase() const;
+    void open_session();
+    void close_session();
     void keystroke(uint8_t code);
     void paint();
     void paint_status();
     uint8_t display_byte(int addr) const;
     uint8_t eab_byte(int addr) const;
 
+    ClientFactory make_;
+    Tn5250Config cfg_;
     std::unique_ptr<tn3270::Client> session_;
+    SessionCycle cycle_;
+    bool held_ = false;             // closed until the terminal is reset
+    // Shift, Alt and Caps Lock state, and the typing keys' characters.
     wsc::KeyboardMap keys_{0x82};
     bool break_next_ = false;       // F0 seen: the next code is a break
     Phase phase_ = Phase::Probe;

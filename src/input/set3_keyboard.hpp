@@ -53,6 +53,11 @@ public:
     // Send the two ID bytes after AA on power-on/reset (observed on the
     // 122-key 1390876; default on for Terminal122 only).
     void set_bat_sends_id(bool on) { bat_sends_id_ = on; }
+    // A 3270 (coax) terminal: functions by their 3270 legends ("3270:"
+    // names, host_keymap.hpp), and the built-in 5250 keymaps replaced by
+    // their 3270 counterparts (keymap_for_3270).
+    void set_legends_3270(bool on) { legends_3270_ = on; }
+    bool legends_3270() const { return legends_3270_; }
     bool bat_sends_id() const { return bat_sends_id_; }
 
     // Power-on reset: clears state and queues the BAT result.
@@ -118,6 +123,7 @@ private:
     KeyboardType type_;
     uint8_t id1_, id2_;
     bool bat_sends_id_;
+    bool legends_3270_ = false;
 
     std::deque<uint16_t> out_;  // bit 8 marks a key (not response) byte
     size_t key_bytes_ = 0;      // key bytes in out_, for overrun detection

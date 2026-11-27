@@ -57,12 +57,58 @@ uint8_t eab_for(uint8_t highlight, uint8_t colour, uint8_t charset) {
 
 } // namespace
 
-CutController::CutController(std::unique_ptr<tn3270::Client> session) : session_(std::move(session)) {
+CutController::CutController(ClientFactory make, Tn5250Config cfg, SessionCycleOptions cycle)
+    : make_(std::move(make)), cfg_(std::move(cfg)),
+      cycle_(SessionCycle::Hooks{[this] { return phase(); }, [this] { open_session(); }, [this] { close_session(); },
+                                 [this] { return session_ ? session_->last_error() : std::string(); }, "coax"},
+             cycle) {
     keys_.set_shift_releases_lock(true);
+    if (make_) {
+        session_ = make_();
+        cycle_.tick();   // connect now
+    }
 }
 
 CutController::~CutController() {
     if (session_) session_->stop();
+}
+
+SessionPhase CutController::phase() const {
+    if (!session_) return SessionPhase::Idle;
+    switch (session_->state()) {
+    case tn3270::ConnState::Idle: return SessionPhase::Idle;
+    case tn3270::ConnState::Ready: return SessionPhase::Ready;
+    case tn3270::ConnState::Closed:
+    case tn3270::ConnState::Failed: return SessionPhase::Down;
+    default: return SessionPhase::Connecting;
+    }
+}
+
+// A used client cannot be restarted: every session gets a new one, with a
+// new screen; the terminal's buffer is painted again from it.
+void CutController::close_session() {
+    if (session_) session_->stop();
+    session_ = make_ ? make_() : nullptr;
+    painted_gen_ = ~0ull;
+    shown_cursor_ = -1;
+}
+
+void CutController::open_session() {
+    if (!session_ || session_->state() != tn3270::ConnState::Idle) close_session();
+    if (!session_) return;
+    held_ = false;
+    LOG_INFO("coax", "connecting to %s:%u%s, terminal type %s, device %s", cfg_.host.c_str(), cfg_.port,
+             cfg_.tls ? " (TLS)" : "", cfg_.terminal_type.c_str(),
+             cfg_.device_name.empty() ? "(host assigned)" : cfg_.device_name.c_str());
+    std::string error;
+    if (!session_->start(error)) LOG_ERROR("coax", "%s", error.c_str());
+}
+
+bool CutController::disconnect_station(unsigned address) {
+    if (address != 0 || !make_) return false;
+    cycle_.stop();
+    held_ = true;
+    return true;
 }
 
 void CutController::restart() {
@@ -80,7 +126,17 @@ void CutController::restart() {
     break_next_ = false;
 }
 
-void CutController::terminal_reset() { restart(); }
+void CutController::terminal_reset() {
+    restart();
+    held_ = false;
+    if (make_) cycle_.terminal_reset();   // a new run of the terminal meets a new session
+}
+
+void CutController::on_line() {
+    phase_ = Phase::Running;
+    queue({cmd(kLoadControl), data(0x00)});   // cursor shown, display on
+    if (make_) cycle_.terminal_on_line();
+}
 
 void CutController::start_identify() {
     phase_ = Phase::Identify;
@@ -92,6 +148,7 @@ void CutController::start_identify() {
 
 void CutController::advance(uint64_t emu_ns) {
     now_ = emu_ns;
+    if (make_) cycle_.tick();
     if (session_) session_->pump();
     if (phase_ == Phase::Running && out_.empty() && !waiting_) paint();
 }
@@ -122,14 +179,14 @@ void CutController::no_response() {
         // No feature at this address: try the next one [documented: the
         // controller probes addresses 2-F].
         if (++feature_addr_ <= 0xF) queue({cmd(uint8_t(feature_addr_ << 4 | kReadFeatureId))}, Sent::FeatureId);
-        else {
-            phase_ = Phase::Running;
-            queue({cmd(kLoadControl), data(0x00)});   // cursor shown, display on
-        }
+        else on_line();
         return;
     }
     if (++silent_ >= kLostAfter && phase_ != Phase::Probe) {
         LOG_INFO("coax", "terminal stopped answering; starting over");
+        // The terminal left the line: the session it was using is over (at
+        // the next tick), and it meets a new one when it comes back.
+        if (make_) cycle_.terminal_off_line();
         restart();
     }
 }
@@ -186,83 +243,127 @@ void CutController::from_terminal(const CoaxMessage& msg) {
             eab_colour_ = w.byte() == kEabFeatureId;
         }
         if (++feature_addr_ <= 0xF) queue({cmd(uint8_t(feature_addr_ << 4 | kReadFeatureId))}, Sent::FeatureId);
-        else {
-            phase_ = Phase::Running;
-            queue({cmd(kLoadControl), data(0x00)});
-        }
+        else on_line();
         return;
     default: return;
     }
 }
 
-bool CutController::decode_key(uint8_t code, wsc::OperatorAction& out) {
+namespace {
+
+// The 3270 legends of the 122-key keyboard, by set-3 key position
+// [documented: IBM Personal Communications/3270 V4.0 Reference Guide for
+// Windows, S20H-1773, 5.1.1, "PS/2 122 Key Keyboard", whose segments A and C
+// are the keyboard's left-hand and editing blocks; hypothesis: that the
+// keycaps of the 3483's and 3472's 122-key keyboards say the same]. The
+// positions follow the TMK set-3 map (docs/keyboard.md). Returns false for
+// a position that is not a 3270 function key here (a typing key).
+bool function_key_3270(uint8_t pos, bool shift, bool alt, CoaxKey& out) {
+    using Kind = CoaxKey::Kind;
+    using tn3270::Aid;
+    using tn3270::Key;
+    auto key = [&](Key k) { out.kind = Kind::Key; out.key = k; return true; };
+    auto aid = [&](uint8_t a) { out.kind = Kind::Aid; out.aid = a; return true; };
+    auto none = [&] { out.kind = Kind::None; return true; };
+    // F1-F12 (the lower row) and F13-F24 (the upper row) -> PF1-PF24.
+    static constexpr uint8_t kLower[12] = {0x07, 0x0F, 0x17, 0x1F, 0x27, 0x2F, 0x37, 0x3F, 0x47, 0x4F, 0x56, 0x5E};
+    static constexpr uint8_t kUpper[12] = {0x08, 0x10, 0x18, 0x20, 0x28, 0x30, 0x38, 0x40, 0x48, 0x50, 0x57, 0x5F};
+    for (int i = 0; i < 12; ++i) {
+        if (pos == kLower[i]) return aid(tn3270::pf_aid(i + 1));
+        if (pos == kUpper[i]) return aid(tn3270::pf_aid(i + 13));
+    }
+    switch (pos) {
+    // Left-hand block, top to bottom: Attn (SysReq with Alt; with Shift
+    // too [ours: the toolbar's SysRq]) | Clear; CurSel | Erase Input;
+    // (blank) | Erase EOF; (blank) | Play; (blank) | (blank).
+    case 0x05:
+        out.kind = (shift || alt) ? Kind::SysReq : Kind::Attn;
+        return true;
+    case 0x06: return aid(uint8_t(Aid::Clear));
+    case 0x0C: return key(Key::EraseInput);
+    case 0x0B: return alt ? none() : key(Key::EraseEOF);   // Alt: Record, local
+    case 0x04: case 0x03: case 0x0A: case 0x83: case 0x01: case 0x09:
+        return none();   // CurSel, Play, Setup: local or not 3270 keys
+    // Editing block: PA1 (Shift: Dup), PA2 (Shift: Field Mark), Jump
+    // (Alt: PA3) over BackTab, Insert, Delete.
+    case 0x67: return shift ? key(Key::Dup) : aid(uint8_t(Aid::PA1));
+    case 0x6E: return shift ? key(Key::FieldMark) : aid(uint8_t(Aid::PA2));
+    case 0x6F: return (alt || shift) ? aid(uint8_t(Aid::PA3)) : none();
+    case 0x64: return key(Key::BackTab);
+    case 0x65: return key(Key::Insert);
+    case 0x6D: return alt ? none() : key(Key::Delete);   // Alt: Delete Word
+    // Cursor block: Rule (Alt: Home) between the arrows.
+    case 0x62: return alt ? key(Key::Home) : none();   // Rule is local
+    case 0x63: return key(Key::Up);
+    case 0x60: return key(Key::Down);
+    case 0x61: return key(Key::Left);
+    case 0x6A: return key(Key::Right);
+    // Typing block and keypad.
+    case 0x66: return key(Key::Backspace);
+    case 0x0D: return key(shift ? Key::BackTab : Key::Tab);
+    case 0x5A: return key(Key::NewLine);
+    case 0x58: case 0x79: return aid(uint8_t(Aid::Enter));   // Enter; keypad Enter
+    case 0x7C: return key(Key::Tab);                          // keypad Tab Field
+    case 0x11: return alt ? none() : key(Key::Reset);          // Alt: Quit
+    case 0x53:   // \ | left of New Line [ours: US legends]
+        out.kind = Kind::Character;
+        out.ebcdic = shift ? 0x4F : 0xE0;
+        return true;
+    default: return false;
+    }
+}
+
+} // namespace
+
+bool CutController::decode_key(uint8_t code, CoaxKey& out) {
+    out = CoaxKey{};
     // The poll response carries the keyboard's set-3 bytes as the 3483
     // received them: Shift is 12, then F0 12 when it is let go; Caps Lock
     // 14, F0 14 [observed: poll responses with the firmware's key modes,
     // typing keys make-only]. KeyboardMap takes a break as bit 7 (the 5250
-    // convention), so F0 + code becomes code | 80. Before this, F0 was read
-    // as a key of its own and the following 12 as a second make, so Shift
-    // stayed down and Caps Lock toggled twice.
+    // convention), so F0 + code becomes code | 80.
     if (code == 0xF0) {
         break_next_ = true;
         return false;
     }
+    out.position = code;
     if (code & 0x80 && code != 0xFF) {
-        // Set-3 make codes above 7F (keypad and Windows-type keys) have no
-        // place in the 7-bit table [open]; their breaks are dropped too.
+        // Set-3 codes above 7F: 83 is a left-hand block key (above); the
+        // others have no 3270 legend here [open]; breaks are dropped.
+        const bool brk = break_next_;
         break_next_ = false;
-        out = wsc::OperatorAction{};
-        out.scan = code;
-        return true;   // Unmapped
+        if (brk) return false;
+        function_key_3270(code, keys_.shift(), keys_.alt(), out);
+        return true;
     }
     const uint8_t scan = break_next_ ? uint8_t(code | 0x80) : code;
     break_next_ = false;
-    return keys_.translate(scan, out);
+    // Shift, Alt and Caps Lock state, and the typing keys' characters.
+    wsc::OperatorAction a;
+    if (!keys_.translate(scan, a)) return false;
+    if (a.kind == wsc::OperatorAction::Kind::Overrun) return true;
+    if (function_key_3270(code, keys_.shift(), keys_.alt(), out)) return true;
+    if (a.kind == wsc::OperatorAction::Kind::Character) {
+        out.kind = CoaxKey::Kind::Character;
+        out.ebcdic = a.ebcdic;
+    }
+    return true;
 }
 
 void CutController::keystroke(uint8_t code) {
-    wsc::OperatorAction a;
-    if (!decode_key(code, a)) return;
-    LOG_DEBUG("coax", "key %02X -> %s", code, wsc::operator_action_name(a.kind));
-    if (!session_) return;
-    using K = wsc::OperatorAction::Kind;
-    using F = wsc::KeyFunction;
-    using tn3270::Key;
-    switch (a.kind) {
-    case K::Character: session_->type(a.ebcdic); break;
-    case K::Function:
-        switch (a.function) {
-        case F::Tab: case F::FieldExit: case F::FieldPlus: case F::FieldMinus: session_->key(Key::Tab); break;
-        case F::Backtab: session_->key(Key::BackTab); break;
-        case F::NewLine: session_->key(Key::NewLine); break;
-        case F::Backspace: case F::CursorLeft: session_->key(Key::Left); break;
-        case F::CursorRight: session_->key(Key::Right); break;
-        case F::CursorUp: session_->key(Key::Up); break;
-        case F::CursorDown: session_->key(Key::Down); break;
-        case F::Home: session_->key(Key::Home); break;
-        case F::Insert: session_->key(Key::Insert); break;
-        case F::Delete: session_->key(Key::Delete); break;
-        case F::Dup: session_->key(Key::Dup); break;
-        case F::EraseEof: session_->key(Key::EraseEOF); break;
-        case F::EraseInput: session_->key(Key::EraseInput); break;
-        case F::Reset: session_->key(Key::Reset); break;
-        case F::FieldMark: session_->key(Key::FieldMark); break;
-        default: break;
-        }
-        break;
-    case K::Aid: {
-        // 5250 AID values from the keyboard map -> 3270 [documented both]:
-        // Enter, F1-F12 -> PF1-12, F13-F24 -> PF13-24, Clear.
-        uint8_t aid = 0;
-        if (a.aid == 0xF1) aid = uint8_t(tn3270::Aid::Enter);
-        else if (a.aid >= 0x31 && a.aid <= 0x3C) aid = tn3270::pf_aid(a.aid - 0x30);
-        else if (a.aid >= 0xB1 && a.aid <= 0xBC) aid = tn3270::pf_aid(a.aid - 0xB0 + 12);
-        else if (a.aid == 0xBD) aid = uint8_t(tn3270::Aid::Clear);
-        if (aid) session_->aid(aid);
-        break;
-    }
-    case K::SysReq: session_->aid(uint8_t(tn3270::Aid::SysReq)); break;
-    default: break;
+    CoaxKey k;
+    if (!decode_key(code, k)) return;
+    using Kind = CoaxKey::Kind;
+    static const char* const kKind[] = {"none", "character", "key", "aid", "attn", "sysreq"};
+    LOG_DEBUG("coax", "key %02X -> %s", code, kKind[int(k.kind)]);
+    if (!session_ || session_->state() != tn3270::ConnState::Ready) return;
+    switch (k.kind) {
+    case Kind::Character: session_->type(k.ebcdic); break;
+    case Kind::Key: session_->key(k.key); break;
+    case Kind::Aid: session_->aid(k.aid); break;
+    case Kind::Attn: session_->attn(); break;
+    case Kind::SysReq: session_->sysreq(); break;
+    case Kind::None: break;
     }
 }
 
@@ -298,8 +399,10 @@ void CutController::paint_status() {
         const std::string lu = session_->lu_name();
         if (!lu.empty()) text += " " + lu;
     }
-    if (!session_) text = "COAX";
-    else if (session_->state() != tn3270::ConnState::Ready) text += " " + std::string(tn3270::conn_state_name(session_->state()));
+    if (!make_) text = "COAX";
+    else if (held_) text += " disconnected";
+    else if (session_ && session_->state() != tn3270::ConnState::Ready)
+        text += " " + std::string(tn3270::conn_state_name(session_->state()));
     std::string line(kStatusCells, ' ');
     for (size_t i = 0; i < text.size() && i < 20; ++i) line[i] = text[i];   // "TN3270E " + 8-char LU fits
     if (session_ && session_->engine().keyboard_locked()) {
@@ -375,12 +478,15 @@ std::string CutController::describe() const {
 }
 
 std::vector<LineSessionStatus> CutController::session_status() const {
-    if (!session_) return {};
+    if (!make_) return {};
     LineSessionStatus st;
     st.address = 0;
-    st.state = tn3270::conn_state_name(session_->state());
-    st.connected = session_->state() == tn3270::ConnState::Ready;
-    st.error = session_->last_error();
+    st.held = held_;
+    st.state = held_ ? "disconnected" : session_ ? tn3270::conn_state_name(session_->state()) : "idle";
+    st.connected = !held_ && session_ && session_->state() == tn3270::ConnState::Ready;
+    st.peer = format("%s:%u", cfg_.host.c_str(), cfg_.port);
+    st.tls = cfg_.tls;
+    st.error = session_ ? session_->last_error() : std::string();
     return {st};
 }
 

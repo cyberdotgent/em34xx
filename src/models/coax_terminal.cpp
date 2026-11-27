@@ -54,8 +54,11 @@ void build_coax_terminal(Machine& m, const ModelInfo& info, const CoaxBoardLayou
     // into setup); it asks for the ID itself (F2) right after [observed:
     // with the ID appended every boot opened Offline Setup].
     holder.keyboard->set_bat_sends_id(false);
+    // The 3270 legends (Attn, Clear, PA1-PA3, Erase EOF ...), and the
+    // built-in 5250 keymaps as their 3270 counterparts.
+    holder.keyboard->set_legends_3270(true);
     auto keymap = std::make_shared<Keymap>();
-    if (!load_keymap(opt.keymap, opt.shift_fkeys, *keymap, error)) throw std::runtime_error(error);
+    if (!load_keymap(keymap_for_3270(opt.keymap), opt.shift_fkeys, *keymap, error)) throw std::runtime_error(error);
     holder.keyboard->set_keymap(std::move(keymap));
     sys.attach_keyboard(holder.keyboard.get(), info.clock_hz);
     sys.set_audio(&m.audio());

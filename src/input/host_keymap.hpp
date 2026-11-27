@@ -103,6 +103,12 @@ uint8_t host_modifier_bit(uint32_t hid);   // 0 if not a Shift/Ctrl/Alt key
 // Alt chords). shift_fkeys adds the 122-key Shift+F1..F12 -> F13..F24 rules
 // (every map). False if the name is unknown.
 bool builtin_keymap(const std::string& name, bool shift_fkeys, Keymap& out);
+// The coax 3270 terminals' counterpart of a keymap spec: the built-in 5250
+// maps become "pcomm3270" ("pcomm", "tn5250") or "mac3270" ("mac"), maps in
+// the 3270 legends of the 122-key keyboard (IBM PCOMM/3270's defaults:
+// Esc Attn, Pause Clear, Alt+Insert PA1, Alt+Home PA2, Shift+Page Up PA3,
+// End Erase EOF, Return New Line, Right Ctrl Enter). Other specs as given.
+std::string keymap_for_3270(const std::string& spec);
 
 // `spec` is a built-in name or a TOML file (see docs/keyboard.md).
 bool load_keymap(const std::string& spec, bool shift_fkeys, Keymap& out, std::string& error);
@@ -113,8 +119,9 @@ bool parse_keymap(const std::string& text, const std::string& origin, bool shift
 // Name tables used by keymap files (names are case-insensitive; '-', '_'
 // and spaces are ignored).
 bool host_key_from_name(const std::string& name, uint32_t& hid);
-// A terminal function (by its legend on the IBM 122-key / Enhanced keyboards)
-// or a raw set-3 position ("0x5A"). ok[i] is false where a keyboard type has
+// A terminal function (by its legend on the IBM 122-key / Enhanced keyboards;
+// with the prefix "3270:" by its 3270 legend on the 122-key keyboard, e.g.
+// "3270:pa1") or a raw set-3 position ("0x5A"). ok[i] is false where a keyboard type has
 // no such key.
 bool terminal_target_from_name(const std::string& name, std::array<TerminalStroke, 2>& to,
                                std::array<bool, 2>& ok);

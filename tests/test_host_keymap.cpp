@@ -685,3 +685,43 @@ TEST_CASE("keymap files as text: round trip, PCOMM default, names") {
     CHECK(host_mods_text(kModRAlt) == "altgr");
     CHECK(host_mods_text(0).empty());
 }
+
+TEST_CASE("keymap: pcomm3270 presses the 3270 legends of the 122-key keyboard") {
+    // PCOMM/3270's defaults (S20H-1773 5.1.2) -> the 122-key positions with
+    // those 3270 legends (5.1.1), as the coax controller decodes them.
+    CHECK(keymap_for_3270("pcomm") == "pcomm3270");
+    CHECK(keymap_for_3270("mac") == "mac3270");
+    CHECK(keymap_for_3270("my.toml") == "my.toml");
+    Rig r(KeyboardType::Terminal122, "pcomm3270");
+    r.tap(kEsc);
+    CHECK(r.take() == Ev{"+05", "-05"});          // Attn
+    r.tap(kPause);
+    CHECK(r.take() == Ev{"+06", "-06"});          // Clear
+    r.tap(kEnd);
+    CHECK(r.take() == Ev{"+0B", "-0B"});          // Erase EOF
+    r.tap(kInsert);
+    CHECK(r.take() == Ev{"+65", "-65"});          // Insert
+    r.key(kLAlt, true);
+    r.take();
+    r.tap(kInsert);
+    CHECK(r.take() == Ev{"-19", "+67", "-67", "+19"});   // PA1, the terminal's Alt released around it
+    r.tap(kHome);
+    CHECK(r.take() == Ev{"-19", "+6E", "-6E", "+19"});   // PA2
+    r.key(kLAlt, false);
+    r.take();
+    r.tap(kHome);
+    CHECK(r.take() == Ev{"+19", "+62", "-62", "-19"});   // Home: Alt+Rule
+    r.key(kLShift, true);
+    r.take();
+    r.tap(kPgUp);
+    CHECK(r.take() == Ev{"-12", "+19", "+6F", "-6F", "-19", "+12"});   // PA3: Alt+Jump
+    r.key(kLShift, false);
+    r.take();
+    r.tap(kPgDn);
+    CHECK(r.take().empty());
+    r.tap(kEnter);
+    CHECK(r.take() == Ev{"+5A", "-5A"});          // New Line
+    Rig mac(KeyboardType::Terminal122, "mac3270");
+    mac.tap(kEnter);
+    CHECK(mac.take() == Ev{"+58", "-58"});        // Return is Enter
+}
