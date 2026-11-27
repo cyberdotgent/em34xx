@@ -48,6 +48,12 @@ void build_coax_terminal(Machine& m, const ModelInfo& info, const CoaxBoardLayou
     parse_keyboard_type(opt.keyboard_type, type);
     holder.keyboard = std::make_unique<Set3Keyboard>(type, id1, id2);
     holder.keyboard->set_shift_fkeys(opt.shift_fkeys);
+    // No ID after the self-test result: the 3483's POST polls the keyboard
+    // after resetting it (C000:ACCC) and takes any byte already waiting for
+    // a key held at power-on, which opens Offline Setup (the documented way
+    // into setup); it asks for the ID itself (F2) right after [observed:
+    // with the ID appended every boot opened Offline Setup].
+    holder.keyboard->set_bat_sends_id(false);
     auto keymap = std::make_shared<Keymap>();
     if (!load_keymap(opt.keymap, opt.shift_fkeys, *keymap, error)) throw std::runtime_error(error);
     holder.keyboard->set_keymap(std::move(keymap));

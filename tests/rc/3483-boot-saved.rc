@@ -1,0 +1,9 @@
+# Second run: with the saved setup the terminal boots to its normal state
+# (10h), not to Offline Setup (90h/91h), which it opens only with a key held
+# at power-on or with the setup lost (docs/bringup-3483.md).
+policy log
+speed max
+run #700000000
+assert byte[5840a]==aa "POST complete"
+assert byte[2000:6fc]==10 "normal start-up, not Offline Setup"
+quit

@@ -82,6 +82,19 @@ if(EXISTS "${PROJECT_SOURCE_DIR}/roms/06g5525.bin")
            COMMAND em34xx-headless --model 3483 --rom-dir "${PROJECT_SOURCE_DIR}/roms" --batch
                    --rc "${CMAKE_CURRENT_SOURCE_DIR}/rc/3483-smoke.rc")
   set_tests_properties(rom_3483_smoke PROPERTIES LABELS "rom;slow" TIMEOUT 900)
+  # Two runs sharing one battery-backed RAM: save a setup, then boot with it.
+  set(nvram_3483 "${CMAKE_CURRENT_BINARY_DIR}/3483-saved.nvram")
+  add_test(NAME rom_3483_nvram_clean COMMAND ${CMAKE_COMMAND} -E rm -f "${nvram_3483}")
+  add_test(NAME rom_3483_save_setup
+           COMMAND em34xx-headless --model 3483 --rom-dir "${PROJECT_SOURCE_DIR}/roms" --batch
+                   --nvram "${nvram_3483}" --rc "${CMAKE_CURRENT_SOURCE_DIR}/rc/3483-save-setup.rc")
+  add_test(NAME rom_3483_boot_saved
+           COMMAND em34xx-headless --model 3483 --rom-dir "${PROJECT_SOURCE_DIR}/roms" --batch
+                   --nvram "${nvram_3483}" --rc "${CMAKE_CURRENT_SOURCE_DIR}/rc/3483-boot-saved.rc")
+  set_tests_properties(rom_3483_nvram_clean PROPERTIES LABELS "rom;slow" FIXTURES_SETUP nvram3483clean)
+  set_tests_properties(rom_3483_save_setup PROPERTIES LABELS "rom;slow" TIMEOUT 900
+                       FIXTURES_REQUIRED nvram3483clean FIXTURES_SETUP nvram3483)
+  set_tests_properties(rom_3483_boot_saved PROPERTIES LABELS "rom;slow" TIMEOUT 900 FIXTURES_REQUIRED nvram3483)
 endif()
 if(EXISTS "${PROJECT_SOURCE_DIR}/roms/09f4604.bin" AND EXISTS "${PROJECT_SOURCE_DIR}/roms/09f4605.bin")
   # 1.2G instructions: about a minute in a release build.

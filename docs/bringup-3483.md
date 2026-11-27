@@ -19,8 +19,8 @@ the coax line and the controller side are documented with them.
   Utility, Serial Number and the display test's cursor page in colour; the
   keyboard works (observed).
 - A setup changed in Customization is saved in the battery-backed RAM and
-  is in force after a reboot with the same `--nvram` (observed). The next
-  boot still opens Offline Setup (open question below).
+  is in force after a reboot with the same `--nvram` (observed). That boot
+  shows the start-up screen, not Offline Setup (observed; see Power-on).
 - The display follows the mode registers (24x80, 32x80, 43x80, 27x132),
   draws the hardware cursor, the rule line, blink, reverse and both
   underscore styles, and Black-On-White emulation (observed register use;
@@ -466,13 +466,36 @@ Set-3 make codes above `7F` (some keypad keys) are not translated (open).
 `tests/test_cut_controller.cpp` covers it; checked at moshix.tech
 (`aBcDe@x` typed with Shift, Caps Lock and Shift again).
 
+## Power-on: Offline Setup or the start-up screen
+
+After POST the runtime opens Offline Setup (state `[06FC]` = 90h) when
+`[04A8]` is set, and otherwise its start-up screen (10h): the IBM logo,
+"3483 Control Program", the copyright and an energy notice (observed,
+`E000:E1F8`). `C000:9250` sets `[04A8]` in three cases (observed):
+- `[04D9]` bit 0 is set;
+- `[04A9]` bit 0 is set;
+- a byte at `[cs:9CF4]+10h` is 1.
+
+The setup check (test 10) also opens setup when the setup blocks are lost,
+as at the first boot (observed).
+
+`[04A9]` bit 0 comes from the keyboard tests (16/17). After resetting the
+keyboard, POST polls it (`C000:ACCC`): a byte already waiting is taken as
+a key held at power-on, which is the documented way into setup. POST then
+asks for the ID itself (`F2`) (observed).
+
+The keyboard model used to append its ID (`BF BF`) to the self-test
+result, so a byte was always waiting, and every boot opened Offline Setup
+even with a saved setup. The coax terminals' keyboard now sends `AA` alone
+(`src/models/coax_terminal.cpp`). `tests/rc/3483-save-setup.rc` and
+`3483-boot-saved.rc` (two runs sharing one `--nvram`) check it.
+
+Which key a real unit wants held is not checked: the firmware takes any
+byte (observed). Which flag `[04D9]` bit 0 and the `[cs:9CF4]` byte stand
+for is open.
+
 ## Open questions
 
-- Why the next boot opens Offline Setup although a valid setup is saved
-  (the runtime's state byte `[06FC]` is 10h in that loop, hypothesis: the
-  setup state). It may be the
-  absent coax signal at power-on; it may need another setup step (the
-  serial number is blank on a new unit).
 - What the normal online state shows before a controller polls: in
   emulation, a blank screen and a blank status row (observed), with no
   cursor. (The "blank start and reverse bar" seen before was `0:0800`, the

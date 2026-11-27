@@ -1,0 +1,22 @@
+# First of two runs sharing one --nvram file (tests/CMakeLists.txt): an empty
+# battery-backed RAM stops POST at its NVR line, Reset opens Offline Setup,
+# and a change in Customization saved with F3, F3 writes the setup.
+policy log
+speed max
+run #300000000
+key lctrl
+run #400000000
+# the first key after boot is swallowed
+key down
+run #5000000
+key rctrl
+run #60000000
+key down
+run #5000000
+key space
+run #20000000
+key f3
+run #30000000
+key f3
+run #100000000
+quit

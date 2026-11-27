@@ -74,8 +74,11 @@ keys typematic/make/break; the firmware then reported every tap of the
 horizontal cursor keys twice (once for the make, once for the break).
 The model follows the IBM reference for `F0` and, by default,
 appends the ID after `AA` for the 122-key type only
-(`Set3Keyboard::set_bat_sends_id`). Whether the terminals rely on this is
-unknown.
+(`Set3Keyboard::set_bat_sends_id`). Whether the 5250 terminals rely on
+this is unknown. The coax terminals (3483, 3472) must not get it. The
+3483's POST takes any byte waiting after the reset for a key held at
+power-on and opens Offline Setup at every boot (observed,
+docs/bringup-3483.md), so their keyboard sends `AA` alone.
 
 ### Scan-code set 3
 
