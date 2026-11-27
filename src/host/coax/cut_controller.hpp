@@ -54,6 +54,13 @@ public:
     int rows() const { return rows_; }
     bool has_eab() const { return eab_; }
 
+    // One key byte from a poll response -> an operator action; false when
+    // the byte only changes state (a break prefix, a shift key, a break).
+    // The 3483 sends its keyboard's scan-code set 3 bytes unchanged: a
+    // make code, or F0 and the make code for a break [observed].
+    bool decode_key(uint8_t code, wsc::OperatorAction& out);
+    const wsc::KeyboardMap& keyboard() const { return keys_; }
+
 private:
     enum class Phase { Probe, Resetting, Identify, Running };
     enum class Sent { None, Poll, PollAck, Reset, TerminalId, FeatureId, Other };
@@ -69,6 +76,7 @@ private:
 
     std::unique_ptr<tn3270::Client> session_;
     wsc::KeyboardMap keys_{0x82};
+    bool break_next_ = false;       // F0 seen: the next code is a break
     Phase phase_ = Phase::Probe;
     struct Pending {
         CoaxMessage msg;

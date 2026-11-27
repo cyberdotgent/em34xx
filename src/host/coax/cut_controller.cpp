@@ -52,7 +52,9 @@ uint8_t eab_for(uint8_t highlight, uint8_t colour, uint8_t charset) {
 
 } // namespace
 
-CutController::CutController(std::unique_ptr<tn3270::Client> session) : session_(std::move(session)) {}
+CutController::CutController(std::unique_ptr<tn3270::Client> session) : session_(std::move(session)) {
+    keys_.set_shift_releases_lock(true);
+}
 
 CutController::~CutController() {
     if (session_) session_->stop();
@@ -69,6 +71,7 @@ void CutController::restart() {
     painted_gen_ = ~0ull;
     shown_cursor_ = -1;
     keys_.reset();
+    break_next_ = false;
 }
 
 void CutController::terminal_reset() { restart(); }
@@ -170,9 +173,34 @@ void CutController::from_terminal(const CoaxMessage& msg) {
     }
 }
 
+bool CutController::decode_key(uint8_t code, wsc::OperatorAction& out) {
+    // The poll response carries the keyboard's set-3 bytes as the 3483
+    // received them: Shift is 12, then F0 12 when it is let go; Caps Lock
+    // 14, F0 14 [observed: poll responses with the firmware's key modes,
+    // typing keys make-only]. KeyboardMap takes a break as bit 7 (the 5250
+    // convention), so F0 + code becomes code | 80. Before this, F0 was read
+    // as a key of its own and the following 12 as a second make, so Shift
+    // stayed down and Caps Lock toggled twice.
+    if (code == 0xF0) {
+        break_next_ = true;
+        return false;
+    }
+    if (code & 0x80 && code != 0xFF) {
+        // Set-3 make codes above 7F (keypad and Windows-type keys) have no
+        // place in the 7-bit table [open]; their breaks are dropped too.
+        break_next_ = false;
+        out = wsc::OperatorAction{};
+        out.scan = code;
+        return true;   // Unmapped
+    }
+    const uint8_t scan = break_next_ ? uint8_t(code | 0x80) : code;
+    break_next_ = false;
+    return keys_.translate(scan, out);
+}
+
 void CutController::keystroke(uint8_t code) {
     wsc::OperatorAction a;
-    if (!keys_.translate(code, a)) return;
+    if (!decode_key(code, a)) return;
     LOG_DEBUG("coax", "key %02X -> %s", code, wsc::operator_action_name(a.kind));
     if (!session_) return;
     using K = wsc::OperatorAction::Kind;

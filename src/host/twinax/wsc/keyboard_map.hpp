@@ -42,6 +42,11 @@ public:
     bool caps_lock() const { return caps_; }   // Shift Lock on the typewriter keyboard
     bool cmd_pending() const { return cmd_; }   // typewriter: CMD prefix awaiting its key
 
+    // 3270 convention for the Enhanced layout: pressing either Shift
+    // releases Caps Lock [doc: 3270 keyboards release Shift Lock with
+    // Shift]. Off for 5250, where Caps Lock only toggles.
+    void set_shift_releases_lock(bool on) { shift_releases_lock_ = on; }
+
 private:
     bool translate_typewriter(uint8_t key, bool brk, OperatorAction& out);
     bool enhanced() const { return (keyboard_id_ & 0x80) != 0; }
@@ -52,6 +57,7 @@ private:
     bool alt_ = false;
     bool caps_ = false;
     bool cmd_ = false;   // typewriter: CMD prefix (6Fh) seen
+    bool shift_releases_lock_ = false;
 };
 
 } // namespace wsc
