@@ -35,3 +35,31 @@ TEST_CASE("3483 on coax: set-3 key bytes with F0 breaks, Shift releases Caps Loc
     CHECK(type({0x59, 0x1E}) == 0x7C);                    // right Shift+2: @
     CHECK(type({0xF0, 0x59, 0x1E}) == 0xF2);              // released: 2
 }
+
+TEST_CASE("CUT controller: a terminal is reset only after two seconds of answers") {
+    // A terminal that has just come on line is still starting up; a RESET
+    // then left the 3472's keyboard disabled [observed in emulation].
+    CutController cut(nullptr);
+    uint64_t t = 0;
+    // One poll: the controller's next message, answered with TT/AR (or
+    // nothing); returns that message's first word.
+    auto poll = [&](bool answer) {
+        t += 4'000'000;
+        cut.advance(t);
+        CoaxMessage msg;
+        if (!cut.to_terminal(msg)) return CoaxWord{0xFFFF};
+        if (answer) cut.from_terminal({CoaxWord::turnaround()});
+        else cut.no_response();
+        return msg.front();
+    };
+    auto sent_reset = [&](unsigned polls, bool answer) {
+        for (unsigned i = 0; i < polls; ++i)
+            if (poll(answer).bits == CoaxWord::command(0x02).bits) return true;
+        return false;
+    };
+    CHECK_FALSE(sent_reset(100, false));   // nobody there
+    CHECK_FALSE(sent_reset(400, true));    // 1.6 s of answers: still waiting
+    CHECK_FALSE(sent_reset(3, false));     // silent again: start over
+    CHECK_FALSE(sent_reset(400, true));
+    CHECK(sent_reset(200, true));          // past 2 s: RESET
+}

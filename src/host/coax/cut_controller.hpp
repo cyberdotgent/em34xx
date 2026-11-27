@@ -86,6 +86,8 @@ private:
     Sent in_flight_ = Sent::None;
     bool waiting_ = false;          // a transmission is out, its outcome not yet reported
     uint64_t now_ = 0;
+    bool probe_seen_ = false;      // the terminal answered a probe poll
+    uint64_t probe_since_ = 0;     // since then (emulated ns)
     uint64_t next_poll_ = 0;
     unsigned silent_ = 0;           // transmissions in a row without an answer
     int feature_addr_ = 2;          // READ FEATURE ID probe in progress

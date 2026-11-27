@@ -21,6 +21,7 @@ constexpr uint8_t kReadFeatureId = 0x07, kEabWriteAlternate = 0x0A;
 constexpr uint8_t kEabFeatureId = 0x79;   // EAB with colour [documented; observed: the 3483 answers 79]
 
 constexpr uint64_t kPollIntervalNs = 4'000'000;   // 4 ms
+constexpr uint64_t kProbeSettleNs = 2'000'000'000;   // 2 s of answers before RESET
 constexpr unsigned kLostAfter = 8;                 // unanswered transmissions before starting over
 constexpr int kStatusCells = 80;
 
@@ -62,6 +63,7 @@ CutController::~CutController() {
 
 void CutController::restart() {
     phase_ = Phase::Probe;
+    probe_seen_ = false;
     out_.clear();
     waiting_ = false;
     in_flight_ = Sent::None;
@@ -108,6 +110,7 @@ bool CutController::to_terminal(CoaxMessage& msg) {
 
 void CutController::no_response() {
     waiting_ = false;
+    if (phase_ == Phase::Probe) probe_seen_ = false;   // gone again: wait afresh
     const Sent what = in_flight_;
     in_flight_ = Sent::None;
     if (what == Sent::FeatureId) {
@@ -135,19 +138,26 @@ void CutController::from_terminal(const CoaxMessage& msg) {
     const CoaxWord w = msg.front();
     switch (what) {
     case Sent::Poll: {
-        if (w.is_turnaround()) {
-            if (phase_ == Phase::Probe) {   // something answers: reset it
-                phase_ = Phase::Resetting;
-                queue({cmd(kReset)}, Sent::Reset);
-            }
-            return;
-        }
-        const bool flag = (w.bits & 2) != 0;
         if (phase_ == Phase::Probe) {
+            // Something answers: reset it once it has answered for a while.
+            // A terminal that has just come on line is still starting up
+            // (the 3472 configures its keyboard then), and a RESET in the
+            // middle of that leaves its keyboard disabled [observed in
+            // emulation: after a terminal restart under a running
+            // controller]. A new terminal answers the same way, so there is
+            // nothing else to tell them apart by.
+            if (!probe_seen_) {
+                probe_seen_ = true;
+                probe_since_ = now_;
+                return;
+            }
+            if (now_ - probe_since_ < kProbeSettleNs) return;
             phase_ = Phase::Resetting;
             queue({cmd(kReset)}, Sent::Reset);
             return;
         }
+        if (w.is_turnaround()) return;
+        const bool flag = (w.bits & 2) != 0;
         queue({cmd(kPollAck)}, Sent::PollAck);
         if (phase_ == Phase::Resetting) {
             // Power-on reset complete [documented; observed: the 3483 arms

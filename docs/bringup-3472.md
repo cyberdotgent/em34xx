@@ -83,6 +83,23 @@ What made it pass (hypotheses, shared with the 3483, docs/bringup-3483.md):
 - it sees the status row below the screen, from entry 62 - rows;
 - row 0 latches from entry 60 - rows.
 
+## A terminal restarting under a running controller
+
+This happens when you switch to the 3472 in the GUI while a session is
+connected, or on any reset.
+- The controller sees the line go silent during POST and starts over.
+- It used to send RESET at the first answer. That RESET arrived while the
+  3472 was configuring its keyboard (`F5`, `FD`, `FB` ... `F4`), so the
+  firmware never finished and left the keyboard's scanning disabled. The
+  screen kept updating, but no key reached the host (observed in
+  emulation).
+- A terminal that has just restarted answers the probe with a bare TT/AR,
+  like any idle terminal, so the controller cannot tell the two apart. It
+  now waits for two seconds of answers before the RESET
+  (`CutController`, hypothesis for the length).
+- The 3472's screen saver also takes the first key after a long idle
+  (observed: the key reaches the firmware but not the controller).
+
 ## Open
 
 - The coax buffer at `0:C000` and the memory engine work as on the 3483
