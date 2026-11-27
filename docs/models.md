@@ -11,7 +11,7 @@ firmware reads, the ROM set, and what the unit announces to its host.
 | 3486 | `3486-BA` (default) | monochrome | `42` | `IBM-5251-11` | green, amber, paper-white |
 | 3487 | `3487-HG` (default) | monochrome | `4A` | `IBM-5251-11` | green, amber, paper-white |
 | 3487 | `3487-HC` | colour | `4C` | `IBM-3179-2` | - |
-| 3472 | `3472-G` | 3270 display on coax, monochrome (bring-up skeleton) | - | - (TN3270) | green, amber, paper-white |
+| 3472 | `3472-G` | 3270 display on coax, monochrome (bring-up) | display ID `00` | - (TN3270) | green, amber, paper-white |
 | 3483 | `3483-V` | 3270 display on coax, colour VGA monitor (bring-up) | sense `44` | - (TN3270) | - |
 
 `em34xx --list-models` prints the same from the code (`ModelInfo::variants`
@@ -20,6 +20,11 @@ in `src/machine/model_info.hpp`, filled in by each model).
 The 3483's straps byte is the code its monitor's sense lines give (`44`,
 the colour class; `--straps 51` selects the monochrome class). Its
 hardware and bring-up state are in `docs/bringup-3483.md`.
+
+The 3472 has no monitor sense lines. Its straps byte's bits 7-5 are the
+display ID the firmware reads at power-on: `00` display type 1 (default),
+`20` type 1 with another setup bit, `40` type 2, `80` no display (the
+alarm sounds); see `docs/bringup-3472.md`.
 
 ## One monochrome unit, whatever the tube
 

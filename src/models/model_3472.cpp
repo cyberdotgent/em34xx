@@ -64,12 +64,15 @@ CoaxBoardLayout layout_3472() {
     l.monochrome = true;
     l.cell_dots = 12;   // main 3-0, companion 7-0 [observed: its fonts]
     l.dot_low_bit = 0;
+    l.monitor_sense_lines = false;   // its own tube: a display ID instead
     return l;
 }
 
-// Monitor sense: the 3483 firmware's monochrome class (type 1) [hypothesis:
-// the 3472's own tube].
-constexpr uint8_t kSenseMono = 0x51;
+// Display ID, bits 7-5 of the system sense register: 000, display type 1
+// [observed: the firmware's type 1 runs the video test's subtests that pass
+// and goes on line; hypothesis: that a real board gives 000]. --straps 20
+// gives 001 (type 1 with another gate array setting), 40 gives 01x (type 2).
+constexpr uint8_t kDisplayId = 0x00;
 
 class Model3472 : public Model {
 public:
@@ -89,7 +92,7 @@ public:
         // A monochrome unit with its own tube, so the 5250 monochrome
         // units' phosphors.
         info_.variants = {
-            {"3472-G", "monochrome", false, 0x00, "", {phosphor_green(), phosphor_amber(), phosphor_paper_white()},
+            {"3472-G", "monochrome", false, kDisplayId, "", {phosphor_green(), phosphor_amber(), phosphor_paper_white()},
              {}},
         };
         // Both chips load at the image's base; build() interleaves them.
@@ -111,6 +114,9 @@ public:
             "battery-backed part a hypothesis); a first boot with an empty SRAM stops at M12, Reset writes the "
             "setup, and the next boot passes it (observed: tests rom_3472_save_setup/boot_saved)",
             "gate array: Toshiba 09F4534 (observed, board photo)",
+            "no monitor sense lines: the firmware reads only bits 7-0 of 3000E; bits 7-5 are a display ID, 000/001 "
+            "type 1, 01x type 2, 1xx none (observed, E000:13AB); --straps sets it, 00 by default (hypothesis); types "
+            "1 and 2 both pass POST (observed)",
             "printer port: a DB-25 parallel port for the printer session (documented: project owner); its registers "
             "are not found and it is not modelled",
             "line: coax, CUT mode (hypothesis, strong; same adapter design as the 3483)",
@@ -125,7 +131,7 @@ public:
         parts::battery_backed_ram(m, kSramBase, kSramSize);
         bus.map_ram("gate array RAM", kBlockRamBase, kBlockRamSize);
         const TerminalOptions& opt = m.options();
-        const uint8_t sense = opt.straps >= 0 ? uint8_t(opt.straps) : kSenseMono;
+        const uint8_t sense = opt.straps >= 0 ? uint8_t(opt.straps) : variant_for(opt).straps;
         build_coax_terminal(m, info_, layout_3472(), nullptr, sense);
         if (roms.size() != 2 || roms[0].data.size() != kChipSize || roms[1].data.size() != kChipSize)
             throw std::runtime_error("3472: needs both ROM chips");

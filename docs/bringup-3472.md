@@ -95,6 +95,34 @@ The clock is 8 MHz (hypothesis). POST's timing windows pass with it.
   list names the same cell (`4B7C`) in its two entries below the screen.
   The 3483's list names its `0:0A00` there in the same way (observed).
 
+## Display ID (`E000:13AB`)
+
+The 3472 has no monitor sense lines. Over a boot to the start-up screen its
+firmware reads only the low byte of the system sense register (`3000E`),
+never the 3483's sense lines in bits 8-11 (observed: all of its 77,450
+reads). At power-on it turns bits 7-5 into two values (observed):
+
+| bits 7-5 | `[5203]` | `[5204]` | in emulation (`--straps`) |
+| --- | --- | --- | --- |
+| 000 | 1 | 1 | POST to `M12`, start-up screen (`00`, the default) |
+| 001 | 2 | 1 | the same (`20`) |
+| 01x | 3 | 2 | the same (`40`) |
+| 1xx | 3 | FF | nothing drawn, the alarm sounds (`80`) |
+
+- `[5204]` is the display type. It picks the video test's subtest set
+  (table `E000:2AF8`, read at `E000:2B84`), and other code branches on it
+  (`E000:118B`, `E000:2250`). FF with no test mode set (`[5205]` 0) ends in a
+  loop (`E000:13F6`).
+- `[5203]` sets bit `[5203]`-1 of the setup byte at `1D30:0006` in
+  battery-backed RAM (`E000:1410`).
+- Bits 4-7 = `B` or bits 1-0 not `11` select test modes (`[5205]`,
+  `E000:15EF`); the model reads `11`, a normal power-on, as on the 3483.
+
+The model gives 000 (hypothesis). Type 1 is also the class the 3483
+firmware uses for a monochrome monitor. The video test passes with types 1
+and 2 alike, so it does not tell which one a 3472 is. The board's wiring of
+the gate array's pins for those bits would settle it.
+
 ## Video sense (POST test 6, `E000:2B4A`)
 
 This is the same test as the 3483's POST test 7. It has fifteen subtests,
@@ -132,8 +160,7 @@ connected, or on any reset.
   translate tables' addresses are the 3483's (untested).
 - The keyboard: the 3483's 122-key keyboard on serial channel A
   (hypothesis).
-- The monitor sense code: `51`, the 3483 firmware's monochrome class
-  (hypothesis).
+- The display ID a real board gives (000 assumed; see Display ID).
 - The printer port: its registers are not found yet, and the model has
   no printer session (`max_printer_sessions` 0).
 - The CPU clock: 8 MHz, the N8086-2's rating. Neither oscillator divides

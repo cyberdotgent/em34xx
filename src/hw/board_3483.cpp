@@ -669,6 +669,7 @@ uint16_t Board3483::System::sense() const {
     // [observed: each firmware's POST timing windows, a long and a short
     // phase].
     if (board_.in_vsync() == board_.layout_.sync_reads_high) v |= 0x0004;
+    if (!board_.layout_.monitor_sense_lines) return uint16_t(v | (board_.monitor_sense_ & 0xE0));
     const uint16_t drive = board_.display_ ? board_.display_->reg(0x26) : 0;
     for (unsigned line = 0; line < 4; ++line) {
         const unsigned code = (board_.monitor_sense_ >> (6 - 2 * line)) & 3;

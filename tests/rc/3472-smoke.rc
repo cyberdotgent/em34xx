@@ -9,6 +9,7 @@ policy log
 speed max
 run #600000000
 assert byte[7a24]==ac&&byte[7a26]==21&&byte[7a28]==22 "POST's M12 line on row 0, columns 18-20"
+assert byte[5203]==1&&byte[5204]==1 "display ID 000: display type 1 (E000:13AB)"
 assert word[30002]==8000 "alarm off"
 key lctrl
 run #600000000

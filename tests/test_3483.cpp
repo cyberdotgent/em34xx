@@ -284,3 +284,25 @@ TEST_CASE("3483 status row: drawn from 0:0A00, not the local buffer at 0:0800") 
     r.bus.poke8(0x0A00 + 5, 0x38);   // white
     CHECK(Rig::px(r.shot(), x, y) == colours::kWhite);
 }
+
+TEST_CASE("system sense: monitor sense lines on the 3483, a display ID on the 3472") {
+    // 3483: sense code 44 (lines 1 and 3 open) in bits 11-8; bits 7-5 clear.
+    Rig r;
+    const uint16_t v3483 = r.bus.mem_read16(0x5840E);
+    CHECK((v3483 & 0x0F00) == 0x0A00);
+    CHECK((v3483 & 0x00E0) == 0);
+    CHECK((v3483 & 0x0003) == 0x0003);   // normal power-on
+
+    // 3472: no sense lines; the strap byte's bits 7-5 read in bits 7-5.
+    Bus bus{20};
+    CoaxBoardLayout l;
+    l.monitor_sense_lines = false;
+    Board3483 board{bus, nullptr, kClock, 0x40, l};
+    Board3483::System system{board};
+    bus.map_mmio("system", l.system, 0x100, &system);
+    system.reset();
+    const uint16_t v3472 = bus.mem_read16(l.system + 0x0E);
+    CHECK((v3472 & 0x00E0) == 0x0040);   // 01x: display type 2
+    CHECK((v3472 & 0x0F00) == 0);
+    CHECK((v3472 & 0x0003) == 0x0003);
+}

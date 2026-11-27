@@ -17,7 +17,9 @@ struct ModelInfo;
 
 // Adds the board's devices to `m` and maps them at `layout`. `cpu_io` is
 // the 80186's peripheral block, or null for an 8086 (the board is then the
-// bus's interrupt controller). `sense` is the monitor sense code.
+// bus's interrupt controller). `sense` is the monitor sense code, or the
+// display ID on a board without monitor sense lines
+// (CoaxBoardLayout::monitor_sense_lines).
 void build_coax_terminal(Machine& m, const ModelInfo& info, const CoaxBoardLayout& layout, I80186Peripherals* cpu_io,
                          uint8_t sense);
 

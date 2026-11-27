@@ -67,6 +67,13 @@ struct CoaxBoardLayout {
     // dots, main 6-0 and companion 7-6; 3472: 12 dots, main 3-0 and
     // companion 7-0, observed in the fonts each firmware unpacks].
     unsigned cell_dots = 9, dot_low_bit = 6;
+    // Monitor sense lines in the system sense register's bits 8-11 (the
+    // 3483, for a separate monitor). Without them (the 3472, with its own
+    // tube) the strap byte's bits 7-5 are a display ID in the register's
+    // bits 7-5 [observed: the 3472 firmware reads only the low byte; E000:13AB
+    // turns bits 7-5 into its display type, 000 and 001 type 1, 01x type 2,
+    // 1xx none; hypothesis: what drives those lines].
+    bool monitor_sense_lines = true;
 };
 
 class Board3483 : public InterruptController {
@@ -76,6 +83,8 @@ public:
     // `monitor_sense`: the code the four monitor sense lines give, as the
     // firmware packs it (2 bits per line, line 1 in bits 7-6: 00 grounded,
     // 01 open, 10 follows 58026 bit 5, 11 follows bit 0). 0x51 = type 1.
+    // On a board without the lines (Layout::monitor_sense_lines), the
+    // display ID in bits 7-5.
     // `cpu_io`: the 80186's integrated peripherals, whose INT0 the board
     // drives in cascade mode; null for a plain 8086, which takes the board
     // itself as its interrupt controller (Bus::set_interrupt_controller).
