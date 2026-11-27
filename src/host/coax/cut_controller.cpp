@@ -18,7 +18,11 @@ constexpr uint8_t kPoll = 0x01, kPollAck = 0x11, kReset = 0x02, kReadTerminalId 
                   kLacHi = 0x04, kLacLo = 0x14, kWriteData = 0x0C;
 // Feature commands: the feature address in the high nibble [documented].
 constexpr uint8_t kReadFeatureId = 0x07, kEabWriteAlternate = 0x0A;
-constexpr uint8_t kEabFeatureId = 0x79;   // EAB with colour [documented; observed: the 3483 answers 79]
+// The extended attribute buffer at feature address 7: 79 with colour
+// [documented; observed: the 3483 answers 79], 78 without [hypothesis,
+// strong: the 3472 answers 78 for its display type 1, 79 for type 2
+// (docs/bringup-3472.md)].
+constexpr uint8_t kEabFeatureId = 0x79, kEabMonoFeatureId = 0x78;
 
 constexpr uint64_t kPollIntervalNs = 4'000'000;   // 4 ms
 constexpr uint64_t kProbeSettleNs = 2'000'000'000;   // 2 s of answers before RESET
@@ -80,6 +84,7 @@ void CutController::terminal_reset() { restart(); }
 
 void CutController::start_identify() {
     phase_ = Phase::Identify;
+    eab_ = eab_colour_ = false;   // another terminal may have come on line
     queue({cmd(kReadTerminalId)}, Sent::TerminalId);
     feature_addr_ = 2;
     queue({cmd(uint8_t(feature_addr_ << 4 | kReadFeatureId))}, Sent::FeatureId);
@@ -169,10 +174,17 @@ void CutController::from_terminal(const CoaxMessage& msg) {
         return;
     }
     case Sent::TerminalId:
-        if (!w.is_command()) rows_ = rows_for_terminal_id(w.byte());
+        if (!w.is_command()) {
+            rows_ = rows_for_terminal_id(w.byte());
+            LOG_INFO("coax", "terminal ID %02X (%d rows)", w.byte(), rows_);
+        }
         return;
     case Sent::FeatureId:
-        if (feature_addr_ == 7 || w.byte() == kEabFeatureId) eab_ = eab_ || w.byte() == kEabFeatureId;
+        if (!w.is_command() && w.byte() != 0x00) LOG_INFO("coax", "feature ID %02X at address %X", w.byte(), feature_addr_);
+        if (!w.is_command() && (w.byte() == kEabFeatureId || w.byte() == kEabMonoFeatureId)) {
+            eab_ = true;
+            eab_colour_ = w.byte() == kEabFeatureId;
+        }
         if (++feature_addr_ <= 0xF) queue({cmd(uint8_t(feature_addr_ << 4 | kReadFeatureId))}, Sent::FeatureId);
         else {
             phase_ = Phase::Running;
@@ -270,7 +282,8 @@ uint8_t CutController::eab_byte(int addr) const {
     const int i = addr - kStatusCells;
     if (i >= e.size()) return 0;
     const tn3270::Cell& c = e.cell(i);
-    return eab_for(c.highlight, c.colour, c.charset);
+    // Highlighting and character set only on a monochrome buffer.
+    return eab_for(c.highlight, eab_colour_ ? c.colour : 0, c.charset);
 }
 
 void CutController::paint_status() {
@@ -351,7 +364,8 @@ void CutController::paint() {
 std::string CutController::describe() const {
     static const char* const kPhase[] = {"probing", "resetting", "identifying", "running"};
     std::string s = format("coax CUT controller: %s, %dx%d%s\n", kPhase[int(phase_)], rows_, cols_,
-                           eab_ ? ", extended attributes" : "");
+                           eab_ ? (eab_colour_ ? ", extended attributes with colour" : ", extended attributes")
+                                : "");
     if (session_)
         s += format("  %s session: %s%s%s\n", session_->tn3270e() ? "TN3270E" : "TN3270",
                     tn3270::conn_state_name(session_->state()),

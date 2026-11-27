@@ -118,10 +118,23 @@ reads). At power-on it turns bits 7-5 into two values (observed):
 - Bits 4-7 = `B` or bits 1-0 not `11` select test modes (`[5205]`,
   `E000:15EF`); the model reads `11`, a normal power-on, as on the 3483.
 
-The model gives 000 (hypothesis). Type 1 is also the class the 3483
-firmware uses for a monochrome monitor. The video test passes with types 1
-and 2 alike, so it does not tell which one a 3472 is. The board's wiring of
-the gate array's pins for those bits would settle it.
+The host side sees the type: the terminal's answer to READ FEATURE ID at
+address 7 is `78` for types 1 (000, 001) and `79` for type 2 (01x). Its
+terminal ID is `04` (model 2) and its feature 6 `66` either way (observed,
+against moshix.tech:2300). `79` is the extended attribute buffer with colour
+that the 3483 reports, so type 2 reads as a colour display and type 1 as
+monochrome: an extended attribute buffer with highlighting only
+(hypothesis, strong). The difference between 000 and 001 does not reach the
+controller; the phosphor colour is not reported this way (observed).
+
+The model gives 000, monochrome (hypothesis, strong for a 3472, a
+monochrome unit). The video test passes with types 1 and 2 alike. The
+board's wiring of the gate array's pins for those bits would settle the
+value.
+
+The CUT controller takes `78` as an extended attribute buffer without
+colour: it writes highlighting and character set, not colour (observed: the
+User field's underscore on moshix's logon screen).
 
 ## Video sense (POST test 6, `E000:2B4A`)
 

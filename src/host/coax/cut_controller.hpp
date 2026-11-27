@@ -53,6 +53,7 @@ public:
     bool terminal_ready() const { return phase_ == Phase::Running; }
     int rows() const { return rows_; }
     bool has_eab() const { return eab_; }
+    bool has_eab_colour() const { return eab_colour_; }
 
     // One key byte from a poll response -> an operator action; false when
     // the byte only changes state (a break prefix, a shift key, a break).
@@ -92,7 +93,7 @@ private:
     unsigned silent_ = 0;           // transmissions in a row without an answer
     int feature_addr_ = 2;          // READ FEATURE ID probe in progress
     int rows_ = 24, cols_ = 80;
-    bool eab_ = false;
+    bool eab_ = false, eab_colour_ = false;
     // What the terminal's buffer holds (address 0 = status line).
     std::vector<uint8_t> shown_, shown_eab_;
     uint64_t painted_gen_ = ~0ull;

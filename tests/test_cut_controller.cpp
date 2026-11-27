@@ -63,3 +63,49 @@ TEST_CASE("CUT controller: a terminal is reset only after two seconds of answers
     CHECK_FALSE(sent_reset(400, true));
     CHECK(sent_reset(200, true));          // past 2 s: RESET
 }
+
+TEST_CASE("CUT controller: feature 79 is an EAB with colour, 78 one without") {
+    // The 3483 answers 79 at feature address 7; the 3472 answers 78 for its
+    // display type 1 [observed in emulation]. Identify runs again for a
+    // terminal that replaces another.
+    CutController cut(nullptr);
+    uint64_t t = 0;
+    // Answers the controller's messages as a terminal with `eab` at feature
+    // address 7 would, until it is running.
+    auto identify = [&](uint8_t eab) {
+        for (int i = 0; i < 2000; ++i) {
+            t += 4'000'000;
+            cut.advance(t);
+            CoaxMessage msg;
+            if (!cut.to_terminal(msg)) continue;
+            const CoaxWord w = msg.front();
+            const uint8_t c = w.byte();
+            if (w.bits == CoaxWord::command(0x01).bits) cut.from_terminal({CoaxWord::turnaround()});
+            else if (w.bits == CoaxWord::command(0x02).bits) {
+                cut.from_terminal({CoaxWord::turnaround()});
+                // The next poll gets the power-on-reset status.
+                t += 4'000'000;
+                cut.advance(t);
+                CoaxMessage p;
+                if (cut.to_terminal(p)) cut.from_terminal({CoaxWord{uint16_t(0x02 << 2 | 2)}});
+            } else if (w.bits == CoaxWord::command(0x09).bits) cut.from_terminal({CoaxWord::data(0x04)});
+            else if ((c & 0x0F) == 0x07 && w.is_command())
+                cut.from_terminal({CoaxWord::data((c >> 4) == 7 ? eab : 0x00)});
+            else {
+                cut.from_terminal({CoaxWord::turnaround()});
+                if (w.bits == CoaxWord::command(0x0A).bits) return true;   // load control: running
+            }
+        }
+        return false;
+    };
+    REQUIRE(identify(0x79));
+    CHECK(cut.has_eab());
+    CHECK(cut.has_eab_colour());
+    cut.terminal_reset();
+    REQUIRE(identify(0x78));
+    CHECK(cut.has_eab());
+    CHECK_FALSE(cut.has_eab_colour());
+    cut.terminal_reset();
+    REQUIRE(identify(0x00));
+    CHECK_FALSE(cut.has_eab());
+}
