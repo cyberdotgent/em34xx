@@ -1,0 +1,17 @@
+# Smoke test for the 3472 ROM pair (09f4604.bin, 09f4605.bin) with the
+# coax board model (docs/bringup-3472.md). A first boot with an empty
+# battery-backed RAM: POST passes its video test (6) and stops at its setup
+# check with "M12" on row 0 (regen at 0:7A00); Reset continues to the start-up
+# screen, "3472 Control Program" under the IBM logo, where the terminal waits
+# for a controller.
+assert pc==ffff0 "reset vector"
+policy log
+speed max
+run #600000000
+assert byte[7a24]==ac&&byte[7a26]==21&&byte[7a28]==22 "POST's M12 line on row 0, columns 18-20"
+assert word[30002]==8000 "alarm off"
+key lctrl
+run #600000000
+assert byte[825c]==23&&byte[825e]==24&&byte[8260]==27&&byte[8262]==22 "3472 at row 13, column 30"
+unmapped
+quit

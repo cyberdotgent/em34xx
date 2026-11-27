@@ -82,6 +82,13 @@ if(EXISTS "${PROJECT_SOURCE_DIR}/roms/06g5525.bin")
                    --rc "${CMAKE_CURRENT_SOURCE_DIR}/rc/3483-smoke.rc")
   set_tests_properties(rom_3483_smoke PROPERTIES LABELS "rom;slow" TIMEOUT 900)
 endif()
+if(EXISTS "${PROJECT_SOURCE_DIR}/roms/09f4604.bin" AND EXISTS "${PROJECT_SOURCE_DIR}/roms/09f4605.bin")
+  # 1.2G instructions: about a minute in a release build.
+  add_test(NAME rom_3472_smoke
+           COMMAND em34xx-headless --model 3472 --rom-dir "${PROJECT_SOURCE_DIR}/roms" --batch
+                   --rc "${CMAKE_CURRENT_SOURCE_DIR}/rc/3472-smoke.rc")
+  set_tests_properties(rom_3472_smoke PROPERTIES LABELS "rom;slow" TIMEOUT 900)
+endif()
 
 # TN3270 (src/tn3270): the 3270 data stream.
 add_executable(em34xx_tn3270_tests

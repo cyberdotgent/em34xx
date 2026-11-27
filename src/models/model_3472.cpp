@@ -50,7 +50,9 @@ CoaxBoardLayout layout_3472() {
     l.sram = kSramBase;
     l.block_ram = kBlockRamBase;
     l.regen = 0x7A00;
-    l.status_row = 0x7200;   // [hypothesis: 800h below the regen, as on the 3483]
+    // The row after the 24th [hypothesis: the runtime's row list continues
+    // there below the screen; blank without a controller].
+    l.status_row = 0x8900;
     l.sync_reads_high = true;
     l.monochrome = true;
     l.cell_dots = 12;   // main 3-0, companion 7-0 [observed: its fonts]
