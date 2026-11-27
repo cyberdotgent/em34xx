@@ -301,7 +301,23 @@ TEST_CASE("unread command responses are bounded") {
     // A reset recovers from a full queue.
     for (int i = 0; i < 10000; ++i) k.host_write(0xEE);
     k.host_write(0xFF);
-    CHECK(drain(k) == Bytes{0xFA, 0xAA});
+    CHECK(drain(k) == Bytes{0xFA, 0xAA, 0x1C});   // 1C is still held
+}
+
+TEST_CASE("a key held through a reset is reported after the self-test") {
+    Set3Keyboard k;
+    k.set_bat_sends_id(false);
+    k.power_on();
+    drain(k);
+    k.key(0x60, true);
+    drain(k);
+    k.host_write(0xFF);
+    CHECK(drain(k) == Bytes{0xFA, 0xAA, 0x60});
+    // Released afterwards: the break follows as usual (Down is make/break
+    // only when set so; by default it sends nothing on release).
+    k.key(0x60, false);
+    k.key(0x60, true);
+    CHECK(drain(k) == Bytes{0x60});
 }
 
 TEST_CASE("Shift+F1..F12 enters F13..F24 on the 122-key keyboard") {

@@ -508,8 +508,12 @@ After POST the runtime opens Offline Setup (state `[06FC]` = 90h) when
 - `[04A9]` bit 0 is set;
 - a byte at `[cs:9CF4]+10h` is 1.
 
-The setup check (test 10) also opens setup when the setup blocks are lost,
-as at the first boot (observed).
+With the setup lost (empty battery-backed RAM), test 10 stops at its NVR
+line and loops in `C000:9510` until Reset (`[04D9]` bit 5). POST then goes
+on, and the runtime starts with default settings on its start-up screen,
+not in Offline Setup (observed in code and emulation). The owner remembers
+a unit opening setup after a battery change. That would need a key held
+at that point, or the NVRAM byte `47E36` set; neither was seen (open).
 
 `[04A9]` bit 0 comes from the keyboard tests (16/17). After resetting the
 keyboard, POST polls it (`C000:ACCC`): a byte already waiting is taken as
@@ -523,7 +527,9 @@ even with a saved setup. The coax terminals' keyboard now sends `AA` alone
 `3483-boot-saved.rc` (two runs sharing one `--nvram`) check it.
 
 Which key a real unit wants held is not checked: the firmware takes any
-byte (observed). Which flag `[04D9]` bit 0 and the `[cs:9CF4]` byte stand
+byte (observed). The keyboard model reports keys still held after its reset
+(`Set3Keyboard::power_on`), as a real keyboard's first scan does. So
+`key +down` before POST opens Offline Setup (`tests/rc/3483-smoke.rc`). Which flag `[04D9]` bit 0 and the `[cs:9CF4]` byte stand
 for is open.
 
 ## Open questions

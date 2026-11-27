@@ -177,16 +177,29 @@ void Set3Keyboard::power_on() {
     out_.clear();
     key_bytes_ = 0;
     overrun_ = false;
-    held_.fill(false);
-    keymap_.reset();
+    // The host keymap's record of keys held down stays: a reset does not
+    // release them (see the scan below).
     leds_ = 0;
     set_ = 3;
     reset_defaults();
     scanning_ = true;
+    repeat_code_ = -1;
     respond(kBatOk);
     if (bat_sends_id_) {
         respond(id1_);
         respond(id2_);
+    }
+    // Keys still held down are found by the first scan after the self-test
+    // and reported as pressed [documented keyboard behaviour: a key held at
+    // power-on is how a terminal is told to open its setup; observed: the
+    // 3483's POST polls for such a byte after resetting the keyboard].
+    for (unsigned code = 0; code < held_.size(); ++code) {
+        if (!held_[code]) continue;
+        key_byte(uint8_t(code));
+        if (modes_[code] & Typematic) {
+            repeat_code_ = int(code);
+            repeat_wait_us_ = typematic_delay_us();
+        }
     }
 }
 

@@ -80,6 +80,12 @@ this is unknown. The coax terminals (3483, 3472) must not get it. The
 power-on and opens Offline Setup at every boot (observed,
 docs/bringup-3483.md), so their keyboard sends `AA` alone.
 
+A key still held down when the keyboard is reset (power-on or `FF`) is sent
+as a make code after `AA` (and the ID). It repeats if its mode is
+typematic. A real keyboard's first scan finds it the same way, and that is
+how a terminal sees a key held at power-on: the 3483 opens Offline Setup
+for it.
+
 ### Scan-code set 3
 
 Every key has one single-byte make code; a break is `F0` plus the make code.
