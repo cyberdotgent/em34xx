@@ -43,7 +43,12 @@ const ModelVariant* Model::variant_with_colour(bool colour) const {
 }
 
 const std::vector<const Model*>& all_models() {
-    static const std::vector<const Model*> models = {&model_3477(), &model_3472(), &model_3483(), &model_3486(), &model_3487(), &model_3489()};
+    // The order of every model list in the front ends: the 3270 (coax)
+    // terminals first, then the 5250 (twinax) ones.
+    static const std::vector<const Model*> models = {
+        &model_3483(), &model_3472(),                                // 3270
+        &model_3477(), &model_3486(), &model_3487(), &model_3489(),  // 5250
+    };
     return models;
 }
 

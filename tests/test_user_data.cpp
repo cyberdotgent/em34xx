@@ -506,6 +506,7 @@ TEST_CASE("profile: the connect configuration and trusting a certificate") {
 TEST_CASE("models offered to end users") {
     const auto models = runnable_models();
     REQUIRE_FALSE(models.empty());
-    CHECK(models[0]->info().name == "3477");
+    // 3270 terminals first, then 5250 (all_models).
+    CHECK(models[0]->info().name == "3483");
     for (const Model* m : models) CHECK(m->info().status == ModelStatus::Bringup);
 }
