@@ -20,13 +20,10 @@
 #include "models/model.hpp"
 
 #include "bus/bus.hpp"
-#include "hw/board_3483.hpp"
+#include "models/coax_terminal.hpp"
 #include "hw/i80186_peripherals.hpp"
 #include "machine/machine.hpp"
 #include "models/parts.hpp"
-#include "input/host_keymap.hpp"
-#include "input/keyboard_ids.hpp"
-#include "input/set3_keyboard.hpp"
 
 #include <memory>
 #include <stdexcept>
@@ -43,15 +40,6 @@ constexpr uint32_t kSramBase = 0x40000, kSramSize = 0x10000;   // battery-backed
 // class 1 (the monochrome table). Which code the 3483's own tube gives is
 // a hypothesis; --straps selects another.
 constexpr uint8_t kSenseType2 = 0x44;
-
-// Owns the board state the three register devices share and the keyboard;
-// a device only so the machine keeps them alive.
-struct BoardHolder : Device {
-    BoardHolder(Bus& bus, I80186Peripherals& cpu_io, uint64_t clock_hz, uint8_t sense)
-        : Device("board-3483"), board(bus, cpu_io, clock_hz, sense) {}
-    Board3483 board;
-    std::unique_ptr<Set3Keyboard> keyboard;
-};
 
 class Model3483 : public Model {
 public:
@@ -138,36 +126,7 @@ public:
         const TerminalOptions& opt = m.options();
         const ModelVariant& variant = variant_for(opt);
         const uint8_t sense = opt.straps >= 0 ? uint8_t(opt.straps) : variant.straps;
-        auto& board = m.add_device<BoardHolder>(bus, cpu_io, info_.clock_hz, sense);
-        Board3483::Display& disp = m.add_device<Board3483::Display>(board.board);
-        Board3483::Coax& coax = m.add_device<Board3483::Coax>(board.board);
-        Machine* machine = &m;
-        coax.set_line([machine] { return machine->coax_host(); });
-        Board3483::System& sys = m.add_device<Board3483::System>(board.board);
-        m.add_device<Board3483::Window>(board.board);
-
-        // The 122-key keyboard on serial channel A [hypothesis: POST
-        // expects ID BF BF and talks to channel A in its keyboard test].
-        uint8_t id1 = 0xBF, id2 = 0xBF;
-        std::string error;
-        if (!resolve_keyboard_id(opt, id1, id2, error)) throw std::runtime_error(error);
-        KeyboardType type = KeyboardType::Terminal122;
-        parse_keyboard_type(opt.keyboard_type, type);
-        board.keyboard = std::make_unique<Set3Keyboard>(type, id1, id2);
-        board.keyboard->set_shift_fkeys(opt.shift_fkeys);
-        auto keymap = std::make_shared<Keymap>();
-        if (!load_keymap(opt.keymap, opt.shift_fkeys, *keymap, error)) throw std::runtime_error(error);
-        board.keyboard->set_keymap(std::move(keymap));
-        sys.attach_keyboard(board.keyboard.get(), info_.clock_hz);
-        sys.set_audio(&m.audio());
-        m.set_keyboard(board.keyboard.get());
-        bus.map_mmio("display", 0x58000, 0x100, &disp);
-        bus.map_mmio("coax", 0x58100, 0x100, &coax);
-        bus.map_mmio("system", 0x58400, 0x100, &sys);
-        bus.observe_writes(0x00000, 0x10000);
-        bus.observe_writes(0x40000, 0x10000);
-        bus.observe_writes(0x58000, 0x100);
-        m.set_display(&disp);
+        build_coax_terminal(m, info_, CoaxBoardLayout{}, &cpu_io, sense);
         for (LoadedRom& r : roms) bus.map_rom(r.spec.file, r.spec.base, std::move(r.data));
     }
 

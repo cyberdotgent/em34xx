@@ -16,14 +16,14 @@ namespace em34xx {
 
 // --- board -------------------------------------------------------------------
 
-Board3483::Board3483(Bus& bus, I80186Peripherals& cpu_io, uint64_t clock_hz, uint8_t monitor_sense)
-    : bus_(bus), cpu_io_(cpu_io), display_(nullptr), coax_(nullptr), system_(nullptr),
+Board3483::Board3483(Bus& bus, I80186Peripherals* cpu_io, uint64_t clock_hz, uint8_t monitor_sense, Layout layout)
+    : bus_(bus), cpu_io_(cpu_io), layout_(layout), display_(nullptr), coax_(nullptr), system_(nullptr),
       monitor_sense_(monitor_sense) {
     // 60 Hz frame with a short vertical sync [hypothesis]. POST measures
     // both phases in loop counts and accepts a window around this.
     frame_cycles_ = clock_hz / 60;
     active_cycles_ = frame_cycles_ - frame_cycles_ / 40;
-    cpu_io_.set_cascade_controller(0, this);
+    if (cpu_io_) cpu_io_->set_cascade_controller(0, this);
 }
 
 void Board3483::advance(uint64_t cycles) {
@@ -57,11 +57,14 @@ bool Board3483::intr_asserted() const {
     return (status1_ & en1) != 0 || (status2_ & en2) != 0;
 }
 
-void Board3483::update_irq() { cpu_io_.set_int_line(0, intr_asserted()); }
+void Board3483::update_irq() {
+    // Without the 80186 the CPU asks intr_asserted() itself.
+    if (cpu_io_) cpu_io_->set_int_line(0, intr_asserted());
+}
 
 void Board3483::set_window(bool on) {
     if (on == window_mapped_ || !window_) return;
-    if (on) bus_.map_mmio("window 40000", 0x40000, 0x8000, window_);
+    if (on) bus_.map_mmio("CG write window", layout_.sram, 0x8000, window_);
     else bus_.unmap_device_mmio(window_);
     window_mapped_ = on;
 }
@@ -69,10 +72,12 @@ void Board3483::set_window(bool on) {
 // --- 40000 write window --------------------------------------------------------
 
 uint8_t* Board3483::Window::sram(uint32_t offset) {
-    // The SRAM region itself, beneath the window (48000 is never covered).
-    const Region* r = board_.bus_.region_at(0x48000);
+    // The SRAM region itself, beneath the window (its upper half is never
+    // covered).
+    const uint32_t base = board_.layout_.sram;
+    const Region* r = board_.bus_.region_at(base + 0x8000);
     if (!r || r->kind != Region::Kind::Ram) return nullptr;
-    const uint32_t a = 0x40000 + offset;
+    const uint32_t a = base + offset;
     if (a < r->base || a >= r->base + r->size) return nullptr;
     return const_cast<uint8_t*>(&r->storage[a - r->base]);
 }
@@ -107,7 +112,7 @@ namespace {
 // at 4A000, each with a sparse companion plane 4000h below (40000, 42000)
 // that holds the dots right of the first eight [hypothesis: the window's
 // word layout puts the low byte at 40000 and the high byte at 48000].
-constexpr uint32_t kCgSets[2] = {0x48000, 0x4A000};
+constexpr uint32_t kCgSets[2] = {0x8000, 0xA000};   // from the SRAM base
 constexpr uint32_t kCgCompanion = 0x8000;
 
 // The video sense's threshold on a gun's level from the drive table at
@@ -225,9 +230,10 @@ uint32_t Board3483::Display::row_address(unsigned row) const {
     const unsigned cols = columns();
     if (regs_[0x1A >> 1] & 0x0040) return kRegenOrigin + 2u * row * cols;
     Bus& bus = board_.bus_;
-    auto starts_row = [&bus](unsigned e) { return !(bus.peek8(0x50108 + 4 * e) & 0x80); };
-    auto entry_cell = [&bus](unsigned e) {
-        return uint32_t(bus.peek8(0x50108 + 4 * e) & 0x7F) << 8 | bus.peek8(0x50508 + 4 * e);
+    const uint32_t list_a = board_.layout_.block_ram + 0x108, list_b = board_.layout_.block_ram + 0x508;
+    auto starts_row = [&](unsigned e) { return !(bus.peek8(list_a + 4 * e) & 0x80); };
+    auto entry_cell = [&](unsigned e) {
+        return uint32_t(bus.peek8(list_a + 4 * e) & 0x7F) << 8 | bus.peek8(list_b + 4 * e);
     };
     constexpr unsigned kLast = 61;   // the list is entries 0-61
     const unsigned shown = std::min(rows(), kLast + 1);
@@ -308,7 +314,7 @@ uint16_t Board3483::Display::cell_dots(uint8_t ch, uint8_t eab, FieldState& fiel
     index = cell_colour(ch, eab, field);
     const unsigned cs = (eab & 7) ? (eab & 7) : (field.eab & 7);
     const unsigned set = cs == 1 ? 1 : 0;
-    const uint32_t at = kCgSets[set] + uint32_t(ch) * 32 + y;
+    const uint32_t at = board_.layout_.sram + kCgSets[set] + uint32_t(ch) * 32 + y;
     // The 9 dots of a cell are bits 6-0 of the main byte and bits 7-6 of
     // the companion [observed: the GE line glyph B9 lights exactly those,
     // and a rule of them is solid on a real 3483; text glyphs keep main bit

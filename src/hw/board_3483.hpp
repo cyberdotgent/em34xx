@@ -36,12 +36,31 @@ class Bus;
 class I80186Peripherals;
 class Set3Keyboard;
 
+// Where the board's parts sit. The 3472's gate array has the same
+// registers at other addresses [observed in its firmware]; the defaults
+// are the 3483's.
+struct CoaxBoardLayout {
+    uint32_t display = 0x58000, coax = 0x58100, system = 0x58400;
+    // Battery-backed SRAM: the write window at its base, the base and
+    // APL/GE character sets at +8000/+A000, their companion planes 8000
+    // below.
+    uint32_t sram = 0x40000;
+    // Block RAM: the row lists at +108/+508, the coax registers at +300.
+    uint32_t block_ram = 0x50000;
+};
+
 class Board3483 : public InterruptController {
 public:
+    using Layout = CoaxBoardLayout;
+
     // `monitor_sense`: the code the four monitor sense lines give, as the
     // firmware packs it (2 bits per line, line 1 in bits 7-6: 00 grounded,
     // 01 open, 10 follows 58026 bit 5, 11 follows bit 0). 0x51 = type 1.
-    Board3483(Bus& bus, I80186Peripherals& cpu_io, uint64_t clock_hz, uint8_t monitor_sense);
+    // `cpu_io`: the 80186's integrated peripherals, whose INT0 the board
+    // drives in cascade mode; null for a plain 8086, which takes the board
+    // itself as its interrupt controller (Bus::set_interrupt_controller).
+    Board3483(Bus& bus, I80186Peripherals* cpu_io, uint64_t clock_hz, uint8_t monitor_sense, Layout layout = {});
+    const Layout& layout() const { return layout_; }
 
     class Display;
     class Coax;
@@ -70,7 +89,8 @@ private:
     friend class System;
 
     Bus& bus_;
-    I80186Peripherals& cpu_io_;
+    I80186Peripherals* cpu_io_;
+    Layout layout_;
     Display* display_;
     Coax* coax_;
     System* system_;

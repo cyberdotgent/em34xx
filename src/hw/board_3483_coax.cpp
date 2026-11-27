@@ -37,7 +37,7 @@ namespace {
 
 constexpr uint32_t kDisplayBuffer = 0xC000, kPrinterBuffer = 0xA000;
 constexpr uint16_t kDisplayCells = 0x2000, kPrinterCells = 0x1000;
-constexpr uint32_t kRegisters = 0x50300;
+constexpr uint32_t kRegisters = 0x300;   // from the block RAM base
 // RAM copies of the command tables, plane A (opcode, register) [observed].
 constexpr uint32_t kTableDisplay = 0x9A00, kTablePrinter = 0x9B00;
 constexpr uint8_t kUndefined = 0x06;
@@ -91,7 +91,9 @@ uint32_t Board3483::Coax::cell(unsigned which, uint16_t at) const {
     return which == 2 ? kPrinterBuffer + 2u * (at % kPrinterCells) : kDisplayBuffer + 2u * (at % kDisplayCells);
 }
 
-uint8_t Board3483::Coax::reg_byte(unsigned index) const { return board_.bus_.peek8(kRegisters + 2 * index); }
+uint8_t Board3483::Coax::reg_byte(unsigned index) const {
+    return board_.bus_.peek8(board_.layout_.block_ram + kRegisters + 2 * index);
+}
 
 void Board3483::Coax::reply_byte(uint8_t byte) { reply_.push_back(CoaxWord::data(byte)); }
 
@@ -103,7 +105,8 @@ void Board3483::Coax::reply_poll() {
         reply_.push_back(CoaxWord::turnaround());
         return;
     }
-    const uint16_t v = uint16_t(board_.bus_.peek8(kRegisters + 8) | board_.bus_.peek8(kRegisters + 9) << 8);
+    const uint32_t regs = board_.layout_.block_ram + kRegisters;
+    const uint16_t v = uint16_t(board_.bus_.peek8(regs + 8) | board_.bus_.peek8(regs + 9) << 8);
     reply_.push_back(CoaxWord{uint16_t((v & 0xFF) << 2 | (v >> 8 & 1) << 1 | (v >> 9 & 1))});
 }
 
@@ -265,10 +268,10 @@ void Board3483::Coax::data(uint8_t byte) {
         break;
     }
     case 0x0A:   // LOAD CONTROL REGISTER: 5030A (display), 5030C (printer)
-        bus.poke8(kRegisters + 2 * (printer ? 0x06 : 0x05), byte);
+        bus.poke8(board_.layout_.block_ram + kRegisters + 2 * (printer ? 0x06 : 0x05), byte);
         if (!printer) board_.raise1(0x4000);
         break;
-    case 0x1A: bus.poke8(kRegisters + 2 * 0x07, byte); break;   // LOAD SECONDARY CONTROL: 5030E
+    case 0x1A: bus.poke8(board_.layout_.block_ram + kRegisters + 2 * 0x07, byte); break;   // LOAD SECONDARY CONTROL: 5030E
     case 0x76: eab_mask_ = byte; break;                         // EAB LOAD MASK
     case 0x7A:   // EAB WRITE ALTERNATE: character and EAB bytes in turn
         if (!eab_pending_) {

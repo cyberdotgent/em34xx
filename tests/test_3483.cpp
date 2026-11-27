@@ -21,7 +21,7 @@ constexpr uint64_t kClock = 10000000;
 struct Rig {
     Bus bus{20};
     I80186Peripherals pcb{bus};
-    Board3483 board{bus, pcb, kClock, 0x44};
+    Board3483 board{bus, &pcb, kClock, 0x44};
     Board3483::Display display{board};
     Board3483::Coax coax{board};
     Board3483::System system{board};
