@@ -217,16 +217,15 @@ uint32_t Board3483::Display::row_address(unsigned row) const {
     // that [observed: the firmware adds 800h itself, C000:CBCD, D000:5189].
     // The controller walks the list downward from entry 61, one entry per
     // character row, and the entry it reads during a row sets where the next
-    // row starts: so row r >= 1 comes from entry 62 - r, and row 0 from the
-    // entries read during vertical blanking [observed: the runtime's builder
-    // (D000:4F50, D000:513C) writes 62 entries (0-61), row r's start at entry
-    // 62 - r for r >= 1, and the regen origin (0800) a little below the last
-    // row, in 24, 32 and 43 rows]. An entry with A bit 7 clear gives its
-    // cell; bit 7 set continues after the previous row. Row 0 starts at the
-    // cell of the lowest entry below the screen with bit 7 clear, the last
-    // one read before the frame [hypothesis: fits that runtime layout and
-    // all six of POST test 7's video sense readings, over lists of one
-    // repeated entry]; with none, at the regen origin.
+    // row starts: so row r >= 1 comes from entry 62 - r, and row 0 from
+    // entry 60 - rows, the last one read in a frame [observed: the 3483
+    // runtime's builder (D000:4F50, D000:513C) writes 62 entries (0-61), row
+    // r's start at entry 62 - r for r >= 1 and the regen origin at entry
+    // 60 - rows, in 24, 32 and 43 rows; the 3472's POST puts its row 0 there
+    // too and leaves older entries below it]. An entry with A bit 7 clear
+    // gives its cell; bit 7 set continues after the previous row (for row 0:
+    // from the regen origin) [hypothesis: fits those layouts and the 3483's
+    // and 3472's POST video sense readings].
     const unsigned cols = columns();
     if (regs_[0x1A >> 1] & 0x0040) return kRegenOrigin + 2u * row * cols;
     Bus& bus = board_.bus_;
@@ -236,10 +235,9 @@ uint32_t Board3483::Display::row_address(unsigned row) const {
         return uint32_t(bus.peek8(list_a + 4 * e) & 0x7F) << 8 | bus.peek8(list_b + 4 * e);
     };
     constexpr unsigned kLast = 61;   // the list is entries 0-61
-    const unsigned shown = std::min(rows(), kLast + 1);
-    uint32_t addr = kRegenOrigin;
-    for (unsigned e = kLast + 1 - shown; e-- > 0;)
-        if (starts_row(e)) addr = 2 * entry_cell(e);
+    const unsigned shown = std::min(rows(), kLast - 1);
+    const unsigned latch = kLast - 1 - shown;   // 60 - rows
+    uint32_t addr = starts_row(latch) ? 2 * entry_cell(latch) : kRegenOrigin;
     for (unsigned r = 0;; ++r) {
         uint32_t start = addr;
         if (r > 0) {
@@ -363,18 +361,51 @@ Board3483::Display::FieldState Board3483::Display::initial_field() const {
 
 // The guns that carried a dot above the sense threshold, as a bit mask.
 unsigned Board3483::Display::lit_guns() const {
+    // The sense watches the character generator's output, not the dots a
+    // cell shows: all 16 bits of all 32 rows of each glyph on the screen
+    // and on the status row below it, which comes from entry 62 - rows of
+    // the row list [hypothesis: the 3483's POST test 7 and the 3472's test
+    // 6 light their test glyphs only in companion bits no cell shows, on a
+    // glyph row a 9-line cell does not reach, and put the third colour of a
+    // lit screen in the row-list entry below the last row; with this every
+    // reading of both tests matches].
     const unsigned cell_h = cell_height();
     unsigned guns = 0;
     FieldState f = initial_field();
-    for (unsigned r = 0; r < rows(); ++r) {
-        const uint32_t start = row_address(r);
+    Bus& bus = board_.bus_;
+    const unsigned n = rows();
+    for (unsigned r = 0; r <= n; ++r) {
+        uint32_t start = row_address(r);
+        if (r == n && !(regs_[0x1A >> 1] & 0x0040)) {
+            const unsigned e = 62 - std::min(n, 62u);
+            const uint32_t list_a = board_.layout_.block_ram + 0x108, list_b = board_.layout_.block_ram + 0x508;
+            start = 2 * (uint32_t(bus.peek8(list_a + 4 * e) & 0x7F) << 8 | bus.peek8(list_b + 4 * e));
+        } else if (r == n) {
+            break;
+        }
         for (unsigned c = 0; c < columns(); ++c) {
-            const uint8_t ch = board_.bus_.peek8(start + 2 * c), eab = board_.bus_.peek8(start + 2 * c + 1);
-            const FieldState before = f;
-            for (unsigned y = 0; y < cell_h; ++y) {
-                f = before;
+            const uint8_t ch = bus.peek8(start + 2 * c), eab = bus.peek8(start + 2 * c + 1);
+            if ((ch & 0xC0) == 0xC0) {
                 unsigned idx;
-                if (!(cell_dots(ch, eab, f, y, cell_h, idx, false) & 0xFF80)) continue;
+                cell_dots(ch, eab, f, 0, cell_h, idx, false);
+                continue;
+            }
+            const unsigned idx = cell_colour(ch, eab, f);
+            if (!idx) continue;
+            const unsigned cs = (eab & 7) ? (eab & 7) : (f.eab & 7);
+            const uint8_t hl = (eab & 0xC0) ? (eab >> 6) : (f.eab >> 6);
+            const uint32_t glyph = board_.layout_.sram + kCgSets[cs == 1 ? 1 : 0] + uint32_t(ch) * 32;
+            bool lit = false;
+            for (unsigned y = 0; y < 32 && !lit; ++y) {
+                uint16_t w = uint16_t(bus.peek8(glyph + y) << 8 | bus.peek8(glyph + y - kCgCompanion));
+                if (hl == 2) w = uint16_t(~w);
+                if (hl == 3 && on_underline(y, cell_h)) w = 0xFFFF;
+                lit = w != 0;
+            }
+            if (!lit) continue;
+            if (board_.layout_.monochrome) {
+                guns |= idx & 7;
+            } else {
                 for (unsigned g = 0; g < 3; ++g)
                     if (level(g, idx) > kSenseThreshold) guns |= 1u << g;
             }
@@ -622,7 +653,10 @@ uint16_t Board3483::System::sense() const {
     // Bit 2: vertical sync, low during the pulse [hypothesis, strong]. Bits 8-11: monitor sense
     // lines, line 1 in bit 11, each per its two-bit code [observed decoder].
     uint16_t v = 0x0003;
-    if (!board_.in_vsync()) v |= 0x0004;   // 1 during the frame, 0 in the sync pulse [observed: POST windows]
+    // 3483: 1 during the frame, 0 in the sync pulse; 3472: the reverse
+    // [observed: each firmware's POST timing windows, a long and a short
+    // phase].
+    if (board_.in_vsync() == board_.layout_.sync_reads_high) v |= 0x0004;
     const uint16_t drive = board_.display_ ? board_.display_->reg(0x26) : 0;
     for (unsigned line = 0; line < 4; ++line) {
         const unsigned code = (board_.monitor_sense_ >> (6 - 2 * line)) & 3;

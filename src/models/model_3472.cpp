@@ -22,6 +22,7 @@
 
 #include "bus/bus.hpp"
 #include "machine/machine.hpp"
+#include "models/coax_terminal.hpp"
 #include "models/parts.hpp"
 
 #include <stdexcept>
@@ -34,6 +35,15 @@ constexpr uint32_t kDramBase = 0x00000, kDramSize = 0x10000;
 constexpr uint32_t kSramBase = 0x10000, kSramSize = 0x10000;
 constexpr uint32_t kBlockRamBase = 0x20000, kBlockRamSize = 0x800;
 constexpr uint32_t kRomBase = 0xC0000, kChipSize = 0x20000;
+// The 3483's board registers at the 3472's addresses [observed: the
+// firmware's first accesses write the same offsets of 28000, 28100 and
+// 30000 that the 3483's reset writes of 58000, 58100 and 58400].
+// Vertical sync reads high during the pulse [observed: POST test 6 times
+// the high phase at 14-39 loops and the low phase at 756-2265].
+constexpr CoaxBoardLayout kLayout{0x28000, 0x28100, 0x30000, kSramBase, kBlockRamBase, true, true};
+// Monitor sense: the 3483 firmware's monochrome class (type 1) [hypothesis:
+// the 3472's own tube].
+constexpr uint8_t kSenseMono = 0x51;
 
 class Model3472 : public Model {
 public:
@@ -64,8 +74,9 @@ public:
              "8bea2740d1931e5879e13b48370640a5bb0076c43c26e435b324a6a6dc7b4bb5", kRomBase},
         };
         info_.notes = {
-            "bring-up skeleton: ROM, RAM and the 8086 only; the board's devices (28000, 28100, 30000) are not "
-            "modelled and stop the machine on first access",
+            "bring-up: the 3483's board model (hw/board_3483.hpp) at 28000 (display), 28100 (coax), 30000 "
+            "(system), SRAM 10000, gate array RAM 20000 (observed: same register offsets in the firmware's reset); "
+            "the gate array supplies interrupt vector 20h (hypothesis)",
             "ROMs 09F4604 (even bytes) and 09F4605 (odd bytes), 128 KiB each, interleaved at C0000-FFFFF "
             "(observed: checksums, reset vector)",
             "CPU: AMD N8086-2 (observed); clock 8 MHz (hypothesis)",
@@ -80,6 +91,9 @@ public:
         bus.map_ram("DRAM", kDramBase, kDramSize);
         parts::battery_backed_ram(m, kSramBase, kSramSize);
         bus.map_ram("gate array RAM", kBlockRamBase, kBlockRamSize);
+        const TerminalOptions& opt = m.options();
+        const uint8_t sense = opt.straps >= 0 ? uint8_t(opt.straps) : kSenseMono;
+        build_coax_terminal(m, info_, kLayout, nullptr, sense);
         if (roms.size() != 2 || roms[0].data.size() != kChipSize || roms[1].data.size() != kChipSize)
             throw std::runtime_error("3472: needs both ROM chips");
         std::vector<uint8_t> image(2 * kChipSize);

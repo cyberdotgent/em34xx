@@ -47,6 +47,12 @@ struct CoaxBoardLayout {
     uint32_t sram = 0x40000;
     // Block RAM: the row lists at +108/+508, the coax registers at +300.
     uint32_t block_ram = 0x50000;
+    // Vertical sync in the system sense register (bit 2): high during the
+    // pulse instead of during the frame (the 3472's own tube).
+    bool sync_reads_high = false;
+    // A monochrome board without the colour drive table: the video sense
+    // outputs are the colour index bits.
+    bool monochrome = false;
 };
 
 class Board3483 : public InterruptController {
