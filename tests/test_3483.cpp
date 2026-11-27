@@ -130,6 +130,24 @@ TEST_CASE("3483 cursor: position, underline lines, block and blink") {
     CHECK(seen_off);
 }
 
+TEST_CASE("3483 cursor: an underline cursor shows in an underscored field") {
+    // A 3270 cursor sits in an input field, which is usually underscored
+    // on the cursor's own lines: the cursor reverses those lines, so the
+    // underscore has a gap where the cursor is.
+    Rig r;
+    r.mode_24x80();
+    r.cell(5, 9, 0xC0, 0xF8);   // field attribute: underscore, white
+    for (unsigned c = 10; c < 20; ++c) r.cell(5, c, 0x40, 0x00);
+    r.w16(0x58010, 0x050C);     // row 5, column 12
+    r.w16(0x5801C, 0x1080);     // shown, underline, steady
+    const Framebuffer fb = r.shot();
+    const unsigned top = 5 * 18;
+    CHECK(Rig::px(fb, 11 * 9 + 4, top + 16) == colours::kWhite);   // the underscore beside it
+    CHECK(Rig::px(fb, 12 * 9 + 4, top + 16) == colours::kBlack);   // the cursor
+    CHECK(Rig::px(fb, 12 * 9 + 4, top + 17) == colours::kBlack);
+    CHECK(Rig::px(fb, 13 * 9 + 4, top + 17) == colours::kWhite);
+}
+
 TEST_CASE("3483 cells: field character set, underscore style, reverse and blink") {
     Rig r;
     r.mode_24x80();

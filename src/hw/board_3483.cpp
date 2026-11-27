@@ -548,9 +548,14 @@ void Board3483::Display::draw(Framebuffer& fb) {
                 if (!idx) idx = cursor_idx;
                 if (at_cursor) {
                     // A block cursor reverses the whole cell; the underline
-                    // cursor lights its lines in the cell's colour.
+                    // cursor reverses its lines, in the cell's colour
+                    // [hypothesis: the cursor is mixed into the video like
+                    // the block cursor]. Lighting them instead hid the
+                    // cursor in every underscored field, whose underscore
+                    // sits on the same lines in the same colour (the usual
+                    // place of a 3270 cursor: the input fields).
                     if (cur.block) bits = uint16_t(~bits & mask);
-                    else if (y >= cur.first_line && y <= cur.last_line) bits = mask;
+                    else if (y >= cur.first_line && y <= cur.last_line) bits = uint16_t(~bits & mask);
                 }
                 uint32_t* row = &fb.pixels[size_t(r * cell_h + y) * size_t(fb.width) + c * cell_w];
                 const uint32_t ink = shade(idx, f.high);
