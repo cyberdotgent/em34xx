@@ -82,21 +82,20 @@ uint8_t Board3483::Window::mmio_read8(uint32_t offset) {
     return p ? *p : 0xFF;
 }
 
+// One word per glyph row: the word at window offset w is row w/2 of the
+// character generator, its low byte in the first plane (40000 + w/2) and
+// its high byte in the second (48000 + w/2). The 32 KiB window so spans
+// 16 KiB of each plane, the base and APL/GE sets with their companions.
 void Board3483::Window::mmio_write16(uint32_t offset, uint16_t value) {
-    offset &= ~1u;
-    uint8_t* lo = sram(offset);
-    uint8_t* hi = sram(offset + 0x8000);
-    if (lo) lo[0] = lo[1] = uint8_t(value);
-    if (hi) hi[0] = hi[1] = uint8_t(value >> 8);
+    const uint32_t row = (offset & ~1u) >> 1;
+    if (uint8_t* lo = sram(row)) *lo = uint8_t(value);
+    if (uint8_t* hi = sram(row + 0x8000)) *hi = uint8_t(value >> 8);
 }
 
 void Board3483::Window::mmio_write8(uint32_t offset, uint8_t value) {
     // A byte write: the even byte is the low (first-plane) half [hypothesis].
-    if (offset & 1) {
-        if (uint8_t* hi = sram((offset & ~1u) + 0x8000)) hi[0] = hi[1] = value;
-    } else if (uint8_t* lo = sram(offset)) {
-        lo[0] = lo[1] = value;
-    }
+    const uint32_t row = offset >> 1;
+    if (uint8_t* p = sram((offset & 1) ? row + 0x8000 : row)) *p = value;
 }
 
 // --- display controller (58000) ----------------------------------------------
@@ -111,9 +110,12 @@ namespace {
 constexpr uint32_t kCgSets[2] = {0x48000, 0x4A000};
 constexpr uint32_t kCgCompanion = 0x8000;
 
-// The black level of the drive table at 58040-6F [observed: index 0 of
-// every table the firmware loads].
-constexpr uint8_t kBlackLevel = 0x18;
+// The video sense's threshold on a gun's level from the drive table at
+// 58040-6F [observed: POST test 7's own table puts its levels just below
+// (B4, C0) and just above (D8, DC, E0) one point, and expects colour 4,
+// levels 70/C0/DC, to light only the third gun; the exact point between C0
+// and D8 is a hypothesis].
+constexpr uint8_t kSenseThreshold = 0xCC;
 
 // Start of the regen buffer: cell 800h, the bias of row-list addresses
 // [hypothesis, see row_address()].
@@ -144,10 +146,10 @@ uint16_t Board3483::Display::read_word(unsigned off) const {
     if (off == 0x20) {
         // 58020 (read): video drive sense [hypothesis]: the number of the
         // three outputs selected by 58021 bits 0-2 that carried a lit dot
-        // while video was on (58110 bit 0) [observed: the display test
-        // expects 3->2, 2->1, 4->1 over a test pattern, and 0 over a blank
-        // screen or with video off]. A gun counts when a displayed dot drove
-        // it above the black level (lit_guns()).
+        // while video was on (58110 bit 0) [observed: POST test 7 expects
+        // 3->2, 2->1, 4->1 over its first screens, 3->0 over a screen of
+        // colour-4 cells, and 0 over a blank screen or with video off]. A gun counts when a displayed dot drove
+        // it above the sense threshold (lit_guns()).
         const uint16_t sel = uint16_t((regs_[0x20 >> 1] >> 8) & 7);
         const bool video = board_.coax_ && (board_.coax_->reg(0x10) & 1);
         unsigned n = 0;
@@ -330,7 +332,7 @@ Board3483::Display::FieldState Board3483::Display::initial_field() const {
     return f;
 }
 
-// The guns that carried a dot above the black level, as a bit mask.
+// The guns that carried a dot above the sense threshold, as a bit mask.
 unsigned Board3483::Display::lit_guns() const {
     const unsigned cell_h = cell_height();
     unsigned guns = 0;
@@ -345,7 +347,7 @@ unsigned Board3483::Display::lit_guns() const {
                 unsigned idx;
                 if (!(cell_dots(ch, eab, f, y, cell_h, idx, false) & 0xFF80)) continue;
                 for (unsigned g = 0; g < 3; ++g)
-                    if (level(g, idx) > kBlackLevel) guns |= 1u << g;
+                    if (level(g, idx) > kSenseThreshold) guns |= 1u << g;
             }
             if (guns == 7) return guns;
         }

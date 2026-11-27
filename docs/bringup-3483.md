@@ -222,6 +222,18 @@ The colour table at `58040-6F` (one block per gun) only feeds POST's video
 sense; the picture uses the shared terminal colours
 (`hw/terminal_colours.hpp`).
 
+Video sense (`58020` read, POST test 7): the firmware clears the count,
+enables it with `5801A` bit 5 for one frame, and reads how many of the
+guns selected by `58021` bits 0-2 were lit (observed, `C000:C7C1`). The
+expected count is in AH (`C000:C5CE`). Test 7 loads glyphs 0 (blank), 1
+(only companion bits 3-2: no visible dot) and 2 (solid) through the window.
+It writes test cells such as glyph 02 in colour 4 at cell 1F5, and loads
+its own drive table with levels just below (`B4`, `C0`) and just above
+(`D8`, `DC`, `E0`) one point. Selector 3 over a screen of colour-4 cells
+(`70`/`C0`/`DC`) must read 0. So a gun counts as lit only above a threshold
+between `C0` and `D8`; the model uses `CC` (hypothesis for the exact
+point; a comparator in the sense circuit is the likely hardware).
+
 ## System control (`58400`)
 
 ### Alarm and clicker (`58402`)
@@ -286,6 +298,15 @@ is open; nothing needs to be modelled for the firmware to run.
   character: base set `48000`, APL/GE set `4A000`, companion planes
   `40000`/`42000` holding dots 8 and 9 (observed layout; the dot order is a
   hypothesis fitted to a GE line glyph).
+- The 40000 write window: while `58021` bit 7 is set, a word written at
+  40000+w is glyph row w/2 of the character generator. Its low byte goes
+  to 40000+w/2 and its high byte to 48000+w/2, so the 32 KiB window
+  covers the base and APL/GE sets with their companion planes. Observed:
+  POST test 4 (`C000:A674`) writes 20h words of `0A5A` at offsets 0-3E and
+  checks 20h bytes of `5A` at 40000 and 20h low nibbles `A` at 48000. POST
+  test 7 and the display test address character c, row r at c*64 + r*2.
+  Reads pass through to the SRAM (hypothesis). `58021` bits 0-2 are not
+  part of the window: they keep the video sense's last selection.
 - Setup: two copies of a 256-byte block at `47400` and `47500`, each with a
   check word at its end (observed: Customization changes both copies the
   same way). Byte `0A` is the screen size (2 = 24x80, 3 = 32x80; observed).
@@ -324,12 +345,19 @@ The page shows (observed in emulation):
   turquoise, yellow, white);
 - line samples.
 
-The test loads its own glyphs into A0-AB (A-L) of the base set by
-decompressing patches with the boot-time decompressor (svc_049). They are a
-cell-edge glyph, stripes every third and every second dot, a centre line
-and a diagonal (observed in the data). Everything showing A-L, the status
-row's SETUP included, shows these glyphs while the test runs. Reset leaves
-the test: the base set is decompressed again and the state becomes 10h.
+The page's colour bars are rows of A (code A0) in blue, red, reverse
+pink, underscored green, turquoise, yellow and white (observed in
+emulation: the cells are A0 with EABs 08, 10, 98, E0, 28, 30 and 38).
+
+On entry the test unpacks the four character sets again, then writes its own
+glyph rows through the 40000 window (`E000:1392`, see below). It
+addresses character c, row r at window offset c*64 + r*2 (observed). The
+model first wrote each byte twice at 40000 + w, which sent those glyphs to
+codes 80-AB and garbled A-L, the status row's SETUP and the prompt on row
+23. With the window at half the address they land on 40-55, and the page
+reads `0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ` (observed in emulation,
+matching the real unit). Reset leaves the test: the base set is decompressed
+again and the state becomes 10h.
 
 The search (op 30) stops at a field attribute (character byte C0-FF), or
 ends count cells back when there is none. That is how the runtime's field
@@ -341,23 +369,13 @@ zeros to `62000-620FF` (unmapped).
 
 ## Where bring-up stands (2026-11-26)
 
-1. **Test display station shows A-L wrongly (open bug).** The test's character row
-   should read `0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ` (owner). In emulation, glyphs
-   A0-AB of the base set (main plane `48000`, companion `40000`) are overwritten
-   while the test runs. So the character row, the prompt on row 23 and the E of the
-   status row's SETUP are garbled (observed). The writer is the font decompressor
-   (svc_049, `D000:7A3E`). On entry the test unpacks all four sets again, with the
-   same sources and destinations as at boot. It then unpacks small patches from
-   `8000:71xx` to destinations such as `4000:0020`, `4000:8020`, `4000:0060` and
-   `4000:8060` (observed).
-
-   Next step: log each call's destination and length, find the one that writes
-   `49400-4957F`, and check how its copy references resolve. They count from the
-   call's destination base. Suspects: a patch that assumes a different base, or a
-   mapping (window, memory engine) modelled wrongly (hypothesis).
-
-   Monitor tip: on a breakpoint, use `run #N` rather than `go`; `go` never returns
-   once the hits stop.
+1. **Test display station: fixed (2026-11-27).** The 40000 window was modelled
+   as writing each byte twice at 40000 + w. That sent the test's glyphs onto
+   A-L, and POST passed test 7 only because two errors cancelled out. The
+   window is now w/2, and the video sense counts a gun above a threshold
+   rather than above black (see Display test and the colour table). Found
+   with the monitor's logging breakpoints (`bp`/`wp ... do`,
+   docs/monitor.md). `tests/rc/3483-smoke.rc` checks the page.
 2. **Memory engine:** operation = `58110` bits 5-3; the search stops at a character
    C0-FF (see Display test). Fixed.
 3. **CUT controller** (`src/host/coax/cut_controller.cpp`): written and wired into

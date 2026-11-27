@@ -1,7 +1,8 @@
 # Smoke test for the 3483 ROM (06g5525.bin) with the modelled hardware.
 # A first boot with an empty battery-backed RAM: POST passes up to its
 # setup check (test 10, "M12 ... NVR"), Reset continues and the runtime
-# opens Offline Setup with "SETUP" in the status row (docs/bringup-3483.md).
+# opens Offline Setup with "SETUP" in the status row (docs/bringup-3483.md),
+# then runs the display test.
 assert pc==ffff0 "reset vector"
 policy log
 speed max
@@ -12,5 +13,21 @@ run #400000000
 assert word[58006]==1c17&&word[5800a]==0812 "24x80 with 18-line cells"
 assert byte[800]==b2&&byte[802]==a4&&byte[804]==b3 "status row starts 'SET'"
 assert byte[58403]&0x80 "alarm off, speaker bit on"
+# Test display station (Down four times, Enter): its glyph patterns go
+# through the 40000 window to other characters, so the base set's "A"
+# (A0, 48000 + A0*32) keeps its apex in row 4 (docs/bringup-3483.md).
+key down
+run #5000000
+key down
+run #5000000
+key down
+run #5000000
+key down
+run #5000000
+key rctrl
+run #150000000
+assert byte[2000:6fc]==92 "display test running"
+assert byte[1000+2*#119]==20&&byte[1000+2*#129]==a0 "display test: row 1 has 0 at column 39 and A at 49"
+assert byte[49404]==04 "the A glyph survives the display test"
 unmapped
 quit

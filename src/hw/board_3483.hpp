@@ -137,12 +137,13 @@ private:
     std::array<uint16_t, 128> regs_{};
 };
 
-// While 58021 bit 7 is set, 40000-47FFF is a write window [observed: POST
-// test 4, C000:A674]: a word written at 40000+n puts its low byte into both
-// bytes at 40000+n and its high byte into both bytes at 48000+n (of which
-// the test checks the low nibble). Reads pass through. What the display
-// does with the two planes is not known yet [hypothesis: character and
-// attribute planes of the character generator].
+// While 58021 bit 7 is set, 40000-47FFF is a write window into the
+// character generator, one word per glyph row: the word at 40000+w goes
+// to row w/2, its low byte to 40000+w/2 and its high byte to 48000+w/2.
+// [observed: POST test 4 (C000:A674) writes 20h words of 0A5A at window
+// offsets 0-3E and expects 20h bytes of 5A at 40000 and 20h bytes with low
+// nibble A at 48000; the display test (E000:1392) addresses character c,
+// row r at window offset c*64 + r*2.] Reads pass through [hypothesis].
 class Board3483::Window : public Device {
 public:
     explicit Window(Board3483& board) : Device("window-3483"), board_(board) { board_.window_ = this; }
