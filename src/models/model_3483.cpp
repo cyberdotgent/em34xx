@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // IBM 3483 InfoWindow II: a 3270 display on coax (CUT mode).
 //
-// Bring-up skeleton. Facts (roms/ROMS.md):
+// Bring-up. Facts (roms/ROMS.md, docs/bringup-3483.md):
 //  - one 512 KiB image (06G5525, AMD AM27C400 at U24) mapped linearly at
 //    80000-FFFFF; reset vector jumps to C000:8DFC; every 64 KiB segment
 //    sums to its own target (1234/5678/9ABC/DEF0, twice) [observed];
@@ -63,7 +63,7 @@ public:
         // also knows a monochrome monitor class (types 1/3, sense 51), which
         // stays reachable with --straps 51 but is drawn in colour.
         info_.variants = {
-            {"3483-V", "colour", true, kSenseType2, "", {}, {}},
+            {"3483-V", "colour", true, kSenseType2, "IBM-3279-2-E", {}, {}},
         };
         info_.roms = {
             {"system ROM (80000-FFFFF, reset vector)", "06g5525.bin", 0x80000,
@@ -82,7 +82,8 @@ public:
             "display: cells are a 3270 buffer-code character and a 3270 extended attribute; C0-FF are field "
             "attributes; a cell without colour, highlight or character set takes its field's (observed: "
             "Customization's underscore samples); rows continue from the regen origin 0:1000 when their row-list "
-            "entry has bit 7 set (hypothesis); the status row is 0:0800 (hypothesis: fixed address)",
+            "entry has bit 7 set (hypothesis); the status row is 0:0A00, where the runtime copies the operator "
+            "information area (observed; a fixed address is a hypothesis)",
             "display modes: columns, rows and cell lines from 58000/58006/5800A as the mode records at ROM 81A0C set "
             "them (observed: 24x80, 32x80, 43x80, 27x132 records; Customization switches 24/32/43 rows); 5800A is the "
             "line count (observed: POST's blank-screen check)",
@@ -100,7 +101,8 @@ public:
             "serial channel B: the same PS/2-style port as A, for a mouse (observed: the firmware sends a type-2 "
             "device F3 28 E8 03 F4; the mouse reading is a hypothesis); nothing attached",
             "setup: two copies at 47400/47500 in battery-backed RAM; a change in Customization saved with F3 survives a "
-            "reboot (observed), but the next boot still opens Offline Setup (open); printer port registers not found",
+            "reboot, and the next boot goes to the normal start-up, not Offline Setup (observed: tests "
+            "rom_3483_save_setup/boot_saved); printer port registers not found (printing is planned for v0.5)",
             "keyboard: the 122-key keyboard on serial channel A (POST resets it, reads ID BF BF, selects set 3) "
             "(observed dialogue; the channel is a hypothesis)",
             "ROM 06G5525 (U24, AM27C400), linear at 80000-FFFFF; per-segment checksums 1234/5678/9ABC/DEF0 "
@@ -110,7 +112,8 @@ public:
             "RAM: 256 KiB DRAM at 00000 and 64 KiB battery-backed SRAM at 40000 (hypothesis; parts observed "
             "on the board, placement not)",
             "line: coax, CUT mode (hypothesis, strong: hardware address counters, no data-stream parser, "
-            "oec drives a 3483-V); no coax controller yet",
+            "oec drives a 3483-V); em34xx's CUT controller (host/coax/cut_controller.hpp) drives it over TN3270 or "
+            "TN3270E; it announces feature 79, an extended attribute buffer with colour (observed)",
         };
     }
 

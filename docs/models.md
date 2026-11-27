@@ -4,15 +4,15 @@ What a user selects is a **variant** of a model, for example `3477-FG` or
 `3487-HC`. A variant is one hardware identity: the configuration straps the
 firmware reads, the ROM set, and what the unit announces to its host.
 
-| Model | Variant | Unit | Straps | TN5250 type | Phosphors |
+| Model | Variant | Unit | Straps | Host terminal type | Phosphors |
 | --- | --- | --- | --- | --- | --- |
 | 3477 | `3477-FG` (default) | monochrome | `0C` | `IBM-3477-FG` | green, amber, paper-white |
 | 3477 | `3477-FC` | colour, its own ROM pair | `02` | `IBM-3477-FC` | - |
 | 3486 | `3486-BA` (default) | monochrome | `42` | `IBM-5251-11` | green, amber, paper-white |
 | 3487 | `3487-HG` (default) | monochrome | `4A` | `IBM-5251-11` | green, amber, paper-white |
 | 3487 | `3487-HC` | colour | `4C` | `IBM-3179-2` | - |
-| 3472 | `3472-G` | 3270 display on coax, monochrome (bring-up) | display ID `00` | - (TN3270) | green, amber, paper-white |
-| 3483 | `3483-V` | 3270 display on coax, colour VGA monitor (bring-up) | sense `44` | - (TN3270) | - |
+| 3472 | `3472-G` | 3270 display on coax, monochrome (bring-up) | display ID `00` | `IBM-3278-2-E` (TN3270) | green, amber, paper-white |
+| 3483 | `3483-V` | 3270 display on coax, colour VGA monitor (bring-up) | sense `44` | `IBM-3279-2-E` (TN3270) | - |
 
 `em34xx --list-models` prints the same from the code (`ModelInfo::variants`
 in `src/machine/model_info.hpp`, filled in by each model).

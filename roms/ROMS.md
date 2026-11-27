@@ -11,9 +11,9 @@ them by SHA-256 and contains no code or data taken from them.
 | 3477 | `95f4172.bin` | 131072 | `290a58cd5db6543957bdcb2c9e92efefd62a54e37bcd239d41d9bd9cdd6be1d0` | **Good.** Maps at physical `0xC0000..0xDFFFF`. No invariant address bit. |
 | 3477-FC | `65f2995.bin` | 131072 | `d5dc45f8e3c632449f17ad1e4dfd37b562aafb1464715bc4ac12df407da381e9` | **Good.** The colour 3477's firmware (variant `3477-FC`). Maps at physical `0xE0000..0xFFFFF`; holds the reset vector. |
 | 3477-FC | `65f2996.bin` | 131072 | `92f1c1becaf9e3a14606b8988f835f0a2ddb2ab46f44670586f65ab1b736a940` | **Good.** Maps at physical `0xC0000..0xDFFFF`. |
-| 3472 | `09f4604.bin` | 131072 | `05547ffd2d69e0779c7d696fd425c4c60cf7716cd2e8e303dea5628b13d52ac5` | **Good, not yet modelled.** Even bytes of a 16-bit interleaved pair; with `09f4605` it maps at physical `0xC0000..0xFFFFF` and holds the reset vector. See below. |
-| 3472 | `09f4605.bin` | 131072 | `8bea2740d1931e5879e13b48370640a5bb0076c43c26e435b324a6a6dc7b4bb5` | **Good, not yet modelled.** Odd bytes of the same pair. |
-| 3483 | `06g5525.bin` | 524288 | `da14974c16cb370ff6f505d69d4c2e5f84770bcaeae2ca5d6fda4e69413d23db` | **Good, not yet modelled.** The complete 512 KiB image from board position U24 (label `06G5525`; the dump was shared as `U24.bin`). Maps at physical `0x80000..0xFFFFF`; holds the reset vector. See below. |
+| 3472 | `09f4604.bin` | 131072 | `05547ffd2d69e0779c7d696fd425c4c60cf7716cd2e8e303dea5628b13d52ac5` | **Good (bring-up).** The 3472 model runs it. Even bytes of a 16-bit interleaved pair; with `09f4605` it maps at physical `0xC0000..0xFFFFF` and holds the reset vector. See below. |
+| 3472 | `09f4605.bin` | 131072 | `8bea2740d1931e5879e13b48370640a5bb0076c43c26e435b324a6a6dc7b4bb5` | **Good (bring-up).** Odd bytes of the same pair. |
+| 3483 | `06g5525.bin` | 524288 | `da14974c16cb370ff6f505d69d4c2e5f84770bcaeae2ca5d6fda4e69413d23db` | **Good (bring-up).** The 3483 model runs it. The complete 512 KiB image from board position U24 (label `06G5525`; the dump was shared as `U24.bin`). Maps at physical `0x80000..0xFFFFF`; holds the reset vector. See below. |
 
 ## Known-bad dumps
 

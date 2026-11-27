@@ -1,7 +1,20 @@
 # em34xx
 
-An emulator for IBM 34xx 5250 Twinax terminals that runs the terminal's own
-firmware. It connects to an IBM i host over TN5250.
+An emulator for IBM 34xx InfoWindow terminals that runs the terminal's own
+firmware:
+
+- **5250 Twinax** terminals (3477, 3486, 3487) connect to an IBM i host over
+  TN5250.
+- **3270 coax** terminals (3472, 3483) connect to a mainframe or any TN3270
+  server over TN3270 or TN3270E. A built-in coax controller stands in for
+  the 3174. The status line reads `TN3270`, or `TN3270E` and the LU name
+  when TN3270E is negotiated.
+
+The 3270 models are new in v0.4 and still in bring-up: they boot, save
+their setup, connect, and take keyboard input, but have no printer session
+yet (planned for v0.5, for 5250 and 3270 alike). What is known and what is
+still a hypothesis for each model is in `docs/bringup-*.md`;
+[docs/models.md](docs/models.md) lists the models and variants.
 
 ![em34xxw showing an IBM i sign-on screen](docs/images/em34xxw.png)
 
@@ -22,9 +35,13 @@ contains no code or data from the ROMs.
 
 - **File > New Connection** connects to a host. **File > Connect to
   Profile** opens a saved profile.
-- A profile holds the terminal type, the CRT type and up to two sessions,
-  each with or without TLS. **Edit > Connection Settings** changes the
-  running profile.
+- A profile holds the terminal type, the CRT type and its sessions (up to
+  two on a 5250 terminal, one on a 3270 terminal), each with or without
+  TLS. The terminal list puts the 3270 models first, then the 5250 ones.
+  **Edit > Connection Settings** changes the running profile.
+- A session's **device name** is sent as the TN5250 device name (DEVNAME)
+  or, on a 3270 terminal, as the LU name requested with TN3270E. Without
+  one, the server assigns it.
 - The toolbar has Disconnect/Reconnect, Reboot, Attn, SysRq, Reset and Setup.
 - The status bar shows each session's state and TLS lock.
 
@@ -89,8 +106,10 @@ suite needs `tools/fetch-test-vectors.sh`.
 `em34xx` and `em34xx-headless` have a monitor (breakpoints, stepping,
 memory, scripts) and a GDB stub. See [docs/monitor.md](docs/monitor.md),
 [docs/architecture.md](docs/architecture.md),
-[docs/twinax-bridge.md](docs/twinax-bridge.md) and
-[docs/tn5250.md](docs/tn5250.md).
+[docs/twinax-bridge.md](docs/twinax-bridge.md),
+[docs/tn5250.md](docs/tn5250.md), and for the coax terminals and their
+controller [docs/bringup-3483.md](docs/bringup-3483.md) and
+[docs/bringup-3472.md](docs/bringup-3472.md).
 
 ## Contributing
 

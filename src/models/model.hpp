@@ -74,8 +74,8 @@ std::vector<TerminalVariant> runnable_variants();
 
 // Individual model singletons (defined in model_*.cpp).
 const Model& model_3477();
-const Model& model_3472();   // 3270 coax, monochrome; bring-up skeleton
-const Model& model_3483();   // 3270 coax; bring-up skeleton
+const Model& model_3472();   // 3270 coax, monochrome; bring-up
+const Model& model_3483();   // 3270 coax, colour; bring-up
 const Model& model_3486();
 const Model& model_3487();   // same board and firmware as the 3486
 const Model& model_3489();

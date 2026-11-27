@@ -265,8 +265,13 @@ bool Application::build_machine() {
         bo.tls_trust = trust->for_new_bridge();
         return wsc::make_tn5250_bridge(tw, tn, std::move(bo), err);
     };
-    CoaxHostFactory coax = [trust](const Tn5250Config& tn, std::string& err) -> std::unique_ptr<CoaxHost> {
-        auto session = std::make_unique<tn3270::Client>(tn);
+    CoaxHostFactory coax = [bridge_variant, trust](const Tn5250Config& tn,
+                                                   std::string& err) -> std::unique_ptr<CoaxHost> {
+        // The variant's type (a monochrome 3472 is a 3278, a colour 3483 a
+        // 3279) unless the configuration names one.
+        Tn5250Config cfg = tn;
+        if (cfg.terminal_type.empty()) cfg.terminal_type = bridge_variant->load()->tn5250_type;
+        auto session = std::make_unique<tn3270::Client>(cfg);
         if (auto fn = trust->for_new_bridge()) session->set_tls_trust_handler(std::move(fn));
         if (!session->start(err)) return nullptr;
         return std::make_unique<CutController>(std::move(session));

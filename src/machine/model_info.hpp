@@ -46,7 +46,8 @@ struct ModelVariant {
     std::string description;   // "monochrome"
     bool colour = false;       // the host may send colour, and the picture is in colour
     uint8_t straps = 0;        // configuration strap byte the firmware reads
-    std::string tn5250_type;   // RFC 1205 terminal type announced to a TN5250 host
+    std::string tn5250_type;   // terminal type announced to the host: RFC 1205 (TN5250) or,
+                               // for a coax unit, RFC 1576/2355 (TN3270, e.g. IBM-3278-2-E)
     std::vector<Phosphor> phosphors;   // tubes a monochrome variant offers, default first; empty for colour
     // The firmware of this variant when it has its own (a colour unit with
     // other ROMs than the monochrome one); empty = the model's (ModelInfo::roms).

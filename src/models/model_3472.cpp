@@ -2,7 +2,7 @@
 // IBM 3472 InfoWindow: a 3270 display on coax (CUT mode) with its own
 // monochrome tube.
 //
-// Bring-up skeleton. Facts (roms/ROMS.md, analysis notes):
+// Bring-up. Facts (roms/ROMS.md, docs/bringup-3472.md):
 //  - two NEC mask ROMs of 128 KiB, 09F4604 on the even and 09F4605 on the
 //    odd byte lane of a 16-bit bus, together one 256 KiB image at
 //    C0000-FFFFF; reset vector CLI; JMP E000:0FBE; per-segment checksums
@@ -92,7 +92,7 @@ public:
         // A monochrome unit with its own tube, so the 5250 monochrome
         // units' phosphors.
         info_.variants = {
-            {"3472-G", "monochrome", false, kDisplayId, "", {phosphor_green(), phosphor_amber(), phosphor_paper_white()},
+            {"3472-G", "monochrome", false, kDisplayId, "IBM-3278-2-E", {phosphor_green(), phosphor_amber(), phosphor_paper_white()},
              {}},
         };
         // Both chips load at the image's base; build() interleaves them.
@@ -119,7 +119,9 @@ public:
             "1 and 2 both pass POST (observed)",
             "printer port: a DB-25 parallel port for the printer session (documented: project owner); its registers "
             "are not found and it is not modelled",
-            "line: coax, CUT mode (hypothesis, strong; same adapter design as the 3483)",
+            "line: coax, CUT mode (hypothesis, strong; same adapter design as the 3483); driven by em34xx's CUT "
+            "controller over TN3270 or TN3270E as an IBM-3278-2-E; it announces feature 78, an extended attribute "
+            "buffer without colour (observed; the meaning of 78 a hypothesis, strong)",
         };
     }
 
