@@ -250,3 +250,19 @@ TEST_CASE("3483 memory engine: bit 6 leaves the operation, search finds the fiel
     r.w16(0x58110, 0x00B0);
     CHECK(r.bus.mem_read16(0x58118) == uint16_t(0xC00E - 2 * 8));
 }
+
+TEST_CASE("3483 status row: drawn from 0:0A00, not the local buffer at 0:0800") {
+    // The runtime copies the operator information area it builds (the
+    // controller's coax cells 0-79 on line, its local buffer 0:0800 in
+    // setup) to 0:0A00 [observed]; that is the row shown under the screen.
+    Rig r;
+    r.mode_24x80();
+    r.glyph(0xB3, 5, 0xFF);   // a bar on glyph row 5
+    const unsigned x = 2 * 9 + 3, y = 24 * 18 + 5;   // status row, cell 2
+    r.bus.poke8(0x0800 + 4, 0xB3);   // only in the local buffer: not shown
+    r.bus.poke8(0x0800 + 5, 0x38);
+    CHECK(Rig::px(r.shot(), x, y) == colours::kBlack);
+    r.bus.poke8(0x0A00 + 4, 0xB3);
+    r.bus.poke8(0x0A00 + 5, 0x38);   // white
+    CHECK(Rig::px(r.shot(), x, y) == colours::kWhite);
+}

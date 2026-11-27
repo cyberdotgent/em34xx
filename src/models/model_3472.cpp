@@ -51,7 +51,9 @@ CoaxBoardLayout layout_3472() {
     l.block_ram = kBlockRamBase;
     l.regen = 0x7A00;
     // The row after the 24th [hypothesis: the runtime's row list continues
-    // there below the screen; blank without a controller].
+    // there below the screen; blank without a controller. Not traced like
+    // the 3483's, whose displayed status row is 0:0A00, 600h below its
+    // regen; 600h below the 3472's (0:7400) holds pattern data].
     l.status_row = 0x8900;
     l.sync_reads_high = true;
     l.monochrome = true;

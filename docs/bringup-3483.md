@@ -31,7 +31,7 @@ the coax line and the controller side are documented with them.
 
 | Range | What | Basis |
 | --- | --- | --- |
-| `00000-3FFFF` | DRAM (two 256Kx4 parts). `0:0800` status row, `0:1000` regen buffer | parts observed on the board; placement hypothesis |
+| `00000-3FFFF` | DRAM (two 256Kx4 parts). `0:0800` local status buffer, `0:0A00` status row, `0:1000` regen buffer | parts observed on the board; placement hypothesis |
 | `40000-4FFFF` | battery-backed SRAM (two 32Kx8 parts): character sets, setup, POST history | parts observed; placement hypothesis |
 | `50000-507FF` | block RAM: display row lists at `50108`/`50508`, coax work area `50308` | observed use |
 | `58000` | display controller | observed use |
@@ -143,11 +143,34 @@ values). B[1] bit 0 and A's other bytes are not understood (open). With
 `[es:bx+6]` nonzero the builder starts at a later window row (open: where
 the runtime uses that).
 
-The status row (the 3270 operator information area) is the 80 cells at
-`0:0800`, shown below the screen with a thin rule along its top edge
-(observed: the runtime keeps "SETUP" in reverse there, and photos of a real
-3483 show that bar under a blue line on every setup screen). No register
-that points to it has been found; a fixed address is a hypothesis.
+The status row (the 3270 operator information area) is drawn from the
+132 cells at `0:0A00` (the screen's width of them), below the screen with a
+thin rule along its top edge. Photos of a real 3483 show a "SETUP" bar under
+a blue line on every setup screen (observed). The firmware builds the row
+in one routine (`D000:D03A`, run when `[0784]` bit 2 asks for it) in a
+132-cell frame on its stack and copies the frame to `0:0A00` (`D000:D31F`,
+far pointer at `D000:D53A`) (observed):
+
+- on line (`[07B8]` = 0): the controller's cells 0-79 from the coax buffer
+  (`0:C000`, pointer `D000:D532`), with its own indicators over them, among
+  them the cursor position (`0005/001`) in cells 72-79 from `[0752]`, and
+  the colour bits of every EAB set to blue (`08`, or green `20` when
+  `[031B]` is not 4);
+- in setup and the other local states (`[07B8]` nonzero): its local status
+  buffer at `0:0800` (pointer `D000:D536`), 132 cells, where setup writes
+  "SETUP" in reverse white (`F000:62CB`);
+- with `[06FD]` bit 5 set (set in the keyboard code at `F000:A633`): a
+  blank row with one symbol in cell 71 (`1F`, or `A3` for the values 28h,
+  37h and 24h of `[0003]`).
+
+The display mode set clears `0:0A00` (84h words of `2140`) together with
+the regen buffer (`D000:48E8`, `D000:4B05`), and after POST the CPU never
+reads `0:0A00` back (observed: a read watchpoint over setup and the online
+state). So `0:0A00` is the row the controller shows; `0:0800` is a
+firmware buffer. The cell at `0:0A00` is not named by any register or
+row-list entry seen; that the address is fixed in the hardware is a
+hypothesis. Until 2026-11-27 the model drew `0:0800`, which showed SETUP
+but never the controller's status line.
 
 `5801C` is **not** a start address (it was first taken for one): the
 runtime keeps control bits in it (observed, shadow `[026E]`):
@@ -399,8 +422,9 @@ zeros to `62000-620FF` (unmapped).
    C0-FF (see Display test). Fixed.
 3. **CUT controller** (`src/host/coax/cut_controller.cpp`): written and wired into
    HostLink and Application (a coax model connects with the same host, port and TLS
-   settings). It has not yet run against the emulated 3483. Next: run it there,
-   then against a TN3270 host.
+   settings). It runs against the emulated 3483 and a TN3270 host: the screen
+   lands from coax cell 80 and the status line from cells 0-79, through the
+   firmware's status row at `0:0A00` (observed, 2026-11-27).
 4. **Then the 3472:** refactor the board into a coax-terminal device shared with the
    3483.
 
@@ -416,14 +440,22 @@ Offline Setup. Reset leaves the test.
   absent coax signal at power-on; it may need another setup step (the
   serial number is blank on a new unit).
 - What the normal online state shows before a controller polls: in
-  emulation, a blank screen and a status row whose first six cells are
-  blank and the rest a reverse bar (observed), with no cursor.
+  emulation, a blank screen and a blank status row (observed), with no
+  cursor. (The "blank start and reverse bar" seen before was `0:0800`, the
+  local buffer, which the model drew until the status row was found.)
+- The first Offline Setup screen after an NVR reset shows a blank status
+  row with symbol `1F` in cell 71 (`[06FD]` bit 5, set in the keyboard
+  code); the first key clears it and SETUP appears (observed in emulation).
+  Whether this is the indicator behind "the first key after boot is
+  swallowed" is open.
+- What the controller should write in cells 0-79: a 3270 controller
+  writes the operator information area in its own character set; the
+  status routine compares cell 0 with `20`, `31`, `2F`, `09` and `BF`
+  (`D000:D1EB`) before laying its indicators over the row (meaning open).
+  The CUT controller writes plain text in the display code, which shows.
 - `5801C` bits 2, 12 and 13; `58014`, `58022`, `58024`, `58018`, `58028`.
-- The status row's address; the row-list fields B[1], B[2] and A[1-3].
-- The status row in CUT mode: the controller writes it at coax addresses
-  0-79 (TN3270, X SYSTEM), but it does not reach `0:0800` in emulation
-  (observed with a TN3270 host: the row stays a blank start and a reverse
-  bar). Where the firmware takes it from is open.
+- How the hardware finds the status row at `0:0A00` (no register seen);
+  the row-list fields B[1], B[2] and A[1-3].
 - The printer port.
 - What the letters `M`, `D` and `C` of the POST error line stand for.
 - The colour-table drive levels against the photographed palette.
