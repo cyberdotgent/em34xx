@@ -19,6 +19,11 @@ std::string to_lower(std::string s) {
     return s;
 }
 
+std::string to_upper(std::string s) {
+    for (char& c : s) c = static_cast<char>(std::toupper(static_cast<unsigned char>(c)));
+    return s;
+}
+
 std::vector<std::string> split(const std::string& s, char sep) {
     std::vector<std::string> out;
     size_t start = 0;

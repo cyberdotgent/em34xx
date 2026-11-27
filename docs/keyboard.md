@@ -675,15 +675,68 @@ and other tables needs a country setting and the CCSID 285 (etc.) code
 points; the 3489 User's Guide appendix I has the national layouts as figures
 (not yet transcribed).
 
-## 3270 coax (3483) key codes
+## 3270 coax (3483, 3472) key codes
 
 The 3483 relays its 122-key keyboard's set-3 bytes in its poll responses,
 with `F0` before a break code (observed; docs/bringup-3483.md, "Keys on
 the coax"). The CUT controller (`src/host/coax/cut_controller.cpp`)
-folds `F0` + code into code | 80h and decodes with the Enhanced table of
-`KeyboardMap`, with the 3270 rule that pressing Shift releases Caps Lock
-(documented; `KeyboardMap::set_shift_releases_lock`). Caps Lock still
-toggles on its own key and affects letters only (hypothesis).
+folds `F0` + code into code | 80h. `KeyboardMap` keeps the Shift, Alt and
+Caps Lock state, with the 3270 rule that pressing Shift releases Caps Lock
+(documented; `KeyboardMap::set_shift_releases_lock`), and gives the typing
+keys their characters. Caps Lock toggles on its own key and affects
+letters only (hypothesis).
+
+The other keys carry their 3270 legends (documented: IBM Personal
+Communications/3270 V4.0 Reference Guide for Windows, S20H-1773, 5.1.1,
+"PS/2 122 Key Keyboard"; hypothesis: the 3483's and 3472's keyboards say
+the same):
+
+| Position | Key | With Shift | With Alt |
+| --- | --- | --- | --- |
+| `05` | Attn (Telnet IP) | SysReq (Telnet AO) | SysReq |
+| `06` | Clear | | |
+| `0C` | Erase Input | | |
+| `0B` | Erase EOF | | (Record, local) |
+| `67` | PA1 | Dup | |
+| `6E` | PA2 | Field Mark | |
+| `6F` | (Jump) | PA3 | PA3 |
+| `64` / `65` / `6D` | BackTab / Insert / Delete | | |
+| `62` | (Rule, local) | | Home |
+| `0D` | Tab | BackTab | |
+| `5A` / `58` / `79` | New Line / Enter / keypad Enter | | |
+| `11` | Reset | | (Quit) |
+| F1-F12, F13-F24 rows | PF1-PF12, PF13-PF24 | | |
+
+Attn and SysReq go to the host as Telnet commands (documented: RFC 2355
+sections 11 and 10.5.2); SysReq does not lock the keyboard.
+
+### Host keys on a coax terminal (`pcomm3270`, `mac3270`)
+
+A coax terminal replaces the built-in 5250 maps with their 3270
+counterparts: `pcomm` and `tn5250` become `pcomm3270`, `mac` becomes
+`mac3270` (`keymap_for_3270`). Keymap files are used as written; a file
+names 3270 functions with the prefix `3270:` (`to = "3270:pa1"`).
+`pcomm3270` is PCOMM/3270's default keyboard (documented: S20H-1773,
+5.1.2, "PS/2 Enhanced Keyboard"):
+
+| Host key | 3270 function |
+| --- | --- |
+| Esc / Shift+Esc | Attn / SysReq |
+| Pause | Clear |
+| Insert / Shift+Insert / Alt+Insert | Insert / Dup / PA1 |
+| Home / Shift+Home / Ctrl+Home / Alt+Home | Home / Field Mark / Rule / PA2 |
+| Shift+Page Up | PA3 |
+| Page Up, Page Down | nothing |
+| Delete | Delete |
+| End / Alt+End | Erase EOF / Erase Input |
+| Return, Shift+Return | New Line |
+| Right Ctrl, keypad Enter | Enter |
+| Left Ctrl | Reset |
+| F1-F12, Shift+F1-F12 (F13-F24) | PF1-PF24 |
+
+`mac3270` makes Return Enter and keypad Enter (fn+Return) New Line, as
+`mac` does for 5250. The toolbar's Attn, SysRq, Reset and Setup send the
+3270 keys.
 
 ## Sources
 

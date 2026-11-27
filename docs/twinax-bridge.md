@@ -355,9 +355,8 @@ source of state mismatches, and it is gone.
   (`src/host/session_cycle.hpp`), which knows no line and no protocol: it
   is given a session through four callbacks. The workstation controller's
   display stations use it with a TN5250 client
-  (`DisplayStationPort`). The coax CUT controller
-  (`src/host/coax/cut_controller.hpp`) does not use it yet, so its TN3270
-  session is not redialled. The reset notification and `bridges_sessions()` are on
+  (`DisplayStationPort`), and the coax CUT controller
+  (`src/host/coax/cut_controller.hpp`) with its TN3270 session. The reset notification and `bridges_sessions()` are on
   `LineHost`, the interface every line's controller has, and `HostLink`
   chooses the controller by the terminal's line.
 

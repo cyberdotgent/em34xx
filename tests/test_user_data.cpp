@@ -513,3 +513,23 @@ TEST_CASE("models offered to end users") {
     for (const TerminalVariant& t : runnable_variants()) ids.push_back(t.variant->id);
     CHECK(ids == std::vector<std::string>{"3472-G", "3483-V", "3477-FG", "3486-BA", "3487-HG", "3477-FC", "3487-HC"});
 }
+
+TEST_CASE("profile: a 3270 terminal has one session and an LU name of at most 8 characters") {
+    Profile p;
+    p.model = "3483";
+    p.sessions[0].host = "mvs.example";
+    p.sessions[0].port = 23;
+    p.sessions[0].device_name = "tcp00001";
+    CHECK(p.validate().empty());
+    p.sessions[1].host = "mvs.example";
+    p.sessions[1].port = 23;
+    CHECK(p.validate().find("one session") != std::string::npos);
+    p.sessions[1] = ProfileSession();
+    p.sessions[0].device_name = "TCP000001";
+    CHECK(p.validate().find("8 characters") != std::string::npos);
+    p.sessions[0].device_name = "tcp00001";
+    AppConfig c;
+    std::string err;
+    REQUIRE(profile_connect_config(p, AppConfig(), TlsVersion::Tls1_2, c, err));
+    CHECK(c.tn5250.device_name == "TCP00001");   // upper case, whatever was typed
+}

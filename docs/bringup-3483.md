@@ -508,6 +508,12 @@ Set-3 make codes above `7F` (some keypad keys) are not translated (open).
 `tests/test_cut_controller.cpp` covers it; checked at moshix.tech
 (`aBcDe@x` typed with Shift, Caps Lock and Shift again).
 
+The function keys carry their 3270 legends, and the host keyboard maps to
+them by PCOMM/3270's defaults (docs/keyboard.md, "3270 coax (3483, 3472) key codes").
+Until 2026-11-27 they went through the 5250 Enhanced table instead: Home
+sent Clear, Delete was dropped, and PA1-PA3 and PF13-PF24 could not be
+sent (observed against moshix.tech, then fixed).
+
 ## Power-on: Offline Setup or the start-up screen
 
 After POST the runtime opens Offline Setup (state `[06FC]` = 90h) when

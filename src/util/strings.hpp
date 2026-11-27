@@ -9,6 +9,7 @@ namespace em34xx {
 
 std::string trim(const std::string& s);
 std::string to_lower(std::string s);
+std::string to_upper(std::string s);
 std::vector<std::string> split(const std::string& s, char sep);
 // Split on whitespace, honouring "double quoted" words.
 std::vector<std::string> split_words(const std::string& s);

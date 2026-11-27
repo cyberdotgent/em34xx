@@ -38,6 +38,13 @@ bool Profile::any_tls() const {
 
 std::string Profile::validate() const {
     if (trim(model).empty()) return "no terminal type";
+    // A 3270 (coax) terminal has one session, and its device name is a
+    // TN3270E LU name of at most 8 characters [documented: SNA LU names].
+    const Model* m = find_model(model);
+    const bool coax = m && m->info().line == LineKind::Coax;
+    if (m && m->info().max_sessions < 2 && sessions[1].used())
+        return "the IBM " + m->info().name + " has one session: clear session 2";
+    if (coax && sessions[0].device_name.size() > 8) return "session 1: an LU name has at most 8 characters";
     for (size_t i = 0; i < kSessions; ++i) {
         const ProfileSession& s = sessions[i];
         const std::string which = format("session %zu", i + 1);
@@ -238,7 +245,7 @@ bool profile_connect_config(const Profile& p, const AppConfig& base, TlsVersion 
     Tn5250Config& tn = out.tn5250;
     tn.host = s1.host;
     tn.port = s1.port;
-    tn.device_name = s1.device_name;
+    tn.device_name = to_upper(s1.device_name);   // DEVNAME / LU names are upper case
     // [tn5250] is session 1; session 2 overrides what differs (StationConfig).
     tn.tls = s1.tls;
     tn.tls_verify = p.tls_mode == ProfileTlsMode::AcceptAll ? TlsVerify::None : TlsVerify::System;
@@ -255,7 +262,7 @@ bool profile_connect_config(const Profile& p, const AppConfig& base, TlsVersion 
     out.twinax.stations.push_back(st0);
     const ProfileSession& s2 = p.sessions[1];
     if (s2.used()) {
-        StationConfig st1{1, StationType::Display, s2.device_name, ""};
+        StationConfig st1{1, StationType::Display, to_upper(s2.device_name), ""};
         if (s2.host != s1.host) st1.host = s2.host;
         if (s2.port != s1.port) st1.port = s2.port;
         st1.tls = s2.tls ? 1 : 0;
