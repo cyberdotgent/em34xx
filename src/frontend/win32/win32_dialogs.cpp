@@ -1439,8 +1439,8 @@ INT_PTR CALLBACK about_proc(HWND dlg, UINT msg, WPARAM wp, LPARAM lp) {
         const UserDirs* dirs = reinterpret_cast<const UserDirs*>(lp);
         set_text(dlg, IDC_ABOUT_TEXT,
                  std::string("em34xxw version ") + EM34XX_VERSION_STRING +
-                     "\r\nHardware emulator for IBM 34xx twinax terminals, connected to IBM i over "
-                     "TN5250.\r\nFree software under the GNU GPL, version 3 or later; no warranty."
+                     "\r\nIBM 34xx Display Station Emulator"
+                     "\r\nFree software under the GNU GPL, version 3 or later; no warranty."
                      "\r\n\r\nUser folder: " +
                      dirs->root() + "\r\nTLS: " + (tn5250::tls_backend_name() ? tn5250::tls_backend_name() : "none"));
         const std::string url = EM34XX_HOMEPAGE_URL;

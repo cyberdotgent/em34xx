@@ -1803,7 +1803,7 @@ void em34xx::cocoa::show_about_panel(const UserDirs& dirs) {
     NSMutableDictionary* head = [body mutableCopy];
     head[NSParagraphStyleAttributeName] = centred;
     const char* tls = tn5250::tls_backend_name();
-    const std::string text = "Hardware emulator for IBM 34xx twinax terminals, connected to IBM i over TN5250.\n"
+    const std::string text = "IBM 34xx Display Station Emulator\n"
                              "Free software under the GNU GPL, version 3 or later; no warranty.\n\n"
                              "User folder: " + dirs.root() + "\nTLS: " + (tls ? tls : "none") + "\n";
     [credits appendAttributedString:[[NSAttributedString alloc] initWithString:ns(text) attributes:head]];

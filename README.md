@@ -1,7 +1,7 @@
 # em34xx
 
-An emulator for IBM 34xx InfoWindow terminals that runs the terminal's own
-firmware:
+IBM 34xx Display Station Emulator: em34xx emulates IBM InfoWindow
+terminals and runs the terminal's own firmware:
 
 - **5250 Twinax** terminals (3477, 3486, 3487) connect to an IBM i host over
   TN5250.

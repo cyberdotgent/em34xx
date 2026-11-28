@@ -350,7 +350,7 @@ BEGIN
         BLOCK "040904B0"
         BEGIN
             VALUE "CompanyName",      "em34xx project"
-            VALUE "FileDescription",  "em34xxw - IBM 34xx twinax terminal emulator"
+            VALUE "FileDescription",  "em34xxw - IBM 34xx Display Station Emulator"
             VALUE "FileVersion",      EM34XX_VERSION_STRING
             VALUE "InternalName",     "em34xxw"
             VALUE "LegalCopyright",   "em34xx contributors"

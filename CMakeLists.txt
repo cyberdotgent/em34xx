@@ -10,7 +10,7 @@ endif()
 
 project(em34xx
   VERSION 0.3.0
-  DESCRIPTION "Hardware emulator for IBM 34xx-family 5250 terminals"
+  DESCRIPTION "IBM 34xx Display Station Emulator"
   LANGUAGES CXX)
 
 # C++17 is the deliberate ceiling: it is the newest standard that every

@@ -21,7 +21,7 @@
   <!-- macOS 15 and later ask before an app reaches the local network: an
        IBM i on the LAN is the common case. -->
   <key>NSLocalNetworkUsageDescription</key>
-  <string>em34xx connects its terminal sessions to IBM i systems over TN5250, which may be on your local network.</string>
+  <string>em34xx connects its terminal sessions to IBM i systems over TN5250 and to mainframes over TN3270, which may be on your local network.</string>
   <key>CFBundleDocumentTypes</key><array><dict>
     <key>CFBundleTypeName</key><string>em34xx connection profile</string>
     <key>CFBundleTypeIconFile</key><string>profile.icns</string>
