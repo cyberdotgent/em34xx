@@ -82,5 +82,5 @@ To check a build: `x86_64-w64-mingw32-objdump -p em34xxw.exe` shows the
    with `--identity -` it signs ad hoc, for trying the script out.
    Needs vcpkg (`VCPKG_ROOT`, default `~/vcpkg`) and the GitHub CLI.
 
-   Developer ID signing and notarisation are being set up (November 2026);
-   until then a release has no macOS build.
+   Releases since v0.2.1 carry a Developer ID signed and notarised macOS
+   build made this way.
