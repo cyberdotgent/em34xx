@@ -160,7 +160,7 @@ struct CurrentProfile {
     bool accepted_once = false;   // a certificate was accepted for this connection only
     // Per session: it runs on a certificate that is not valid (expired, not
     // yet valid, revoked), let through by the user for that connection.
-    bool overridden[Profile::kSessions] = {};
+    bool overridden[Profile::kMaxSessions] = {};
 };
 
 // Toolbar glyphs in the IDB_TOOLBAR* strips (tools/gen_win32_assets.py).
@@ -275,6 +275,9 @@ private:
     void update_ui_state();
     void draw_status_icons(const DRAWITEMSTRUCT& di);
     RECT session_icon_rect(unsigned session) const;
+    // How many sessions the status bar shows: the profile's terminal's (or
+    // the running terminal's when no profile is open).
+    unsigned session_count() const;
     SessionIndicator session_indicator(unsigned session, const std::vector<TwinaxSessionStatus>& all) const;
     std::string tls_state_text(const TwinaxSessionStatus* s) const;
 
@@ -360,7 +363,8 @@ private:
     bool trust_invalid_ = false;     // the open prompt is the invalid-certificate one
     CurrentProfile cur_;
     std::string last_status_text_;
-    SessionIndicator indicators_[Profile::kSessions];
+    SessionIndicator indicators_[Profile::kMaxSessions];
+    unsigned shown_sessions_ = 0;    // orbs laid out in the status bar
     bool toolbar_connected_ = true;  // the Disconnect/Reconnect toggle as shown
 };
 
@@ -466,7 +470,7 @@ void Win32Frontend::create_bars() {
     tips_ = CreateWindowExW(WS_EX_TOPMOST, TOOLTIPS_CLASSW, nullptr, WS_POPUP | TTS_ALWAYSTIP | TTS_NOPREFIX,
                             CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, h, nullptr, launch_.instance,
                             nullptr);
-    for (unsigned i = 0; i < Profile::kSessions; ++i) {
+    for (unsigned i = 0; i < Profile::kMaxSessions; ++i) {
         TOOLINFOW ti;
         ZeroMemory(&ti, sizeof ti);
         ti.cbSize = sizeof ti;
@@ -516,19 +520,20 @@ void Win32Frontend::layout() {
     RECT sr;
     GetClientRect(status_, &sr);
     const int w = sr.right;
-    const int icons = int(Profile::kSessions) * (2 * status_icon_ + status_gap(dpi_)) +
-                      int(Profile::kSessions - 1) * status_session_gap(dpi_) + scale_px(8, dpi_) +
-                      GetSystemMetrics(SM_CXVSCROLL);
+    shown_sessions_ = session_count();
+    const int n = int(shown_sessions_);
+    const int icons = n * (2 * status_icon_ + status_gap(dpi_)) + (n - 1) * status_session_gap(dpi_) +
+                      scale_px(8, dpi_) + GetSystemMetrics(SM_CXVSCROLL);
     const int parts[2] = {std::max(1, w - icons), -1};
     SendMessageW(status_, SB_SETPARTS, 2, reinterpret_cast<LPARAM>(parts));
     SendMessageW(status_, SB_SETTEXTW, 1 | SBT_OWNERDRAW | SBT_NOBORDERS, 0);
-    for (unsigned i = 0; i < Profile::kSessions; ++i) {
+    for (unsigned i = 0; i < Profile::kMaxSessions; ++i) {
         TOOLINFOW ti;
         ZeroMemory(&ti, sizeof ti);
         ti.cbSize = sizeof ti;
         ti.hwnd = status_;
         ti.uId = i;
-        ti.rect = session_icon_rect(i);
+        ti.rect = i < shown_sessions_ ? session_icon_rect(i) : RECT{0, 0, 0, 0};
         SendMessageW(tips_, TTM_NEWTOOLRECTW, 0, reinterpret_cast<LPARAM>(&ti));
     }
     last_status_text_.clear();
@@ -537,6 +542,11 @@ void Win32Frontend::layout() {
 }
 
 // Where session `session`'s orb and lock are, in status bar coordinates.
+unsigned Win32Frontend::session_count() const {
+    const size_t n = cur_.active ? cur_.p.session_slots() : app_ ? app_->model().info().sessions.size() : 1;
+    return unsigned(std::min<size_t>(std::max<size_t>(n, 1), Profile::kMaxSessions));
+}
+
 RECT Win32Frontend::session_icon_rect(unsigned session) const {
     RECT part{};
     SendMessageW(status_, SB_GETRECT, 1, reinterpret_cast<LPARAM>(&part));
@@ -548,7 +558,7 @@ RECT Win32Frontend::session_icon_rect(unsigned session) const {
 
 void Win32Frontend::draw_status_icons(const DRAWITEMSTRUCT& di) {
     if (!status_images_) return;
-    for (unsigned i = 0; i < Profile::kSessions; ++i) {
+    for (unsigned i = 0; i < shown_sessions_; ++i) {
         const RECT r = session_icon_rect(i);
         ImageList_Draw(status_images_, indicators_[i].orb, di.hDC, r.left, r.top, ILD_TRANSPARENT);
         ImageList_Draw(status_images_, indicators_[i].lock, di.hDC, r.left + status_icon_ + status_gap(dpi_), r.top,
@@ -798,7 +808,7 @@ bool Win32Frontend::connected() const { return app_->host_link().bridging(); }
 std::string Win32Frontend::tls_state_text(const TwinaxSessionStatus* s) const {
     if (cur_.p.tls_mode == ProfileTlsMode::AcceptAll) return "TLS, certificate not verified";
     if (!s || !s->connected) return "TLS";
-    if (s->address < Profile::kSessions && cur_.overridden[s->address])
+    if (s->address < Profile::kMaxSessions && cur_.overridden[s->address])
         return "TLS, certificate NOT VALID (accepted for this connection)";
     switch (cur_.p.tls_mode) {
     case ProfileTlsMode::System: return cur_.accepted_once ? "TLS, certificate accepted once" : "TLS, verified";
@@ -812,16 +822,25 @@ std::string Win32Frontend::tls_state_text(const TwinaxSessionStatus* s) const {
 SessionIndicator Win32Frontend::session_indicator(unsigned i, const std::vector<TwinaxSessionStatus>& all) const {
     SessionIndicator ind;
     const std::string label = format("Session %u", i + 1);
-    if (!cur_.active || !cur_.p.sessions[i].used()) {
+    if (!cur_.active || !cur_.p.session(i).used()) {
         ind.orb = kOrbGrey;
         ind.lock = kLockOpenDim;
         ind.tip = label + ": not configured";
         return ind;
     }
-    const ProfileSession& ps = cur_.p.sessions[i];
+    const ProfileSession& ps = cur_.p.session(i);
     const TwinaxSessionStatus* s = nullptr;
-    for (const TwinaxSessionStatus& x : all)
-        if (!x.printer && x.address == i) s = &x;
+    for (const TwinaxSessionStatus& x : all) {
+        if (x.address != i) continue;
+        if (x.printer) {
+            // The terminal has its printer port here.
+            ind.orb = kOrbGrey;
+            ind.lock = kLockOpenDim;
+            ind.tip = label + ": the terminal's printer port, " + x.state + "\nprinter sessions are not supported yet";
+            return ind;
+        }
+        s = &x;
+    }
     const bool tls = s ? s->tls : ps.tls;
     // Encrypted but with any certificate accepted: not the plain closed lock.
     ind.lock = !tls ? kLockOpen : cur_.p.tls_mode == ProfileTlsMode::AcceptAll ? kLockClosedDim : kLockClosed;
@@ -857,8 +876,9 @@ void Win32Frontend::update_status() {
         last_status_text_ = text;
         SendMessageW(status_, SB_SETTEXTW, 0, reinterpret_cast<LPARAM>(widen(text).c_str()));
     }
+    if (session_count() != shown_sessions_) layout();   // another terminal: another number of orbs
     bool repaint = false;
-    for (unsigned i = 0; i < Profile::kSessions; ++i) {
+    for (unsigned i = 0; i < shown_sessions_; ++i) {
         const SessionIndicator ind = session_indicator(i, sessions);
         if (ind == indicators_[i]) continue;
         if (ind.tip != indicators_[i].tip) {
@@ -1137,7 +1157,7 @@ std::string printable(const std::string& text) {
 std::string foreign_profile_question(const std::string& path, const Profile& p) {
     std::string text = "This profile is not in your profiles folder:\n\n" + printable(path) +
                        "\n\nOpening it connects to:\n\n";
-    for (size_t i = 0; i < Profile::kSessions; ++i) {
+    for (size_t i = 0; i < p.sessions.size(); ++i) {
         const ProfileSession& ps = p.sessions[i];
         if (!ps.used()) continue;
         text += format("Session %u: %s:%u - ", unsigned(i + 1), printable(ps.host).c_str(), unsigned(ps.port));
@@ -1251,12 +1271,12 @@ void Win32Frontend::handle_trust_requests() {
         if (trust_invalid_) {
             d = certificate_invalid_dialog(hwnd_.load(), p->req) ? tn5250::TlsTrustDecision::AcceptOnce
                                                                  : tn5250::TlsTrustDecision::Reject;
-            if (p->req.station < Profile::kSessions)
+            if (p->req.station < Profile::kMaxSessions)
                 cur_.overridden[p->req.station] = d == tn5250::TlsTrustDecision::AcceptOnce;
         } else {
             d = trust_dialog(hwnd_.load(), p->req, name);
             // A later connection of this session that needed no override.
-            if (p->req.station < Profile::kSessions && d != tn5250::TlsTrustDecision::Reject)
+            if (p->req.station < Profile::kMaxSessions && d != tn5250::TlsTrustDecision::Reject)
                 cur_.overridden[p->req.station] = false;
         }
         if (trust_invalid_) {

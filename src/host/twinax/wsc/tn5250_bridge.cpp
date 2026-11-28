@@ -192,16 +192,20 @@ Tn5250Bridge::Tn5250Bridge(const TwinaxConfig& twinax, const Tn5250Config& tn525
     bool first_display = true;
     for (const StationConfig& sc : twinax.effective_stations()) {
         Station* s = sched_.station(uint8_t(sc.address));
-        if (sc.type == StationType::Display) {
+        // An auto station gets both ports; the one for what the device
+        // reports is used. Its display session plugs the cable, so a
+        // printer found there is polled as soon as the terminal is.
+        if (sc.type != StationType::Printer) {
             auto port = std::make_unique<DisplayStationPort>(
                 sc, station_session_config(tn5250, sc, first_display, opt_.terminal_type), opt_, *s);
             first_display = false;
             s->attach_display(port.get());
             displays_.push_back(std::move(port));
-        } else {
+        }
+        if (sc.type != StationType::Display) {
             auto port = std::make_unique<PrinterStationPort>(std::make_unique<NullPrinterSession>(sc));
             s->attach_printer(port.get());
-            s->set_plugged(false, 0);
+            if (sc.type == StationType::Printer) s->set_plugged(false, 0);
             printers_.emplace_back(uint8_t(sc.address), std::move(port));
         }
     }
@@ -222,7 +226,8 @@ void Tn5250Bridge::advance(uint64_t emu_ns) {
     }
     // Printers share the cable: polled while any display session is up.
     for (auto& p : printers_) {
-        sched_.station(p.first)->set_plugged(any_connected, sched_.now());
+        Station* s = sched_.station(p.first);
+        if (s->configured_type() == StationType::Printer) s->set_plugged(any_connected, sched_.now());
         p.second->pump();
     }
 }
@@ -231,7 +236,9 @@ void Tn5250Bridge::terminal_reset() {
     // Every station leaves the line with the terminal; sessions it used end
     // and new ones start when the machine runs again.
     for (auto& d : displays_) d->terminal_reset();
-    for (auto& p : printers_) sched_.station(p.first)->set_plugged(false, sched_.now());
+    for (auto& p : printers_)
+        if (sched_.station(p.first)->configured_type() == StationType::Printer)
+            sched_.station(p.first)->set_plugged(false, sched_.now());
 }
 
 bool Tn5250Bridge::hold(uint8_t address) {
@@ -268,7 +275,13 @@ std::string Tn5250Bridge::describe() const {
 
 std::vector<TwinaxSessionStatus> Tn5250Bridge::session_status() const {
     std::vector<TwinaxSessionStatus> out;
+    // An auto station reports as what its device turned out to be.
+    auto found_printer = [this](uint8_t address) {
+        const Station* s = sched_.station(address);
+        return s->identity().type == StationType::Printer;
+    };
     for (const auto& d : displays_) {
+        if (found_printer(uint8_t(d->station().address))) continue;
         TwinaxSessionStatus st;
         st.address = d->station().address;
         const tn5250::Client* c = d->client();
@@ -281,6 +294,7 @@ std::vector<TwinaxSessionStatus> Tn5250Bridge::session_status() const {
         out.push_back(st);
     }
     for (const auto& p : printers_) {
+        if (sched_.station(p.first)->configured_type() == StationType::Auto && !found_printer(p.first)) continue;
         TwinaxSessionStatus st;
         st.address = p.first;
         st.printer = true;

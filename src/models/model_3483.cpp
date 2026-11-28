@@ -54,8 +54,7 @@ public:
         // 10 MHz is a pacing placeholder [hypothesis].
         info_.clock_hz = 10000000;
         info_.line = LineKind::Coax;
-        info_.max_sessions = 1;
-        info_.max_printer_sessions = 0;
+        info_.sessions = {SessionKind::Display};
         // The ROM header names "3483 V00"; oec was tested with a 3483-V
         // (documented, oec README).
         // A logic unit with a VGA monitor (project owner), so colour only:

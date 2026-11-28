@@ -9,6 +9,7 @@
 #include "util/strings.hpp"
 
 #include <commctrl.h>
+#include <uxtheme.h>
 #include <shlobj.h>
 #include <windowsx.h>
 
@@ -418,7 +419,7 @@ struct TlsDlg {
 // The session whose certificate Fetch reads: the first that uses TLS
 // (session 1 when none does yet).
 size_t tls_fetch_session(const Profile& p) {
-    for (size_t i = 0; i < Profile::kSessions; ++i)
+    for (size_t i = 0; i < p.sessions.size(); ++i)
         if (p.sessions[i].used() && p.sessions[i].tls) return i;
     return 0;
 }
@@ -581,6 +582,8 @@ struct ProfileDlg {
     std::string title;
     std::vector<TerminalChoice> choices;   // the terminal type list, in order
     int model_sel = 0;                     // the selection to fall back to
+    size_t session = 0;                    // the session the fields show (its tab)
+    HWND page = nullptr;                   // the fields: IDD_PROFILE_SESSION on the tabs
 };
 
 // The terminal type list: every variant of every model that can be
@@ -668,12 +671,86 @@ std::string tls_summary(const Profile& p, const AppSettings& s) {
     return m + ", minimum " + tls_version_label(v);
 }
 
-const int kHostIds[2] = {IDC_PE_HOST1, IDC_PE_HOST2};
-const int kPortIds[2] = {IDC_PE_PORT1, IDC_PE_PORT2};
-const int kDevIds[2] = {IDC_PE_DEV1, IDC_PE_DEV2};
-const int kTlsIds[2] = {IDC_PE_TLS1, IDC_PE_TLS2};
-
 bool checked(HWND dlg, int id) { return IsDlgButtonChecked(dlg, id) == BST_CHECKED; }
+
+// The session page passes its controls' commands to the editor.
+INT_PTR CALLBACK profile_page_proc(HWND page, UINT msg, WPARAM wp, LPARAM lp) {
+    if (msg == WM_COMMAND) {
+        SendMessageW(GetParent(page), WM_COMMAND, wp, lp);
+        return TRUE;
+    }
+    return FALSE;
+}
+
+// The session page, with the tab's themed background.
+void profile_make_page(HWND dlg, ProfileDlg& d) {
+    d.page = CreateDialogParamW(instance(), MAKEINTRESOURCEW(IDD_PROFILE_SESSION), dlg, profile_page_proc, 0);
+    if (d.page) EnableThemeDialogTexture(d.page, ETDT_ENABLETAB);
+}
+
+// Lay the page on the tab control's display area (below the tab row, which
+// depends on the tabs there are).
+void profile_place_page(HWND dlg, const ProfileDlg& d) {
+    if (!d.page) return;
+    const HWND tabs = GetDlgItem(dlg, IDC_PE_SESSIONS);
+    RECT r;
+    GetWindowRect(tabs, &r);
+    MapWindowPoints(nullptr, dlg, reinterpret_cast<POINT*>(&r), 2);
+    TabCtrl_AdjustRect(tabs, FALSE, &r);
+    // Right after the tabs in the tab order (and under them in Z order,
+    // which WS_CLIPSIBLINGS keeps from overpainting it).
+    SetWindowPos(d.page, tabs, r.left, r.top, r.right - r.left, r.bottom - r.top, SWP_SHOWWINDOW);
+}
+
+// Show session d.session in the fields.
+void profile_show_session(HWND, const ProfileDlg& d) {
+    const HWND dlg = d.page;
+    const ProfileSession& ps = d.p.session(d.session);
+    set_text(dlg, IDC_PE_HOST1, ps.host);
+    set_text(dlg, IDC_PE_PORT1, ps.used() || d.session == 0 ? std::to_string(ps.port) : std::string());
+    set_text(dlg, IDC_PE_DEV1, ps.device_name);
+    CheckDlgButton(dlg, IDC_PE_TLS1, ps.tls ? BST_CHECKED : BST_UNCHECKED);
+}
+
+// Read the fields into session d.session; false (with a message unless
+// quiet) when the port is invalid.
+bool profile_store_session(HWND owner, ProfileDlg& d, bool quiet) {
+    const HWND dlg = d.page;
+    ProfileSession s = d.p.session(d.session);
+    s.host = trim(get_text(dlg, IDC_PE_HOST1));
+    s.device_name = trim(get_text(dlg, IDC_PE_DEV1));
+    s.tls = checked(dlg, IDC_PE_TLS1);
+    const std::string port = trim(get_text(dlg, IDC_PE_PORT1));
+    uint64_t v = 0;
+    if (port.empty()) v = s.tls ? 992 : 23;
+    else if (!parse_uint(port, v) || v == 0 || v > 65535) {
+        if (!quiet) error_box(owner, format("Session %zu: the port must be a number from 1 to 65535.", d.session + 1));
+        return false;
+    }
+    s.port = uint16_t(v);
+    if (s.used() || d.session < d.p.sessions.size()) d.p.session(d.session) = s;
+    return true;
+}
+
+// The session tabs: one per session of the selected terminal, and one for
+// each used session past them (so that it can be cleared).
+void profile_fill_sessions(HWND dlg, ProfileDlg& d) {
+    const HWND tabs = GetDlgItem(dlg, IDC_PE_SESSIONS);
+    TabCtrl_DeleteAllItems(tabs);
+    const size_t n = d.p.session_slots();
+    for (size_t i = 0; i < n; ++i) {
+        std::wstring label = widen(format("Session %zu", i + 1));
+        TCITEMW item;
+        ZeroMemory(&item, sizeof item);
+        item.mask = TCIF_TEXT;
+        item.pszText = &label[0];
+        SendMessageW(tabs, TCM_INSERTITEMW, WPARAM(i), reinterpret_cast<LPARAM>(&item));
+    }
+    profile_place_page(dlg, d);
+    if (d.session >= n) d.session = 0;
+    TabCtrl_SetCurSel(tabs, int(d.session));
+    profile_show_session(dlg, d);
+}
 
 // Read the fields into d.p; false (with a message) when a port is invalid.
 bool profile_read(HWND dlg, ProfileDlg& d, bool quiet) {
@@ -684,27 +761,15 @@ bool profile_read(HWND dlg, ProfileDlg& d, bool quiet) {
         d.p.phosphor = profile_phosphor(dlg, d);
     }
     d.p.crt = checked(dlg, IDC_PE_CRT);
-    for (size_t i = 0; i < 2; ++i) {
-        ProfileSession& s = d.p.sessions[i];
-        s.host = trim(get_text(dlg, kHostIds[i]));
-        s.device_name = trim(get_text(dlg, kDevIds[i]));
-        s.tls = checked(dlg, kTlsIds[i]);
-        const std::string port = trim(get_text(dlg, kPortIds[i]));
-        uint64_t v = 0;
-        if (port.empty()) v = s.tls ? 992 : 23;
-        else if (!parse_uint(port, v) || v == 0 || v > 65535) {
-            if (!quiet) error_box(dlg, format("Session %zu: the port must be a number from 1 to 65535.", i + 1));
-            return false;
-        }
-        s.port = uint16_t(v);
-    }
-    return true;
+    return profile_store_session(dlg, d, quiet);
 }
 
 void profile_update_tls(HWND dlg, ProfileDlg& d) {
+    profile_store_session(dlg, d, true);
     std::string which;
-    for (size_t i = 0; i < 2; ++i)
-        if (checked(dlg, kTlsIds[i])) which += which.empty() ? format("session %zu", i + 1) : format(" and %zu", i + 1);
+    for (size_t i = 0; i < d.p.sessions.size(); ++i)
+        if (d.p.sessions[i].used() && d.p.sessions[i].tls)
+            which += which.empty() ? format("session %zu", i + 1) : format(", %zu", i + 1);
     EnableWindow(GetDlgItem(dlg, IDC_PE_TLS_SETTINGS), !which.empty());
     set_text(dlg, IDC_PE_TLS_SUMMARY,
              which.empty() ? std::string("No session uses TLS: plain telnet.")
@@ -729,17 +794,29 @@ INT_PTR CALLBACK profile_proc(HWND dlg, UINT msg, WPARAM wp, LPARAM lp) {
         profile_fill_models(dlg, *d, d->p.variant);
         profile_fill_phosphors(dlg, *d, d->p.phosphor);
         CheckDlgButton(dlg, IDC_PE_CRT, d->p.crt ? BST_CHECKED : BST_UNCHECKED);
-        for (size_t s = 0; s < 2; ++s) {
-            const ProfileSession& ps = d->p.sessions[s];
-            set_text(dlg, kHostIds[s], ps.host);
-            set_text(dlg, kPortIds[s], ps.used() || s == 0 ? std::to_string(ps.port) : std::string());
-            set_text(dlg, kDevIds[s], ps.device_name);
-            CheckDlgButton(dlg, kTlsIds[s], ps.tls ? BST_CHECKED : BST_UNCHECKED);
-            SendDlgItemMessageW(dlg, kDevIds[s], EM_LIMITTEXT, 10, 0);
-            SendDlgItemMessageW(dlg, kPortIds[s], EM_LIMITTEXT, 5, 0);
-        }
+        profile_make_page(dlg, *d);
+        SendDlgItemMessageW(d->page, IDC_PE_DEV1, EM_LIMITTEXT, 10, 0);
+        SendDlgItemMessageW(d->page, IDC_PE_PORT1, EM_LIMITTEXT, 5, 0);
+        profile_fill_sessions(dlg, *d);
         profile_update_tls(dlg, *d);
         return TRUE;
+    }
+    case WM_NOTIFY: {
+        const NMHDR* nh = reinterpret_cast<const NMHDR*>(lp);
+        ProfileDlg* d = dialog_data<ProfileDlg>(dlg);
+        if (!d || !nh || nh->idFrom != IDC_PE_SESSIONS) break;
+        if (nh->code == TCN_SELCHANGING) {
+            // Keep the tab while its port is not a number.
+            SetWindowLongPtrW(dlg, DWLP_MSGRESULT, profile_store_session(dlg, *d, false) ? FALSE : TRUE);
+            return TRUE;
+        }
+        if (nh->code == TCN_SELCHANGE) {
+            const int sel = TabCtrl_GetCurSel(nh->hwndFrom);
+            d->session = sel < 0 ? 0 : size_t(sel);
+            profile_show_session(dlg, *d);
+            return TRUE;
+        }
+        break;
     }
     case WM_DRAWITEM: {
         const DRAWITEMSTRUCT* di = reinterpret_cast<const DRAWITEMSTRUCT*>(lp);
@@ -761,10 +838,17 @@ INT_PTR CALLBACK profile_proc(HWND dlg, UINT msg, WPARAM wp, LPARAM lp) {
             // The tube carries over when the new variant has it too.
             const std::string tube = d->p.phosphor;
             const TerminalChoice choice = d->choices[size_t(sel)];
+            // The session tabs follow the terminal's sessions.
+            auto follow = [&] {
+                profile_read(dlg, *d, true);
+                profile_fill_sessions(dlg, *d);
+                profile_update_tls(dlg, *d);
+            };
             if (choice.ready) {
                 d->model_sel = sel;
                 profile_fill_phosphors(dlg, *d, tube);
                 d->p.phosphor = profile_phosphor(dlg, *d);
+                follow();
                 return TRUE;
             }
             const std::string back = d->choices[size_t(d->model_sel)].variant->id;
@@ -772,18 +856,17 @@ INT_PTR CALLBACK profile_proc(HWND dlg, UINT msg, WPARAM wp, LPARAM lp) {
             profile_fill_models(dlg, *d, ok ? choice.variant->id : back);   // an import can ready several models
             profile_fill_phosphors(dlg, *d, tube);
             d->p.phosphor = profile_phosphor(dlg, *d);
+            follow();
             return TRUE;
         }
         case IDC_PE_SUBTYPE:
             if (HIWORD(wp) == CBN_SELCHANGE) d->p.phosphor = profile_phosphor(dlg, *d);
             return TRUE;
-        case IDC_PE_TLS1:
-        case IDC_PE_TLS2: {
+        case IDC_PE_TLS1: {
             // Switch the session's conventional port along with TLS.
-            const size_t i = LOWORD(wp) == IDC_PE_TLS1 ? 0 : 1;
-            const bool on = checked(dlg, kTlsIds[i]);
-            const std::string port = trim(get_text(dlg, kPortIds[i]));
-            if (port == (on ? "23" : "992")) set_text(dlg, kPortIds[i], on ? "992" : "23");
+            const bool on = checked(d->page, IDC_PE_TLS1);
+            const std::string port = trim(get_text(d->page, IDC_PE_PORT1));
+            if (port == (on ? "23" : "992")) set_text(d->page, IDC_PE_PORT1, on ? "992" : "23");
             profile_update_tls(dlg, *d);
             return TRUE;
         }

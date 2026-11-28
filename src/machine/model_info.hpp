@@ -58,6 +58,16 @@ struct ModelVariant {
     const Phosphor* phosphor(const std::string& id) const;
 };
 
+// What one of a terminal's sessions can be.
+enum class SessionKind {
+    Display,            // a display session only
+    Printer,            // the printer port only
+    DisplayOrPrinter,   // either, as the terminal's setup says
+};
+
+// "display", "printer", "display or printer".
+const char* session_kind_label(SessionKind kind);
+
 // A switch a model declares for itself (a temporary stand-in that can be
 // turned off, an optional device): what --list-models shows and
 // --no-<id> / --set <id>=on|off and [emulator.options] set.
@@ -75,9 +85,15 @@ struct ModelInfo {
     unsigned address_bits = 20;
     uint64_t clock_hz = 0;       // nominal CPU clock, used for pacing
     LineKind line = LineKind::Twinax;   // what the unit hangs on (machine/line_port.hpp)
-    unsigned max_sessions = 1;   // twinax station addresses (sessions) the unit can answer on;
-                                 // never more than TwinaxConfig::kMaxStationsPerBus (7)
-    unsigned max_printer_sessions = 0;  // of those, how many may be printer sessions
+    // The sessions the unit can run, in its own order (its first session,
+    // its second, ...): what each one can be. Never empty; never more than a
+    // cable carries (TwinaxConfig::kMaxStationsPerBus, 7). Whether a slot
+    // that can be either is a display or the printer is the terminal's own
+    // setting: the controller reads it from the device (docs/twinax-bridge.md).
+    std::vector<SessionKind> sessions{SessionKind::Display};
+    unsigned max_sessions() const { return unsigned(sessions.size()); }
+    // How many of the sessions can be printer sessions at once.
+    unsigned max_printer_sessions() const;
     // What can be selected, default first. Never empty for a model that runs.
     std::vector<ModelVariant> variants;
     // Switches of this model, with their defaults (TerminalOptions::switches).

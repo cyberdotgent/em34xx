@@ -243,8 +243,9 @@ display block request to finish while the interrupt landed on the stub
   `09h`/`0Ch` (see the layout above). Offline Setup offers the terminal
   modes One-Display, Two-Display, Display-Printer and Two-Display-Printer
   (observed), so the third channel is the printer next to two displays.
-  The emulator still offers two sessions (two displays, or display +
-  printer), as on the 3477.
+  The model offers three sessions to match: a display; a display or the
+  printer; the printer next to two displays (`ModelInfo::sessions`).
+  Which station address the terminal gives each is untested.
 
 ## Display test
 

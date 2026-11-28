@@ -44,8 +44,9 @@ public:
         // crystal/8 (hypothesis).
         info_.clock_hz = 7477312;
         info_.line = LineKind::Twinax;
-        info_.max_sessions = 2;
-        info_.max_printer_sessions = 1;   // display + printer [doc PAI 14.0 via 3197; obs]
+        // Two displays, or a display and the printer port: the second
+        // session is either [doc PAI 14.0 via 3197; obs].
+        info_.sessions = {SessionKind::Display, SessionKind::DisplayOrPrinter};
         const std::vector<Phosphor> tubes = {phosphor_green(), phosphor_amber(), phosphor_paper_white()};
         info_.variants = {
             // One monochrome unit whatever tube is fitted; it announces the

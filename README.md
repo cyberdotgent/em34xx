@@ -35,9 +35,9 @@ contains no code or data from the ROMs.
 
 - **File > New Connection** connects to a host. **File > Connect to
   Profile** opens a saved profile.
-- A profile holds the terminal type, the CRT type and its sessions (up to
-  two on a 5250 terminal, one on a 3270 terminal), each with or without
-  TLS. The terminal list puts the 3270 models first, then the 5250 ones.
+- A profile holds the terminal type, the CRT type and one session per
+  session of the terminal (two on the 3477, three on the 3486/3487, one on
+  a 3270 terminal), each with or without TLS. The terminal list puts the 3270 models first, then the 5250 ones.
   **Edit > Connection Settings** changes the running profile.
 - A session's **device name** is sent as the TN5250 device name (DEVNAME)
   or, on a 3270 terminal, as the LU name requested with TN3270E. Without

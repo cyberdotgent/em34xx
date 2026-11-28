@@ -249,7 +249,7 @@ bool Application::build_machine() {
 
     std::unique_ptr<Machine> machine = make_machine(*model_, cfg_.terminal, error);
     if (!machine) return fail(error);
-    error = cfg_.twinax.validate(info.max_sessions, info.max_printer_sessions);
+    error = cfg_.twinax.validate(info.max_sessions(), info.max_printer_sessions());
     if (!error.empty()) return fail(error);
 
     // The TN5250 bridge: the virtual workstation controller with one TN5250
@@ -302,7 +302,7 @@ bool Application::build_machine() {
     }
     if (cfg_.twinax.host == TwinaxHostKind::Tn5250)
         for (const StationConfig& st : cfg_.twinax.effective_stations())
-            if (st.type == StationType::Display)
+            if (st.type != StationType::Printer)
                 LOG_INFO("tn5250", "station %u: terminal type %s", st.address,
                          station_terminal_type(cfg_.tn5250, st, model_->variant_for(cfg_.terminal).tn5250_type).c_str());
     machine->set_line_host(std::move(host));
@@ -318,7 +318,7 @@ bool Application::build_machine() {
 
     emu_ = std::make_unique<Emulator>(std::move(machine));
     emu_->set_speed_percent(cfg_.speed_percent);
-    host_link_ = std::make_unique<HostLink>(*emu_, cfg_, info.max_sessions, int(info.max_printer_sessions),
+    host_link_ = std::make_unique<HostLink>(*emu_, cfg_, info.max_sessions(), int(info.max_printer_sessions()),
                                             std::move(bridge), trust);
     host_link_->set_coax_factory(std::move(coax));
     AppTooling* tooling = tooling_.get();
@@ -527,7 +527,7 @@ bool Application::rebuild(const Model& model, const TerminalOptions& options, st
         // apply to the next connection.
         model_ = &model;
         cfg_.model = model.info().name;
-        host_link_->set_model(model.info().name, model.info().max_sessions, int(model.info().max_printer_sessions));
+        host_link_->set_model(model.info().name, model.info().max_sessions(), int(model.info().max_printer_sessions()));
     }
     LOG_INFO("machine", "rebuilt as IBM %s with display %s; power on", variant.id.c_str(),
              tube_name(model, cfg_.terminal).c_str());

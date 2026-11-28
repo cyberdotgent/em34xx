@@ -223,7 +223,7 @@ Commands are disabled while a sheet or dialog is up.
   text buttons, Keymap. Settings is in the palette; on the Mac it lives in
   the app menu (⌘,).
 - **Status bar**: "Profile: name" (with "— Edited") on the left; per
-  session an orb and a lock on the right, with the same colours, states
+  session of the terminal an orb and a lock on the right, with the same colours, states
   and tooltips as em34xxw's (green connected, orange connecting or waiting
   on a certificate prompt, red disconnected or failed, grey not
   configured; closed lock TLS, dimmed closed lock TLS without verification,
@@ -244,7 +244,9 @@ and timers keep running meanwhile.
   can be put back from the Trash (em34xxw deletes, after asking).
 - **Profile editor**, **TLS Settings** (Fetch runs off the main thread;
   the sheet may close first), **name prompt**: as em34xxw's, laid out with
-  Auto Layout.
+  Auto Layout. The sessions are a segmented control (Session 1 ...
+  Session N, one per session of the terminal) over one set of fields,
+  where em34xxw has tabs.
 - **Settings** is a window of its own, not a sheet: startup profile,
   speed, default TLS minimum, screen burn-in, ROM Images…, the user
   folder (Show in Finder). Changes apply and are saved at once, with no OK or Cancel, as

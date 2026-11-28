@@ -71,7 +71,7 @@ TEST_CASE("user folder: profile files") {
     REQUIRE(dirs.ensure(err));
     CHECK(dirs.list_profiles().empty());
     Profile p;
-    p.sessions[0].host = "pub400.com";
+    p.session(0).host = "pub400.com";
     REQUIRE(save_profile(dirs.profile_path("beta"), p, err));
     REQUIRE(save_profile(dirs.profile_path("Alpha"), p, err));
     std::ofstream(fs::path(dirs.profiles()) / "notes.txt") << "not a profile";
@@ -330,8 +330,8 @@ TEST_CASE("profile: TOML round trip and validation") {
     p.tls_mode = ProfileTlsMode::Fingerprint;
     p.tls_cert_sha256 = format_sha256_fingerprint(digest(1));
     p.tls_min_version = "1.1";
-    p.sessions[0] = {"pub400.com", 992, "QPADEV0001", "", true};
-    p.sessions[1] = {"other.example", 9992, "", format_sha256_fingerprint(digest(9)), false};
+    p.session(0) = {"pub400.com", 992, "QPADEV0001", "", true};
+    p.session(1) = {"other.example", 9992, "", format_sha256_fingerprint(digest(9)), false};
     CHECK(p.validate().empty());
     const std::string text = profile_to_toml(p);
     CHECK(text.find("password") == std::string::npos);   // never stored (the comment says "Passwords")
@@ -343,13 +343,13 @@ TEST_CASE("profile: TOML round trip and validation") {
     CHECK(back.phosphor == "amber");
     CHECK(text.find("model = '3477-FG'") != std::string::npos);
     CHECK_FALSE(back.crt);
-    CHECK(back.sessions[0].tls);
-    CHECK_FALSE(back.sessions[1].tls);
+    CHECK(back.session(0).tls);
+    CHECK_FALSE(back.session(1).tls);
     Profile changed = p;
     changed.variant = "3477-FC";
     CHECK(changed != p);
     changed = p;
-    changed.sessions[1].tls = true;
+    changed.session(1).tls = true;
     CHECK(changed != p);
 
     TempRoot tmp;
@@ -360,18 +360,18 @@ TEST_CASE("profile: TOML round trip and validation") {
 
     // An unused second session is not written, and reads back unused.
     Profile one;
-    one.sessions[0].host = "pub400.com";
+    one.session(0).host = "pub400.com";
     REQUIRE(parse_profile(profile_to_toml(one), "one", back, err));
     CHECK(back == one);
-    CHECK_FALSE(back.sessions[1].used());
+    CHECK_FALSE(back.session(1).used());
 
     Profile bad = one;
-    bad.sessions[0].host.clear();
+    bad.session(0).host.clear();
     CHECK(bad.validate().find("session 1") != std::string::npos);
     bad = one;
     bad.tls_mode = ProfileTlsMode::Fingerprint;
     CHECK(bad.validate().empty());   // no session uses TLS
-    bad.sessions[0].tls = true;
+    bad.session(0).tls = true;
     CHECK_FALSE(bad.validate().empty());
     bad.tls_cert_sha256 = "zz";
     CHECK_FALSE(bad.validate().empty());
@@ -379,22 +379,24 @@ TEST_CASE("profile: TOML round trip and validation") {
     bad.tls_min_version = "1.9";
     CHECK_FALSE(bad.validate().empty());
     bad = one;
-    bad.sessions[0].device_name = "ELEVENCHARS";
+    bad.session(0).device_name = "ELEVENCHARS";
     CHECK_FALSE(bad.validate().empty());
 
     CHECK_FALSE(parse_profile("format = 99\n", "new", back, err));
     CHECK(err.find("newer") != std::string::npos);
     CHECK_FALSE(parse_profile("[tls]\nverify = \"maybe\"\n", "v", back, err));
     CHECK_FALSE(parse_profile("[[session]]\nport = 0\n", "p", back, err));
-    CHECK_FALSE(parse_profile("[[session]]\n[[session]]\n[[session]]\n", "3", back, err));
+    std::string eight;
+    for (int i = 0; i < 8; ++i) eight += "[[session]]\n";
+    CHECK_FALSE(parse_profile(eight, "8", back, err));   // more than a cable carries
     CHECK_FALSE(parse_profile("[display]\nsubtype = \"plaid\"\n", "d", back, err));
 
     // Format 1 (em34xx 0.1): one tls.enabled for every session, no [display].
     REQUIRE(parse_profile("format = 1\nmodel = \"3477\"\n[tls]\nenabled = true\nverify = \"system\"\n"
                           "[[session]]\nhost = \"a\"\nport = 992\n[[session]]\nhost = \"b\"\nport = 992\n",
                           "v1", back, err));
-    CHECK(back.sessions[0].tls);
-    CHECK(back.sessions[1].tls);
+    CHECK(back.session(0).tls);
+    CHECK(back.session(1).tls);
     CHECK(back.variant == "3477-FG");
     CHECK(back.phosphor == "green");
     CHECK(back.crt);
@@ -421,7 +423,7 @@ TEST_CASE("profile: the connect configuration and trusting a certificate") {
     AppConfig base;
     base.model = "3477";
     Profile p;
-    p.sessions[0] = {"pub400.com", 23, "", ""};
+    p.session(0) = {"pub400.com", 23, "", ""};
     AppConfig c;
     std::string err;
     REQUIRE(profile_connect_config(p, base, TlsVersion::Tls1_2, c, err));
@@ -433,9 +435,9 @@ TEST_CASE("profile: the connect configuration and trusting a certificate") {
     CHECK_FALSE(c.tn5250.tls);
 
     p.tls_mode = ProfileTlsMode::AcceptAll;
-    p.sessions[0].port = 992;
-    p.sessions[0].tls = true;
-    p.sessions[1] = {"pub400.com", 992, "SECOND", "", true};
+    p.session(0).port = 992;
+    p.session(0).tls = true;
+    p.session(1) = {"pub400.com", 992, "SECOND", "", true};
     REQUIRE(profile_connect_config(p, base, TlsVersion::Tls1_0, c, err));
     CHECK(c.tn5250.tls);
     CHECK(c.tn5250.tls_verify == TlsVerify::None);
@@ -455,17 +457,17 @@ TEST_CASE("profile: the connect configuration and trusting a certificate") {
     CHECK(c.tn5250.tls_verify == TlsVerify::System);
 
     // Session 2 on another system: its own fingerprint, and its own host.
-    p.sessions[1].host = "other.example";
-    p.sessions[1].port = 9992;
+    p.session(1).host = "other.example";
+    p.session(1).port = 9992;
     p.tls_min_version = "1.3";
     profile_trust_certificate(p, 1, digest(7));
     CHECK(p.tls_cert_sha256 == format_sha256_fingerprint(digest(3)));
-    CHECK(p.sessions[1].cert_sha256 == format_sha256_fingerprint(digest(7)));
+    CHECK(p.session(1).cert_sha256 == format_sha256_fingerprint(digest(7)));
     REQUIRE(profile_connect_config(p, base, TlsVersion::Tls1_2, c, err));
     CHECK(c.tn5250.tls_min_version == TlsVersion::Tls1_3);
     CHECK(c.twinax.stations[1].host == "other.example");
     CHECK(c.twinax.stations[1].port == 9992);
-    CHECK(c.twinax.stations[1].tls_cert_sha256 == p.sessions[1].cert_sha256);
+    CHECK(c.twinax.stations[1].tls_cert_sha256 == p.session(1).cert_sha256);
 
     CHECK(c.twinax.stations[1].tls == 1);
 
@@ -473,8 +475,8 @@ TEST_CASE("profile: the connect configuration and trusting a certificate") {
     Profile mixed;
     mixed.tls_mode = ProfileTlsMode::Fingerprint;
     mixed.tls_cert_sha256 = format_sha256_fingerprint(digest(4));
-    mixed.sessions[0] = {"pub400.com", 23, "", "", false};
-    mixed.sessions[1] = {"pub400.com", 992, "", "", true};
+    mixed.session(0) = {"pub400.com", 23, "", "", false};
+    mixed.session(1) = {"pub400.com", 992, "", "", true};
     REQUIRE(profile_connect_config(mixed, base, TlsVersion::Tls1_2, c, err));
     CHECK_FALSE(c.tn5250.tls);
     CHECK(c.tn5250.tls_cert_sha256.empty());
@@ -487,10 +489,10 @@ TEST_CASE("profile: the connect configuration and trusting a certificate") {
     CHECK(s2.tls);
     CHECK(s2.tls_cert_sha256 == mixed.tls_cert_sha256);
     // And the other way round: session 2 plain.
-    mixed.sessions[0].tls = true;
-    mixed.sessions[0].port = 992;
-    mixed.sessions[1].tls = false;
-    mixed.sessions[1].port = 23;
+    mixed.session(0).tls = true;
+    mixed.session(0).port = 992;
+    mixed.session(1).tls = false;
+    mixed.session(1).port = 23;
     REQUIRE(profile_connect_config(mixed, base, TlsVersion::Tls1_2, c, err));
     CHECK(c.tn5250.tls);
     CHECK(c.twinax.stations[1].tls == 0);
@@ -517,19 +519,71 @@ TEST_CASE("models offered to end users") {
 TEST_CASE("profile: a 3270 terminal has one session and an LU name of at most 8 characters") {
     Profile p;
     p.model = "3483";
-    p.sessions[0].host = "mvs.example";
-    p.sessions[0].port = 23;
-    p.sessions[0].device_name = "tcp00001";
+    p.session(0).host = "mvs.example";
+    p.session(0).port = 23;
+    p.session(0).device_name = "tcp00001";
     CHECK(p.validate().empty());
-    p.sessions[1].host = "mvs.example";
-    p.sessions[1].port = 23;
+    p.session(1).host = "mvs.example";
+    p.session(1).port = 23;
     CHECK(p.validate().find("one session") != std::string::npos);
-    p.sessions[1] = ProfileSession();
-    p.sessions[0].device_name = "TCP000001";
+    p.session(1) = ProfileSession();
+    p.session(0).device_name = "TCP000001";
     CHECK(p.validate().find("8 characters") != std::string::npos);
-    p.sessions[0].device_name = "tcp00001";
+    p.session(0).device_name = "tcp00001";
     AppConfig c;
     std::string err;
     REQUIRE(profile_connect_config(p, AppConfig(), TlsVersion::Tls1_2, c, err));
     CHECK(c.tn5250.device_name == "TCP00001");   // upper case, whatever was typed
+}
+
+TEST_CASE("profile: the terminal's sessions decide how many a profile has and what they are") {
+    Profile p;
+    p.model = "3477";
+    CHECK(p.session_slots() == 2);
+    CHECK(p.session_kind(0) == SessionKind::Display);
+    CHECK(p.session_kind(1) == SessionKind::DisplayOrPrinter);
+    p.model = "3483";
+    CHECK(p.session_slots() == 1);
+    p.model = "3489";   // four displays and a printer [doc 3489 UG 1.1.5]
+    CHECK(p.session_slots() == 5);
+    CHECK(p.session_kind(4) == SessionKind::Printer);
+    p.model = "nonesuch";
+    CHECK(p.session_slots() == 1);
+
+    // A third session on a two-session terminal: shown, so it can be cleared.
+    p.model = "3477";
+    p.session(0).host = "pub400.com";
+    p.session(2).host = "other.example";
+    CHECK(p.session_slots() == 3);
+    CHECK(p.validate().find("has 2 sessions: clear session 3") != std::string::npos);
+
+    // An unused session before a used one keeps its place in the file.
+    p.model = "3489";
+    CHECK(p.validate().empty());
+    Profile back;
+    std::string err;
+    REQUIRE(parse_profile(profile_to_toml(p), "gap", back, err));
+    CHECK(back == p);
+    CHECK_FALSE(back.session(1).used());
+    CHECK(back.session(2).host == "other.example");
+
+    // Stations: session N at address N - 1; the 3477's second session is
+    // whatever the terminal reports there.
+    p.model = "3477";
+    p.session(2) = ProfileSession();
+    p.session(1).host = "pub400.com";
+    AppConfig c;
+    REQUIRE(profile_connect_config(p, AppConfig(), TlsVersion::Tls1_2, c, err));
+    REQUIRE(c.twinax.stations.size() == 2);
+    CHECK(c.twinax.stations[0].type == StationType::Display);
+    CHECK(c.twinax.stations[1].address == 1);
+    CHECK(c.twinax.stations[1].type == StationType::Auto);
+    p.model = "3489";
+    p.session(4).host = "pub400.com";
+    p.session(4).device_name = "prt01";
+    REQUIRE(profile_connect_config(p, AppConfig(), TlsVersion::Tls1_2, c, err));
+    REQUIRE(c.twinax.stations.size() == 3);
+    CHECK(c.twinax.stations[2].address == 4);
+    CHECK(c.twinax.stations[2].type == StationType::Printer);
+    CHECK(c.twinax.stations[2].device_name == "PRT01");
 }

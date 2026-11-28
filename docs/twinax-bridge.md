@@ -80,14 +80,14 @@ The controller drives each one separately.
 | --- | --- | --- | --- |
 | 3197 (the 3477's documented base) | 2 addresses | address 1 display; address 2 display or printer (parallel port) | [doc PAI 14.0] |
 | 3477 | 2 | two displays, or display + printer | [doc PAI ch. 16 via 3197; obs] |
-| 3486 | 2 concurrent | displays | project requirement; no user's guide on hand [hyp] |
+| 3486 | 3 | a display; a display or the printer; the printer next to two displays | Offline Setup's modes [obs] |
 | 3489 | 1-4 displays, each mode with or without a printer | up to 4 displays + 1 printer | [doc 3489 UG 1.1.5, 2.9] |
 
 Rules from the documentation:
 
 - Addresses are 0-6; 7 marks the end of a message [doc PAI 2.4], so one
   cable carries at most 7 stations. The emulator enforces both that limit and
-  each model's own session limit (3477: 2, 3486: 2, 3489: 5). Each
+  each model's own session limit (3477: 2, 3486: 3, 3489: 5). Each
   workstation on the cable needs its own address [doc 3489 UG 2.10].
 - Without shared addressing, every display session and the printer each
   need their own address. With **shared addressing** (3489, OS/400 V3R1 or
@@ -120,9 +120,18 @@ tn5250_device_name = "PRT01"
 On the command line: `--station 0:display --station 1:printer:PRT01`
 (`ADDR[:TYPE[:DEVNAME]]`, repeatable; it replaces the file's list). The old
 `--station-address N` still configures a single display. Addresses must be
-unique, 0-6. The number of stations may not exceed the model's
-`ModelInfo::max_sessions`: 3477 2, 3486 2, 3489 4. The 3489 documents four
-displays plus a printer, so its limit may grow to 5 once it is modelled.
+unique, 0-6. The number of stations may not exceed the model's sessions
+(`ModelInfo::sessions`): 3477 2, 3486 3, 3489 5.
+
+A station's `type` is `display`, `printer` or `auto`. An `auto` station is
+whatever the device answers to Read Device ID. A connection profile uses
+it for a session the terminal can run as a display or as its printer
+(`SessionKind::DisplayOrPrinter`): the terminal's own setup decides, so the
+profile does not repeat it. The bridge gives such a station both a display
+session and a printer port. Because the session is the cable, its display
+session opens before the device has answered. A printer found there leaves
+that display session unused (a known gap until printer sessions exist,
+v0.5) and is reported as a printer in the session status.
 
 ### Per-station state machine
 
@@ -185,9 +194,8 @@ gives each printer station a placeholder `tn5250::PrinterSession`
 no data, opens no connection, and logs once, when the printer first comes
 online, that printer sessions are not implemented. A TN5250 printer
 session (RFC 4777 sections 8-10) replaces it behind the same interface.
-A model's `ModelInfo::max_printer_sessions` limits printer stations: one on
-the 3477 (display + printer on its two addresses) and the 3489, none on the
-3486.
+A model's `ModelInfo::sessions` limits printer stations: one on the 3477
+(display + printer on its two addresses), the 3486 and the 3489.
 
 ## Painting a screen
 

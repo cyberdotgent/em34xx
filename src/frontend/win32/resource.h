@@ -63,6 +63,7 @@
 #define IDD_KEYMAP_ENTRY        308
 #define IDD_ABOUT               309
 #define IDD_CERT_INVALID        310
+#define IDD_PROFILE_SESSION     311
 
 /* Controls */
 #define IDC_STATIC_TEXT         2000
@@ -96,15 +97,12 @@
 #define IDC_PE_HOST1            2081
 #define IDC_PE_PORT1            2082
 #define IDC_PE_DEV1             2083
-#define IDC_PE_HOST2            2084
-#define IDC_PE_PORT2            2085
-#define IDC_PE_DEV2             2086
 #define IDC_PE_TLS1             2087
 #define IDC_PE_TLS_SETTINGS     2088
 #define IDC_PE_TLS_SUMMARY      2089
-#define IDC_PE_TLS2             2090
 #define IDC_PE_SUBTYPE          2091
 #define IDC_PE_CRT              2092
+#define IDC_PE_SESSIONS         2093
 
 #define IDC_TLS_SYSTEM          2100
 #define IDC_TLS_ANY             2101

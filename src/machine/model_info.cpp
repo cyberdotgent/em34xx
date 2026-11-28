@@ -36,6 +36,21 @@ bool ModelInfo::option_on(const std::string& id, const std::map<std::string, boo
     return false;
 }
 
+const char* session_kind_label(SessionKind kind) {
+    switch (kind) {
+    case SessionKind::Display: return "display";
+    case SessionKind::Printer: return "printer";
+    case SessionKind::DisplayOrPrinter: return "display or printer";
+    }
+    return "?";
+}
+
+unsigned ModelInfo::max_printer_sessions() const {
+    unsigned n = 0;
+    for (SessionKind k : sessions) n += k != SessionKind::Display ? 1u : 0u;
+    return n;
+}
+
 const Phosphor* ModelVariant::phosphor(const std::string& wanted) const {
     if (phosphors.empty()) return nullptr;
     for (const Phosphor& p : phosphors)

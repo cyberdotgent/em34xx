@@ -68,7 +68,7 @@ void LocalDisplayPort::operator_action(const OperatorAction& a) {
 LocalController::LocalController(const std::vector<StationConfig>& stations, const WscTiming& timing)
     : LinkScheduler(stations, timing) {
     for (const auto& s : this->stations()) {
-        if (s->configured_type() != StationType::Display) continue;
+        if (s->configured_type() == StationType::Printer) continue;
         ports_.push_back(std::make_unique<LocalDisplayPort>());
         s->attach_display(ports_.back().get());
     }

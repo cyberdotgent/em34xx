@@ -408,7 +408,7 @@ if(WIN32)
     src/frontend/win32/win32_util.cpp
   )
   target_link_libraries(em34xx_frontend_win32 PUBLIC em34xx_runtime
-    PRIVATE comctl32 comdlg32 shell32 gdi32 user32 advapi32)
+    PRIVATE comctl32 comdlg32 shell32 gdi32 user32 advapi32 uxtheme)
   # Unicode (W) APIs throughout; the generic macros map to them too.
   target_compile_definitions(em34xx_frontend_win32 PUBLIC UNICODE _UNICODE)
   target_link_libraries(em34xx_frontend_win32 PRIVATE em34xx_version_header)

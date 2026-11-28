@@ -163,7 +163,7 @@ BEGIN
     PUSHBUTTON      "Cancel", IDCANCEL, 159, 45, 54, 14
 END
 
-IDD_PROFILE DIALOGEX 0, 0, 290, 242
+IDD_PROFILE DIALOGEX 0, 0, 290, 198
 STYLE DS_SHELLFONT | DS_MODALFRAME | DS_CENTER | WS_POPUP | WS_CAPTION | WS_SYSMENU
 CAPTION "Connection Profile"
 FONT 8, "MS Shell Dlg", 400, 0, 1
@@ -174,29 +174,31 @@ BEGIN
     LTEXT           "C&RT type:", -1, 15, 37, 52, 8
     COMBOBOX        IDC_PE_SUBTYPE, 72, 35, 120, 80, CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
     AUTOCHECKBOX    "Scan &lines", IDC_PE_CRT, 200, 36, 76, 10
-    GROUPBOX        "Session 1", -1, 7, 57, 276, 46
-    LTEXT           "&Host:", -1, 15, 71, 30, 8
-    EDITTEXT        IDC_PE_HOST1, 50, 69, 150, 13, ES_AUTOHSCROLL
-    LTEXT           "Port:", -1, 208, 71, 20, 8
-    EDITTEXT        IDC_PE_PORT1, 232, 69, 42, 13, ES_NUMBER
-    LTEXT           "De&vice:", -1, 15, 87, 30, 8
-    EDITTEXT        IDC_PE_DEV1, 50, 85, 80, 13, ES_AUTOHSCROLL | ES_UPPERCASE
-    LTEXT           "(optional)", -1, 136, 87, 50, 8
-    AUTOCHECKBOX    "Use TL&S", IDC_PE_TLS1, 208, 86, 66, 10
-    GROUPBOX        "Session 2 (optional: leave the host empty)", -1, 7, 107, 276, 46
-    LTEXT           "H&ost:", -1, 15, 121, 30, 8
-    EDITTEXT        IDC_PE_HOST2, 50, 119, 150, 13, ES_AUTOHSCROLL
-    LTEXT           "Port:", -1, 208, 121, 20, 8
-    EDITTEXT        IDC_PE_PORT2, 232, 119, 42, 13, ES_NUMBER
-    LTEXT           "Devi&ce:", -1, 15, 137, 30, 8
-    EDITTEXT        IDC_PE_DEV2, 50, 135, 80, 13, ES_AUTOHSCROLL | ES_UPPERCASE
-    LTEXT           "(optional)", -1, 136, 137, 50, 8
-    AUTOCHECKBOX    "Use T&LS", IDC_PE_TLS2, 208, 136, 66, 10
-    GROUPBOX        "TLS (for the sessions that use it)", -1, 7, 157, 276, 54
-    LTEXT           "", IDC_PE_TLS_SUMMARY, 15, 171, 260, 18
-    PUSHBUTTON      "TLS S&ettings...", IDC_PE_TLS_SETTINGS, 199, 191, 76, 14
-    DEFPUSHBUTTON   "Connect", IDOK, 169, 221, 54, 14
-    PUSHBUTTON      "Cancel", IDCANCEL, 229, 221, 54, 14
+    // One tab per session of the terminal (ModelInfo::sessions); the page
+    // on it (IDD_PROFILE_SESSION) shows the selected one.
+    CONTROL         "", IDC_PE_SESSIONS, "SysTabControl32", WS_TABSTOP | WS_CLIPSIBLINGS, 7, 58, 276, 54
+    GROUPBOX        "TLS (for the sessions that use it)", -1, 7, 116, 276, 54
+    LTEXT           "", IDC_PE_TLS_SUMMARY, 15, 130, 260, 18
+    PUSHBUTTON      "TLS S&ettings...", IDC_PE_TLS_SETTINGS, 199, 150, 76, 14
+    DEFPUSHBUTTON   "Connect", IDOK, 169, 178, 54, 14
+    PUSHBUTTON      "Cancel", IDCANCEL, 229, 178, 54, 14
+END
+
+// The fields of one session, a page on the profile editor's session tabs
+// (placed in the tab's display area; coordinates relative to it).
+IDD_PROFILE_SESSION DIALOGEX 0, 0, 268, 38
+STYLE DS_SHELLFONT | DS_CONTROL | WS_CHILD
+EXSTYLE WS_EX_CONTROLPARENT
+FONT 8, "MS Shell Dlg", 400, 0, 1
+BEGIN
+    LTEXT           "&Host:", -1, 4, 6, 30, 8
+    EDITTEXT        IDC_PE_HOST1, 39, 4, 150, 13, ES_AUTOHSCROLL
+    LTEXT           "Port:", -1, 197, 6, 20, 8
+    EDITTEXT        IDC_PE_PORT1, 221, 4, 42, 13, ES_NUMBER
+    LTEXT           "De&vice:", -1, 4, 22, 30, 8
+    EDITTEXT        IDC_PE_DEV1, 39, 20, 80, 13, ES_AUTOHSCROLL | ES_UPPERCASE
+    LTEXT           "(optional)", -1, 125, 22, 50, 8
+    AUTOCHECKBOX    "Use TL&S", IDC_PE_TLS1, 197, 21, 66, 10
 END
 
 IDD_TLS DIALOGEX 0, 0, 300, 220

@@ -76,6 +76,8 @@ bool parse_twinax_host_kind(const std::string& text, TwinaxHostKind& out);
 enum class StationType {
     Display,  // a display session (keyboard + screen)
     Printer,  // a printer session (the terminal's printer port)
+    Auto,     // whichever the device reports (Read Device ID): a connection
+              // profile's session on a terminal that can be either
 };
 
 const char* station_type_name(StationType type);

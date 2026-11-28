@@ -132,6 +132,7 @@ const char* station_type_name(StationType type) {
     switch (type) {
     case StationType::Display: return "display";
     case StationType::Printer: return "printer";
+    case StationType::Auto: return "auto";
     }
     return "?";
 }
@@ -140,6 +141,7 @@ bool parse_station_type(const std::string& text, StationType& out) {
     const std::string t = to_lower(text);
     if (t == "display") out = StationType::Display;
     else if (t == "printer") out = StationType::Printer;
+    else if (t == "auto") out = StationType::Auto;
     else return false;
     return true;
 }
@@ -158,7 +160,7 @@ bool parse_station_spec(const std::string& text, StationConfig& out, std::string
         const auto c2 = text.find(':', c1 + 1);
         const std::string type = text.substr(c1 + 1, c2 == std::string::npos ? std::string::npos : c2 - c1 - 1);
         if (!parse_station_type(type, st.type)) {
-            error = "station type must be display or printer in '" + text + "'";
+            error = "station type must be display, printer or auto in '" + text + "'";
             return false;
         }
         if (c2 != std::string::npos) st.device_name = text.substr(c2 + 1);
@@ -194,7 +196,7 @@ std::string TwinaxConfig::validate(unsigned max_sessions, int max_printers) cons
         Sha256Digest d;
         if (!st.tls_cert_sha256.empty() && !parse_sha256_fingerprint(st.tls_cert_sha256, d))
             return format("station %u: tls_cert_sha256 is not a SHA-256 fingerprint", st.address);
-        if (st.type != StationType::Display && (!st.host.empty() || st.port || !st.tls_cert_sha256.empty()))
+        if (st.type == StationType::Printer && (!st.host.empty() || st.port || !st.tls_cert_sha256.empty()))
             return format("station %u: host, port and tls_cert_sha256 apply to display stations only", st.address);
     }
     if (list.size() > kMaxStationsPerBus)

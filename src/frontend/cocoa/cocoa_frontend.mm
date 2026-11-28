@@ -156,7 +156,7 @@ struct CurrentProfile {
     bool accepted_once = false;   // a certificate was accepted for this connection only
     // Per session: it runs on a certificate that is not valid, let through
     // by the user for that connection.
-    bool overridden[Profile::kSessions] = {};
+    bool overridden[Profile::kMaxSessions] = {};
 };
 
 enum class Orb { Green, Grey, Red, Orange };
@@ -194,7 +194,7 @@ std::string printable(const std::string& text) {
 // What opening a profile from outside the profiles folder would do.
 std::string foreign_profile_details(const std::string& path, const Profile& p) {
     std::string text = printable(path) + "\n\nOpening it connects to:\n";
-    for (size_t i = 0; i < Profile::kSessions; ++i) {
+    for (size_t i = 0; i < p.sessions.size(); ++i) {
         const ProfileSession& ps = p.sessions[i];
         if (!ps.used()) continue;
         text += format("\nSession %u: %s:%u - ", unsigned(i + 1), printable(ps.host).c_str(), unsigned(ps.port));
@@ -427,7 +427,7 @@ static NSToolbarItemIdentifier const kTbTermKeys = @"termkeys";
     NSWindow* _win;
     EMTerminalView* _view;
     NSTextField* _statusText;
-    EMSessionIndicator* _indicators[Profile::kSessions];
+    EMSessionIndicator* _indicators[Profile::kMaxSessions];   // the terminal's sessions shown, the rest hidden
     NSToolbarItem* _connectionItem;
     NSTimer* _statusTimer;
     NSTimer* _rasterTimer;
@@ -452,7 +452,7 @@ static NSToolbarItemIdentifier const kTbTermKeys = @"termkeys";
     bool _trustInvalid;
     CurrentProfile _cur;
     std::string _lastStatusText;
-    SessionIndicator _ind[Profile::kSessions];
+    SessionIndicator _ind[Profile::kMaxSessions];
     bool _toolbarOnline;
 }
 
@@ -539,7 +539,7 @@ static NSToolbarItemIdentifier const kTbTermKeys = @"termkeys";
     [_statusText setContentCompressionResistancePriority:NSLayoutPriorityDefaultLow
                                           forOrientation:NSLayoutConstraintOrientationHorizontal];
     NSMutableArray<NSView*>* inds = [NSMutableArray array];
-    for (size_t i = 0; i < Profile::kSessions; ++i) {
+    for (size_t i = 0; i < Profile::kMaxSessions; ++i) {
         _indicators[i] = [EMSessionIndicator new];
         _indicators[i].translatesAutoresizingMaskIntoConstraints = NO;
         _indicators[i].toolTip = @"";
@@ -940,7 +940,7 @@ static NSToolbarItemIdentifier const kTbTermKeys = @"termkeys";
 - (std::string)tlsStateText:(const TwinaxSessionStatus*)s {
     if (_cur.p.tls_mode == ProfileTlsMode::AcceptAll) return "TLS, certificate not verified";
     if (!s || !s->connected) return "TLS";
-    if (s->address < Profile::kSessions && _cur.overridden[s->address])
+    if (s->address < Profile::kMaxSessions && _cur.overridden[s->address])
         return "TLS, certificate NOT VALID (accepted for this connection)";
     switch (_cur.p.tls_mode) {
     case ProfileTlsMode::System: return _cur.accepted_once ? "TLS, certificate accepted once" : "TLS, verified";
@@ -954,14 +954,21 @@ static NSToolbarItemIdentifier const kTbTermKeys = @"termkeys";
 - (SessionIndicator)indicator:(unsigned)i sessions:(const std::vector<TwinaxSessionStatus>&)all {
     SessionIndicator ind;
     const std::string label = format("Session %u", i + 1);
-    if (!_cur.active || !_cur.p.sessions[i].used()) {
+    if (!_cur.active || !_cur.p.session(i).used()) {
         ind.tip = label + ": not configured";
         return ind;
     }
-    const ProfileSession& ps = _cur.p.sessions[i];
+    const ProfileSession& ps = _cur.p.session(i);
     const TwinaxSessionStatus* s = nullptr;
-    for (const TwinaxSessionStatus& x : all)
-        if (!x.printer && x.address == i) s = &x;
+    for (const TwinaxSessionStatus& x : all) {
+        if (x.address != i) continue;
+        if (x.printer) {
+            // The terminal has its printer port here.
+            ind.tip = label + ": the terminal's printer port, " + x.state + "\nprinter sessions are not supported yet";
+            return ind;
+        }
+        s = &x;
+    }
     const bool tls = s ? s->tls : ps.tls;
     ind.lock = !tls ? Lock::Open : _cur.p.tls_mode == ProfileTlsMode::AcceptAll ? Lock::ClosedDim : Lock::Closed;
     std::string state;
@@ -997,7 +1004,15 @@ static NSToolbarItemIdentifier const kTbTermKeys = @"termkeys";
         _lastStatusText = text;
         _statusText.stringValue = ns(text);
     }
-    for (unsigned i = 0; i < Profile::kSessions; ++i) {
+    // One indicator per session of the profile's terminal (or of the
+    // running one without a profile).
+    const size_t shown = std::min<size_t>(
+        std::max<size_t>(_cur.active ? _cur.p.session_slots() : _app->model().info().sessions.size(), 1),
+        Profile::kMaxSessions);
+    for (unsigned i = 0; i < Profile::kMaxSessions; ++i) {
+        const bool hide = i >= shown;
+        if (_indicators[i].hidden != hide) _indicators[i].hidden = hide;
+        if (hide) continue;
         const SessionIndicator ind = [self indicator:i sessions:sessions];
         if (ind == _ind[i]) continue;
         _ind[i] = ind;
@@ -1467,11 +1482,11 @@ static NSToolbarItemIdentifier const kTbTermKeys = @"termkeys";
             if (_trustInvalid) {
                 d = certificate_invalid_dialog(_win, p->req) ? tn5250::TlsTrustDecision::AcceptOnce
                                                                 : tn5250::TlsTrustDecision::Reject;
-                if (p->req.station < Profile::kSessions)
+                if (p->req.station < Profile::kMaxSessions)
                     _cur.overridden[p->req.station] = d == tn5250::TlsTrustDecision::AcceptOnce;
             } else {
                 d = trust_dialog(_win, p->req, name);
-                if (p->req.station < Profile::kSessions && d != tn5250::TlsTrustDecision::Reject)
+                if (p->req.station < Profile::kMaxSessions && d != tn5250::TlsTrustDecision::Reject)
                     _cur.overridden[p->req.station] = false;
             }
             if (_trustInvalid) {

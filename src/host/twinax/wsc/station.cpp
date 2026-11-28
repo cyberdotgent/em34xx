@@ -329,7 +329,7 @@ void Station::begin_discovery(uint8_t st, bool, uint64_t now) {
     const StationType configured = cfg_.type;
     id_ = StationIdentity();
     id_.address = address();
-    id_.type = configured;
+    id_.type = configured == StationType::Auto ? StationType::Display : configured;   // until identified
     ready_at_ = now;
 
     const uint8_t exc = status::exception(st);
@@ -383,7 +383,7 @@ void Station::queue_identify() {
     Op c;
     c.call = [this]() {
         id_.type = device_id_is_printer(id_.device_id) ? StationType::Printer : StationType::Display;
-        type_mismatch_ = id_.type != cfg_.type;
+        type_mismatch_ = cfg_.type != StationType::Auto && id_.type != cfg_.type;
         if (type_mismatch_)
             LOG_WARN("wsc", "station %u: configured as %s but the device reports %s (ID %02X)", cfg_.address,
                      station_type_name(cfg_.type), station_type_name(id_.type), id_.device_id);

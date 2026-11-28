@@ -175,7 +175,7 @@ connected, or on any reset.
   (hypothesis).
 - The display ID a real board gives (000 assumed; see Display ID).
 - The printer port: its registers are not found yet, and the model has
-  no printer session (`max_printer_sessions` 0).
+  printer session (`ModelInfo::sessions` is one display).
 - The CPU clock: 8 MHz, the N8086-2's rating. Neither oscillator divides
   to it by a small whole number (56.6092 / 7 = 8.09 MHz), so the gate
   array's divider is not known.

@@ -208,23 +208,32 @@ port = 992
 tls = true                      # each session with or without TLS
 device_name = "QPADEV0001"      # optional DEVNAME
 
-[[session]]                     # session 2: station 1 (optional)
-host = "other.example"
+[[session]]                     # session 2: station 1 (optional), and so
+host = "other.example"          # on, one per session of the terminal
 port = 992
 tls = true
 cert_sha256 = "AB:CD:..."       # optional: this session's trusted
                                 # certificate when it is another system
 ```
 
+Session N is the Nth `[[session]]` and Twinax station N - 1. An unused
+session before a used one is written as `host = ""`. How many sessions a
+profile can use, and what each can be, comes from the terminal model
+(`ModelInfo::sessions`): one on the 3483 and 3472, two on the 3477, three
+on the 3486/3487, five on the 3489. A used session past them is an error
+("the IBM 3483 has one session: clear session 2"). Whether a session that
+can be a display or the printer is one or the other is the terminal's own
+setup; the profile does not say (`auto` stations, docs/twinax-bridge.md).
+
 A profile becomes the bridge configuration through
-`profile_connect_config()`: the TN5250 bridge on the line, one display
-station per used session, `[tn5250]` from session 1 and the TLS settings,
-and for session 2 a station with its own `host`/`port` when it differs,
+`profile_connect_config()`: the TN5250 bridge on the line, one station
+per used session, `[tn5250]` from session 1 and the TLS settings, and for
+each further session a station with its own `host`/`port` when it differs,
 its own `tls` on or off and its own `tls_cert_sha256` (`StationConfig`
 overrides, also accepted in `[[twinax.station]]` of the TOML
 configuration; `tls = false` there also drops `[tn5250]`'s pinned
 certificate and CA file for that station). With session 1 plain and
-session 2 on TLS, a fingerprint pin goes to session 2's station.
+another session on TLS, a fingerprint pin goes to that session's station.
 
 Format 1 (em34xx 0.1) had one `tls.enabled` for both sessions and no
 `[display]`; such files still load (each session takes `tls.enabled`, the
@@ -272,7 +281,8 @@ The window title is `<profile>[*] - IBM 3477 - em34xx`; `*` marks a
 profile that differs from its file (or was never saved).
 
 The status bar shows `Profile: <name>[*]` on the left and, on the right,
-per session an orb and a lock (glyphs from `tools/gen_win32_assets.py`,
+per session of the terminal (the profile's model, or the running one
+without a profile) an orb and a lock (glyphs from `tools/gen_win32_assets.py`,
 `res/status*.bmp`, sized for the DPI):
 
 | Orb | Session |
@@ -280,7 +290,7 @@ per session an orb and a lock (glyphs from `tools/gen_win32_assets.py`,
 | green | connected |
 | orange | connecting or negotiating, or waiting on the certificate prompt |
 | red | disconnected, closed or failed (the bridge retries unless the user stopped it) |
-| grey | not configured in the profile |
+| grey | not configured in the profile, or the terminal's printer port (no printer sessions yet) |
 
 The lock is closed for a session with TLS, a dimmed closed lock for TLS
 with "Accept all certificates" (encrypted, the server not verified) and
@@ -299,9 +309,12 @@ The editor has the terminal type (a combo box filled from
 `runnable_models()`; a model whose ROM images are not in the ROM folder is
 drawn grey and reads "IBM 3477 (ROM images needed)", and choosing it names
 the missing files and offers to import them, going back to the previous
-choice when they are still missing), two sessions (host, port,
-optional device name, **Use TLS** for each session (it also swaps that
-session's conventional port, 23 and 992); session 2 may stay empty), the
+choice when they are still missing), one tab per session of the terminal
+(Session 1 ... Session N; host, port, optional device name and **Use
+TLS**, which also swaps the session's conventional port, 23 and 992; every
+session but the first may stay empty; choosing another terminal type
+changes the tabs, and a used session past the terminal's keeps its tab so
+that it can be cleared), the
 CRT type and scan lines, and **TLS Settings...** for the sessions that use
 TLS:
 
@@ -332,8 +345,8 @@ from/until, SHA-256), and three answers:
 - **Connect**: this connection only; the profile is unchanged. Reconnects
   of the same connection do not ask again; a new Connect does.
 - **Trust Permanently**: the fingerprint goes into the profile
-  (`profile_trust_certificate()`: fingerprint mode for session 1, or a
-  session-2 `cert_sha256` when session 2 is another host). A saved profile
+  (`profile_trust_certificate()`: fingerprint mode for session 1, or that
+  session's own `cert_sha256` when it is another host). A saved profile
   is saved at once; an untitled one keeps it in memory and is marked `*`.
 
 The prompt never opens over another dialog or message box: while one is up

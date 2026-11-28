@@ -564,7 +564,7 @@ struct FetchJob {
 // The session whose certificate Fetch reads: the first that uses TLS
 // (session 1 when none does yet).
 size_t tls_fetch_session(const Profile& p) {
-    for (size_t i = 0; i < Profile::kSessions; ++i)
+    for (size_t i = 0; i < p.sessions.size(); ++i)
         if (p.sessions[i].used() && p.sessions[i].tls) return i;
     return 0;
 }
@@ -769,28 +769,92 @@ std::string tls_summary(const Profile& p, const AppSettings& s) {
     NSPopUpButton* _model;
     NSPopUpButton* _subtype;
     NSButton* _crt;
-    NSTextField* _host[2];
-    NSTextField* _port[2];
-    NSTextField* _dev[2];
-    NSButton* _tls[2];
+    // One segment per session of the terminal (ModelInfo::sessions); the
+    // fields show the selected one.
+    NSSegmentedControl* _sessions;
+    size_t _session;
+    NSTextField* _host;
+    NSTextField* _port;
+    NSTextField* _dev;
+    NSButton* _tls;
     NSTextField* _tlsSummary;
     NSButton* _tlsButton;
 }
 
-- (NSView*)sessionBox:(size_t)i {
-    _host[i] = text_field(nil, 220);
-    _host[i].placeholderString = i == 0 ? @"host name or address" : @"optional";
-    _port[i] = text_field(nil, 60);
-    _dev[i] = text_field(nil, 110);
-    _dev[i].placeholderString = @"optional";
-    _dev[i].delegate = self;
-    _tls[i] = check_box(@"Use TLS", self, @selector(tlsToggled:));
-    _tls[i].tag = NSInteger(i);
+- (NSView*)sessionBox {
+    _sessions = [NSSegmentedControl segmentedControlWithLabels:@[ @"Session 1" ]
+                                                  trackingMode:NSSegmentSwitchTrackingSelectOne
+                                                        target:self
+                                                        action:@selector(sessionChosen:)];
+    _host = text_field(nil, 220);
+    _port = text_field(nil, 60);
+    _dev = text_field(nil, 110);
+    _dev.placeholderString = @"optional";
+    _dev.delegate = self;
+    _tls = check_box(@"Use TLS", self, @selector(tlsToggled:));
     NSGridView* g = form(@[
-        @[ label(@"Host:"), hstack(@[ _host[i], label(@"Port:"), _port[i] ]) ],
-        @[ label(@"Device name:"), hstack(@[ _dev[i], _tls[i] ], 16) ],
+        @[ label(@"Host:"), hstack(@[ _host, label(@"Port:"), _port ]) ],
+        @[ label(@"Device name:"), hstack(@[ _dev, _tls ], 16) ],
     ]);
-    return group(i == 0 ? @"Session 1" : @"Session 2", g);
+    NSStackView* box = vstack(@[ _sessions, g ], 10);
+    box.alignment = NSLayoutAttributeLeading;
+    return group(@"Sessions", box);
+}
+
+// Show session _session in the fields.
+- (void)showSession {
+    const ProfileSession& ps = _p.session(_session);
+    _host.placeholderString = _session == 0 ? @"host name or address" : @"optional";
+    _host.stringValue = ns(ps.host);
+    _port.stringValue = ps.used() || _session == 0 ? ns(std::to_string(ps.port)) : @"";
+    _dev.stringValue = ns(ps.device_name);
+    _tls.state = ps.tls ? NSControlStateValueOn : NSControlStateValueOff;
+}
+
+// Read the fields into session _session; false (with a message unless
+// quiet) when the port is invalid.
+- (bool)storeSession:(bool)quiet {
+    ProfileSession s = _p.session(_session);
+    s.host = trim(str(_host.stringValue));
+    s.device_name = trim(str(_dev.stringValue));
+    s.tls = _tls.state == NSControlStateValueOn;
+    const std::string port = trim(str(_port.stringValue));
+    uint64_t v = 0;
+    if (port.empty()) v = s.tls ? 992 : 23;
+    else if (!parse_uint(port, v) || v == 0 || v > 65535) {
+        if (!quiet)
+            error_alert(_panel, format("The port of session %zu is not valid.", _session + 1),
+                        "A port is a number from 1 to 65535.");
+        return false;
+    }
+    s.port = uint16_t(v);
+    if (s.used() || _session < _p.sessions.size()) _p.session(_session) = s;
+    return true;
+}
+
+// The session segments: one per session of the selected terminal, and one
+// for each used session past them (so that it can be cleared).
+- (void)fillSessions {
+    const size_t n = _p.session_slots();
+    _sessions.segmentCount = NSInteger(n);
+    for (size_t i = 0; i < n; ++i) [_sessions setLabel:ns(format("Session %zu", i + 1)) forSegment:NSInteger(i)];
+    [_sessions sizeToFit];
+    if (_session >= n) _session = 0;
+    _sessions.selectedSegment = NSInteger(_session);
+    [self showSession];
+}
+
+- (void)sessionChosen:(id)sender {
+    (void)sender;
+    guarded([&] {
+        const NSInteger sel = _sessions.selectedSegment;
+        if (![self storeSession:false]) {   // keep the session while its port is not a number
+            _sessions.selectedSegment = NSInteger(_session);
+            return;
+        }
+        _session = sel < 0 ? 0 : size_t(sel);
+        [self showSession];
+    });
 }
 
 // The terminal type list: every variant of every model that can be
@@ -868,6 +932,7 @@ std::string tls_summary(const Profile& p, const AppSettings& s) {
         if (sel >= 0 && size_t(sel) < _variants.size()) {
             _modelSel = sel;
             [self fillPhosphors:tube];
+            [self followModel];
             return;
         }
         // "Import ROM Images…": the ROM dialog, then the list again (an
@@ -877,7 +942,15 @@ std::string tls_summary(const Profile& p, const AppSettings& s) {
         rom_manager_dialog(_panel, *_dirs, nullptr);
         [self fillModels:back];
         [self fillPhosphors:tube];
+        [self followModel];
     });
+}
+
+// The session segments follow the terminal's sessions.
+- (void)followModel {
+    [self read:true];
+    [self fillSessions];
+    [self updateTls];
 }
 
 - (void)phosphorChosen:(id)sender {
@@ -894,8 +967,7 @@ std::string tls_summary(const Profile& p, const AppSettings& s) {
         @[ label(@"Terminal type:"), _model ],
         @[ label(@"CRT type:"), hstack(@[ _subtype, _crt ], 16) ],
     ]);
-    NSView* s1 = [self sessionBox:0];
-    NSView* s2 = [self sessionBox:1];
+    NSView* sessions = [self sessionBox];
     _tlsSummary = wrapping_label(@"", 340);
     _tlsSummary.selectable = NO;
     _tlsButton = push_button(@"TLS Settings…", self, @selector(tlsSettings:));
@@ -908,8 +980,8 @@ std::string tls_summary(const Profile& p, const AppSettings& s) {
                                                                  : @"OK",
                                self, @selector(ok:));
     make_default(ok);
-    NSStackView* content = vstack(@[ terminal, s1, s2, tlsRow, button_row(@[], @[ cancel, ok ]) ], 14);
-    for (NSView* v in @[ s1, s2, content.arrangedSubviews.lastObject ])
+    NSStackView* content = vstack(@[ terminal, sessions, tlsRow, button_row(@[], @[ cancel, ok ]) ], 14);
+    for (NSView* v in @[ sessions, content.arrangedSubviews.lastObject ])
         [v.widthAnchor constraintEqualToAnchor:content.widthAnchor].active = YES;
     set_content(_panel, content);
 
@@ -917,14 +989,9 @@ std::string tls_summary(const Profile& p, const AppSettings& s) {
     [self fillModels:_p.variant];
     [self fillPhosphors:_p.phosphor];
     _crt.state = _p.crt ? NSControlStateValueOn : NSControlStateValueOff;
-    for (size_t s = 0; s < 2; ++s) {
-        const ProfileSession& ps = _p.sessions[s];
-        _host[s].stringValue = ns(ps.host);
-        _port[s].stringValue = ps.used() || s == 0 ? ns(std::to_string(ps.port)) : @"";
-        _dev[s].stringValue = ns(ps.device_name);
-        _tls[s].state = ps.tls ? NSControlStateValueOn : NSControlStateValueOff;
-    }
-    _panel.initialFirstResponder = _host[0];
+    _session = 0;
+    [self fillSessions];
+    _panel.initialFirstResponder = _host;
     [self updateTls];
 }
 
@@ -943,30 +1010,15 @@ std::string tls_summary(const Profile& p, const AppSettings& s) {
         _p.phosphor = [self selectedPhosphor];
     }
     _p.crt = _crt.state == NSControlStateValueOn;
-    for (size_t i = 0; i < 2; ++i) {
-        ProfileSession& s = _p.sessions[i];
-        s.host = trim(str(_host[i].stringValue));
-        s.device_name = trim(str(_dev[i].stringValue));
-        s.tls = _tls[i].state == NSControlStateValueOn;
-        const std::string port = trim(str(_port[i].stringValue));
-        uint64_t v = 0;
-        if (port.empty()) v = s.tls ? 992 : 23;
-        else if (!parse_uint(port, v) || v == 0 || v > 65535) {
-            if (!quiet)
-                error_alert(_panel, format("The port of session %zu is not valid.", i + 1),
-                            "A port is a number from 1 to 65535.");
-            return false;
-        }
-        s.port = uint16_t(v);
-    }
-    return true;
+    return [self storeSession:quiet];
 }
 
 - (void)updateTls {
+    [self storeSession:true];
     std::string which;
-    for (size_t i = 0; i < 2; ++i)
-        if (_tls[i].state == NSControlStateValueOn)
-            which += which.empty() ? format("session %zu", i + 1) : format(" and %zu", i + 1);
+    for (size_t i = 0; i < _p.sessions.size(); ++i)
+        if (_p.sessions[i].used() && _p.sessions[i].tls)
+            which += which.empty() ? format("session %zu", i + 1) : format(", %zu", i + 1);
     _tlsButton.enabled = !which.empty();
     _tlsSummary.stringValue = which.empty() ? @"No session uses TLS: plain telnet."
                                             : ns("TLS for " + which + ": " + tls_summary(_p, *_s) + ".");
@@ -974,10 +1026,9 @@ std::string tls_summary(const Profile& p, const AppSettings& s) {
 
 // Switch the session's conventional port along with TLS.
 - (void)tlsToggled:(NSButton*)sender {
-    const size_t i = sender.tag == 0 ? 0 : 1;
     const bool on = sender.state == NSControlStateValueOn;
-    const std::string port = trim(str(_port[i].stringValue));
-    if (port == (on ? "23" : "992")) _port[i].stringValue = on ? @"992" : @"23";
+    const std::string port = trim(str(_port.stringValue));
+    if (port == (on ? "23" : "992")) _port.stringValue = on ? @"992" : @"23";
     [self updateTls];
 }
 

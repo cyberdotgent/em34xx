@@ -24,8 +24,8 @@ public:
         info_.clock_hz = 12000000;
         // 4 display sessions plus 1 printer session (IBM 3489 User's Guide
         // GA18-7492, 1.1.5 and 2.9).
-        info_.max_sessions = 5;
-        info_.max_printer_sessions = 1;   // [doc 3489 UG 1.1.5]
+        info_.sessions = {SessionKind::Display, SessionKind::Display, SessionKind::Display, SessionKind::Display,
+                          SessionKind::Printer};   // [doc 3489 UG 1.1.5]
         info_.roms = {
             {"system ROM", "IBM-3489.rom", 0x100000, "", 0xF00000},
         };

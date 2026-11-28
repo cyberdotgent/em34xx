@@ -587,3 +587,49 @@ TEST_CASE("tn5250 bridge: session status for a status bar") {
     CHECK(bridge->session_status()[0].state == "disconnected");
     CHECK(bridge->session_status()[0].held);
 }
+
+TEST_CASE("tn5250 bridge: an auto station is what its device reports") {
+    // A profile's second session on a 3477 is a display or the printer
+    // port, as the terminal's setup says (StationType::Auto).
+    for (const bool printer : {true, false}) {
+        CAPTURE(printer);
+        TwinaxConfig tw;
+        tw.host = TwinaxHostKind::Tn5250;
+        tw.stations = {StationConfig{0, StationType::Display, "", ""}, StationConfig{1, StationType::Auto, "", ""}};
+        Tn5250Config tn;
+        tn.host = "ibmi.example";
+        std::vector<std::shared_ptr<ServerScript>> servers;
+        BridgeOptions opt;
+        opt.transport = [&](const StationConfig&, std::string&) -> std::unique_ptr<em34xx::tn5250::Transport> {
+            servers.push_back(std::make_shared<ServerScript>());
+            servers.back()->push(negotiation());
+            servers.back()->push(framed_record(tn5250_test::signon_stream()));
+            return std::make_unique<ScriptTransport>(servers.back());
+        };
+        std::string err;
+        auto host = make_tn5250_bridge(tw, tn, opt, err);
+        REQUIRE(host);
+        auto& bridge = static_cast<Tn5250Bridge&>(*host);
+        REQUIRE(bridge.display(1));
+        REQUIRE(bridge.printer(1));
+
+        Bench b(bridge);
+        FakeStation f(0);
+        FakeStationOptions o2;
+        o2.type = printer ? StationType::Printer : StationType::Display;
+        FakeStation s2(1, o2);
+        b.plug(f);
+        b.plug(s2);
+        REQUIRE(b.run_until([&] { return row_text(f, 0, 35, 7) == "Sign On"; }));
+        if (printer) {
+            REQUIRE(b.run_until([&] { return bridge.printer(1)->ready(); }));
+        } else {
+            REQUIRE(b.run_until([&] { return row_text(s2, 0, 35, 7) == "Sign On"; }));
+            CHECK_FALSE(bridge.printer(1)->ready());
+        }
+        const std::vector<TwinaxSessionStatus> st = bridge.session_status();
+        REQUIRE(st.size() == 2);
+        CHECK(st[1].address == 1);
+        CHECK(st[1].printer == printer);
+    }
+}

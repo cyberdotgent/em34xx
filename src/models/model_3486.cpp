@@ -80,8 +80,11 @@ protected:
         // CPU clock is assumed to be a quarter of it (hypothesis).
         info_.clock_hz = 7500000;
         info_.line = LineKind::Twinax;
-        info_.max_sessions = 2;
-        info_.max_printer_sessions = 1;
+        // Offline Setup's modes One-Display, Two-Display, Display-Printer and
+        // Two-Display-Printer [observed]: a second session that is a display
+        // or the printer, and a third that is the printer next to two
+        // displays (docs/bringup-3486.md).
+        info_.sessions = {SessionKind::Display, SessionKind::DisplayOrPrinter, SessionKind::Printer};
         info_.options = {
             {"vdo-shim", "TEMPORARY: stand in for the unmodelled video signature of the power-on display test "
                          "(off: POST stops at VDO)", true},

@@ -87,8 +87,9 @@ public:
         // placeholder [hypothesis].
         info_.clock_hz = 8000000;
         info_.line = LineKind::Coax;
-        info_.max_sessions = 1;
-        info_.max_printer_sessions = 0;
+        // One display session; the printer port's session is not modelled
+        // yet (docs/bringup-3472.md).
+        info_.sessions = {SessionKind::Display};
         // A monochrome unit with its own tube, so the 5250 monochrome
         // units' phosphors.
         info_.variants = {
