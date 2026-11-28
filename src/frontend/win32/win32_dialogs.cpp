@@ -697,9 +697,13 @@ void profile_place_page(HWND dlg, const ProfileDlg& d) {
     GetWindowRect(tabs, &r);
     MapWindowPoints(nullptr, dlg, reinterpret_cast<POINT*>(&r), 2);
     TabCtrl_AdjustRect(tabs, FALSE, &r);
-    // Right after the tabs in the tab order (and under them in Z order,
-    // which WS_CLIPSIBLINGS keeps from overpainting it).
-    SetWindowPos(d.page, tabs, r.left, r.top, r.right - r.left, r.bottom - r.top, SWP_SHOWWINDOW);
+    // Directly above the tabs in Z order: under them, Windows paints the
+    // tab control over the page's labels and check box (observed on
+    // Windows 11; Wine draws it either way). The page is then just before
+    // the tabs in the tab order.
+    const HWND above = GetWindow(tabs, GW_HWNDPREV);
+    SetWindowPos(d.page, above ? above : HWND_TOP, r.left, r.top, r.right - r.left, r.bottom - r.top,
+                 SWP_SHOWWINDOW);
 }
 
 // Show session d.session in the fields.
