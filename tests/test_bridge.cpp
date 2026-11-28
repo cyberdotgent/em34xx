@@ -598,13 +598,17 @@ TEST_CASE("tn5250 bridge: an auto station is what its device reports") {
         tw.stations = {StationConfig{0, StationType::Display, "", ""}, StationConfig{1, StationType::Auto, "", ""}};
         Tn5250Config tn;
         tn.host = "ibmi.example";
+        // Each session's I/O thread calls the factory, so two run at once.
+        std::mutex servers_mu;
         std::vector<std::shared_ptr<ServerScript>> servers;
         BridgeOptions opt;
         opt.transport = [&](const StationConfig&, std::string&) -> std::unique_ptr<em34xx::tn5250::Transport> {
-            servers.push_back(std::make_shared<ServerScript>());
-            servers.back()->push(negotiation());
-            servers.back()->push(framed_record(tn5250_test::signon_stream()));
-            return std::make_unique<ScriptTransport>(servers.back());
+            auto server = std::make_shared<ServerScript>();
+            server->push(negotiation());
+            server->push(framed_record(tn5250_test::signon_stream()));
+            std::lock_guard<std::mutex> g(servers_mu);
+            servers.push_back(server);
+            return std::make_unique<ScriptTransport>(server);
         };
         std::string err;
         auto host = make_tn5250_bridge(tw, tn, opt, err);
